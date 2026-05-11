@@ -72,22 +72,21 @@ fn paste_text(
     text: String,
     expected_clipboard_marker: Option<ClipboardMarker>,
 ) -> Result<PasteResult, String> {
-    if let Some(expected) = expected_clipboard_marker {
-        let current = current_clipboard_marker()?;
-        if current != expected {
-            return Ok(PasteResult {
-                pasted: false,
-                copied: false,
-                method: "clipboard-changed".to_string(),
-            });
-        }
-    }
+    let clipboard_changed = clipboard_changed_since(expected_clipboard_marker)?;
 
     let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
     clipboard
         .set_text(text)
         .map_err(|error| error.to_string())?;
     drop(clipboard);
+
+    if clipboard_changed {
+        return Ok(PasteResult {
+            pasted: false,
+            copied: true,
+            method: "clipboard-changed-copied".to_string(),
+        });
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -131,6 +130,14 @@ fn paste_text(
         copied: true,
         method: "clipboard".to_string(),
     })
+}
+
+fn clipboard_changed_since(expected_clipboard_marker: Option<ClipboardMarker>) -> Result<bool, String> {
+    let Some(expected) = expected_clipboard_marker else {
+        return Ok(false);
+    };
+    let current = current_clipboard_marker()?;
+    Ok(current != expected)
 }
 
 #[tauri::command]
@@ -302,7 +309,7 @@ fn marker_from_bytes(kind: &str, bytes: &[u8]) -> ClipboardMarker {
 
 #[cfg(test)]
 mod tests {
-    use super::{marker_from_bytes, should_hide_on_close};
+    use super::{clipboard_changed_since, marker_from_bytes, should_hide_on_close};
 
     #[test]
     fn close_hides_main_and_companion_while_app_keeps_running() {
@@ -335,5 +342,10 @@ mod tests {
             marker_from_bytes("text", b"dictivo"),
             marker_from_bytes("image", b"dictivo")
         );
+    }
+
+    #[test]
+    fn missing_clipboard_marker_allows_copy_and_auto_paste_attempt() {
+        assert!(!clipboard_changed_since(None).unwrap());
     }
 }

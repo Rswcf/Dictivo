@@ -34,6 +34,7 @@ type SettingsViewProps = {
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
+  initialSection?: SettingsSection;
 };
 
 const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> = [
@@ -152,9 +153,10 @@ export function SettingsView({
   onCompanionAvatarChange,
   onModelAction,
   onImportModel,
-  onRefreshNative
+  onRefreshNative,
+  initialSection = "engine"
 }: SettingsViewProps) {
-  const [section, setSection] = useState<SettingsSection>("engine");
+  const [section, setSection] = useState<SettingsSection>(initialSection);
 
   return (
     <section className="settings-layout">

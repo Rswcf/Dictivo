@@ -40,6 +40,106 @@ describe("floating companion state", () => {
     expect(snapshot.pasteStatus).toBe("Copied to clipboard");
   });
 
+  it("summarizes processing, blocked, error, idle, and CJK completion states", () => {
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        avatar: "dog",
+        phase: "processing",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      title: "Transcribing",
+      detail: "Local engine is working",
+      summary: "Processing audio on this device."
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        avatar: "dog",
+        phase: "blocked",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      title: "Setup needed",
+      detail: "Open Local Engine settings",
+      summary: "Dictivo needs a local engine check."
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        avatar: "dog",
+        phase: "error",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "Microphone denied",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      title: "Needs attention",
+      detail: "Check the main window",
+      summary: "Microphone denied"
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: false,
+        avatar: "cat",
+        phase: "idle",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      enabled: false,
+      title: "Standing by",
+      detail: "CommandOrControl+Shift+Space to record",
+      summary: "Local dictation is ready."
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        avatar: "dog",
+        phase: "complete",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "本地优先",
+        statusMessage: "",
+        pasteStatus: "",
+        language: "zh"
+      }).detail
+    ).toBe("4 words copied");
+  });
+
+  it("truncates very long transcript previews", () => {
+    const snapshot = buildCompanionSnapshot({
+      enabled: true,
+      avatar: "dog",
+      phase: "complete",
+      hotkey: "CommandOrControl+Shift+Space",
+      liveText: "word ".repeat(80),
+      statusMessage: "",
+      pasteStatus: "",
+      language: "en"
+    });
+
+    expect(snapshot.transcriptPreview.length).toBeLessThanOrEqual(118);
+    expect(snapshot.transcriptPreview.endsWith("...")).toBe(true);
+  });
+
   it("ships the generated Trump companion avatar as a project asset", () => {
     const asset = statSync("src/assets/avatars/trump-companion.png");
     const header = readFileSync("src/assets/avatars/trump-companion.png").subarray(0, 8);

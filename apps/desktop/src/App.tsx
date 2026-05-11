@@ -312,11 +312,13 @@ export function App({ windowLabel = "main" }: AppProps) {
       setLiveText(result.finalizedText);
       setDictationPhase("complete");
       setPasteStatus(
-        pasteResult.copied
-          ? pasteResult.pasted
-            ? "Pasted into active app"
-            : "Copied to clipboard"
-          : "Clipboard changed; transcript kept"
+        pasteResult.pasted
+          ? "Pasted into active app"
+          : pasteResult.method === "clipboard-changed-copied"
+            ? "Copied; auto paste skipped"
+            : pasteResult.copied
+              ? "Copied to clipboard"
+              : "Transcript kept in Dictivo"
       );
       const completionMessage =
         result.fallbackUsed
@@ -325,9 +327,11 @@ export function App({ windowLabel = "main" }: AppProps) {
             ? result.slowWarning
             : `Local transcription completed with ${result.profileUsed} profile.`;
       setStatusMessage(
-        pasteResult.copied
-          ? completionMessage
-          : `${completionMessage} Clipboard changed after recording, so Dictivo did not overwrite it.`
+        pasteResult.method === "clipboard-changed-copied"
+          ? `${completionMessage} The clipboard changed during transcription, so Dictivo copied the transcript but skipped automatic paste. Press Command+V to paste it.`
+          : pasteResult.copied
+            ? completionMessage
+            : `${completionMessage} Transcript is available in Dictivo, but could not be copied to the clipboard.`
       );
     } catch (error) {
       setDictationPhase("error");

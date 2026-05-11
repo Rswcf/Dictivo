@@ -42,13 +42,14 @@ export function polishLocalTranscript(text: string, options: LocalPolishOptions)
     return applySnippets(raw, options.snippets);
   }
 
-  let current = applySnippets(raw, options.snippets);
+  let current = raw;
   if (options.processing.spokenPunctuation) current = applySpokenPunctuation(current, options.language);
   if (options.processing.fillerWords) current = removeFillerWords(current, options.language);
   current = normalizeWhitespace(current, options.language);
   current = normalizePunctuation(current, options.language);
   if (options.processing.smartCapitalization) current = smartCapitalize(current, options.language, options.dictionary);
   current = applyModeFormat(current, options);
+  current = applySnippets(current, options.snippets);
   return current.trim();
 }
 

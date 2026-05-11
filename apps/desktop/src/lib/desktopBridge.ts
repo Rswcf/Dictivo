@@ -69,7 +69,7 @@ export type PrivateFastTranscribeOptions = {
 };
 
 export function isTauriRuntime() {
-  return "__TAURI_INTERNALS__" in window;
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export async function requestNativePermissions() {
@@ -90,7 +90,7 @@ export async function getClipboardMarker(): Promise<ClipboardMarker | null> {
 
 export async function pasteText(text: string, expectedClipboardMarker?: ClipboardMarker | null): Promise<PasteResult> {
   if (!isTauriRuntime()) {
-    await navigator.clipboard?.writeText(text);
+    await globalThis.navigator?.clipboard?.writeText(text);
     return { pasted: false, copied: true, method: "clipboard" };
   }
   return invoke<PasteResult>("paste_text", { text, expectedClipboardMarker: expectedClipboardMarker ?? null });
@@ -223,8 +223,8 @@ export async function getPrivateFastModels(): Promise<PrivateFastModel[]> {
 
 export async function getHardwareProfile(): Promise<HardwareProfile> {
   if (!isTauriRuntime()) {
-    const cores = navigator.hardwareConcurrency || 4;
-    const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    const cores = globalThis.navigator?.hardwareConcurrency || 4;
+    const deviceMemory = (globalThis.navigator as Navigator & { deviceMemory?: number } | undefined)?.deviceMemory;
     const memoryTotalBytes = typeof deviceMemory === "number" ? deviceMemory * 1024 ** 3 : undefined;
     const performanceClass = cores >= 10 ? "high" : cores >= 6 ? "mid" : "low";
     return {

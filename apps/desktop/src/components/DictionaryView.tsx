@@ -36,11 +36,15 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
           </IconButton>
         </div>
         <div className="token-list">
-          {dictionary.map((item) => (
-            <button key={item.id} onClick={() => onRemoveTerm(item.id)} title="Remove term">
-              {item.value}
-            </button>
-          ))}
+          {dictionary.length === 0 ? (
+            <div className="empty-panel">No local dictionary terms yet.</div>
+          ) : (
+            dictionary.map((item) => (
+              <button key={item.id} onClick={() => onRemoveTerm(item.id)} title="Remove term">
+                {item.value}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -62,18 +66,22 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
           </button>
         </div>
         <div className="snippet-list">
-          {snippets.map((item) => (
-            <div key={item.id}>
-              <div className="snippet-head">
-                <strong>{item.trigger}</strong>
-                <button className="text-button" onClick={() => onRemoveSnippet(item.id)}>
-                  <Trash2 size={16} />
-                  Remove
-                </button>
+          {snippets.length === 0 ? (
+            <div className="empty-panel">No local snippets yet.</div>
+          ) : (
+            snippets.map((item) => (
+              <div key={item.id}>
+                <div className="snippet-head">
+                  <strong>{item.trigger}</strong>
+                  <button className="text-button" onClick={() => onRemoveSnippet(item.id)}>
+                    <Trash2 size={16} />
+                    Remove
+                  </button>
+                </div>
+                <span>{item.replacement}</span>
               </div>
-              <span>{item.replacement}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </section>
