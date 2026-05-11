@@ -193,10 +193,8 @@ fn open_connection() -> Result<Connection, String> {
 }
 
 fn database_path() -> Result<PathBuf, String> {
-    let mut base = dirs::data_local_dir()
+    let base = dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .ok_or_else(|| "Unable to resolve local data directory".to_string())?;
-    base.push("Dictivo");
-    base.push("local.sqlite3");
-    Ok(base)
+    Ok(base.join("Dictivo").join("local.sqlite3"))
 }

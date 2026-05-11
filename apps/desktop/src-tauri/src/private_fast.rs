@@ -470,17 +470,23 @@ fn model_paths_for_id(model_id: &str) -> Vec<PathBuf> {
 fn private_fast_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(path) = env::var("DICTIVO_PRIVATE_FAST_HOME") {
-        roots.push(PathBuf::from(path));
+        push_unique_path(&mut roots, PathBuf::from(path));
     }
     if let Some(mut data_dir) = dirs::data_local_dir().or_else(dirs::data_dir) {
         data_dir.push("Dictivo");
         data_dir.push("private-fast");
-        roots.push(data_dir);
+        push_unique_path(&mut roots, data_dir);
     }
     if let Some(home_dir) = dirs::home_dir() {
-        roots.push(home_dir.join(".dictivo/private-fast"));
+        push_unique_path(&mut roots, home_dir.join(".dictivo/private-fast"));
     }
     roots
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
 }
 
 fn private_fast_work_dir() -> Result<PathBuf, String> {
@@ -699,14 +705,17 @@ fn windows_gpu_detected() -> bool {
 }
 
 fn selected_model_id() -> Option<String> {
-    let path = selection_path().ok()?;
-    let value = fs::read_to_string(path).ok()?;
-    let trimmed = value.trim();
-    if model_spec(trimmed).is_some() {
-        Some(trimmed.to_string())
-    } else {
-        None
+    for root in private_fast_roots() {
+        let path = root.join("selected-model.txt");
+        let Some(value) = fs::read_to_string(path).ok() else {
+            continue;
+        };
+        let trimmed = value.trim();
+        if model_spec(trimmed).is_some() {
+            return Some(trimmed.to_string());
+        }
     }
+    None
 }
 
 fn write_selected_model(model_id: &str) -> Result<(), String> {
