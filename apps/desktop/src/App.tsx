@@ -698,7 +698,7 @@ function NavButton({ active, label, icon, onClick }: { active: boolean; label: s
 function viewTitle(view: View) {
   if (view === "history") return "Local History";
   if (view === "dictionary") return "Dictionary & Snippets";
-  if (view === "settings") return "Local Engine Settings";
+  if (view === "settings") return "Settings";
   return "Dictation Workbench";
 }
 

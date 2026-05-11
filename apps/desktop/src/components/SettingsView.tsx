@@ -1,4 +1,4 @@
-import { Bot, Cat, Dog, KeyRound, Lock, Settings, SlidersHorizontal, Sparkles, UserRound, WifiOff } from "lucide-react";
+import { Bot, Cat, ClipboardCheck, Dog, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, WifiOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus } from "../lib/desktopBridge";
@@ -49,6 +49,88 @@ const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode; imag
   { id: "cat", label: "Cat", icon: <Cat size={18} /> },
   { id: "trump", label: "Trump", icon: <UserRound size={18} />, image: trumpAvatarImage }
 ];
+
+type PermissionTone = "ready" | "attention" | "neutral";
+
+type PermissionDisplayStatus = {
+  label: string;
+  detail: string;
+  tone: PermissionTone;
+};
+
+export const privacyPermissionItems: Array<{
+  key: "microphone" | "accessibility" | "pasteAutomation";
+  label: string;
+  requirement: string;
+  description: string;
+  icon: ReactNode;
+}> = [
+  {
+    key: "microphone",
+    label: "Microphone",
+    requirement: "Required",
+    description: "Records dictation audio so the local engine can transcribe it on this computer.",
+    icon: <Mic2 size={17} />
+  },
+  {
+    key: "accessibility",
+    label: "Accessibility",
+    requirement: "Recommended",
+    description: "Allows Dictivo to control paste behavior and keep global dictation shortcuts reliable.",
+    icon: <Keyboard size={17} />
+  },
+  {
+    key: "pasteAutomation",
+    label: "Auto paste",
+    requirement: "Optional",
+    description: "Places the final transcript into the active app. If unavailable, the transcript stays available in Dictivo.",
+    icon: <ClipboardCheck size={17} />
+  }
+];
+
+export function describePermissionStatus(value?: string): PermissionDisplayStatus {
+  switch (value) {
+    case "granted":
+      return {
+        label: "Ready",
+        detail: "The operating system reports this permission as available.",
+        tone: "ready"
+      };
+    case "clipboard-only":
+      return {
+        label: "Copy only",
+        detail: "Dictivo can copy locally, but direct paste automation is not available here.",
+        tone: "neutral"
+      };
+    case "web-preview":
+      return {
+        label: "Preview only",
+        detail: "This status is from the browser preview, not the installed desktop app.",
+        tone: "neutral"
+      };
+    case "denied":
+    case "blocked":
+      return {
+        label: "Needs permission",
+        detail: "Enable this permission in system settings before using the related workflow.",
+        tone: "attention"
+      };
+    case "pending-native-prompt":
+    case "not-determined":
+    case undefined:
+      return {
+        label: "Needs system check",
+        detail: "Dictivo has not received a confirmed system permission state yet.",
+        tone: "attention"
+      };
+    default:
+      return {
+        label: "Not verified",
+        detail: "Refresh local status after granting permissions in system settings.",
+        tone: "neutral"
+      };
+  }
+}
 
 export function SettingsView({
   hotkeys,
@@ -167,18 +249,35 @@ export function SettingsView({
           <div className="side-panel">
             <PanelTitle icon={<Lock size={18} />} title="Permissions & Privacy" />
             <div className="privacy-pledge">
-              <Settings size={18} />
-              <p>Dictivo does not send audio, text, dictionary terms, snippets, or transcripts to external AI providers.</p>
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Local-only by design</strong>
+                <p>Dictivo does not send audio, text, dictionary terms, snippets, or transcripts to external AI providers.</p>
+              </div>
             </div>
-            <div className="permission-list">
-              {Object.entries(permissions).map(([key, value]) => (
-                <div key={key}>
-                  <span>{key}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
+            <div className="permission-list permission-list--explained">
+              {privacyPermissionItems.map((item) => {
+                const status = describePermissionStatus(permissions[item.key]);
+                return (
+                  <article key={item.key} className={`permission-card is-${status.tone}`}>
+                    <span className="permission-card__icon" aria-hidden="true">
+                      {item.icon}
+                    </span>
+                    <div className="permission-card__body">
+                      <div className="permission-card__heading">
+                        <strong>{item.label}</strong>
+                        <span>{item.requirement}</span>
+                      </div>
+                      <p>{item.description}</p>
+                      <small>{status.detail}</small>
+                    </div>
+                    <span className={`permission-status is-${status.tone}`}>{status.label}</span>
+                  </article>
+                );
+              })}
             </div>
             <button className="text-button" onClick={onRefreshNative}>
+              <RefreshCw size={15} />
               Refresh local status
             </button>
           </div>
