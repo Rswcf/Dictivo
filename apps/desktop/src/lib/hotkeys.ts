@@ -7,6 +7,14 @@ type ParsedShortcut = {
   key: string;
 };
 
+export type HotkeyIntent = "start-dictation" | "stop-dictation" | "paste-last" | "none";
+
+type HotkeyConfig = {
+  dictation: string;
+  pasteLast: string;
+  activationMode: "toggle" | "hold";
+};
+
 export function isShortcutPress(event: Pick<ShortcutEvent, "state">) {
   return event.state === "Pressed";
 }
@@ -39,6 +47,27 @@ export function shortcutMatches(actual: string, expected: string) {
 export function shortcutFingerprint(shortcut: string) {
   const parsed = parseShortcut(shortcut);
   return `${Array.from(parsed.modifiers).sort().join("+")}::${parsed.key}`;
+}
+
+export function resolveHotkeyIntent(
+  event: Pick<ShortcutEvent, "shortcut" | "state">,
+  hotkeys: HotkeyConfig,
+  isDictating: boolean
+): HotkeyIntent {
+  if (shortcutMatches(event.shortcut, hotkeys.dictation)) {
+    if (hotkeys.activationMode === "hold") {
+      if (isShortcutPress(event) && !isDictating) return "start-dictation";
+      if (event.state === "Released" && isDictating) return "stop-dictation";
+      return "none";
+    }
+
+    if (!isShortcutPress(event)) return "none";
+    return isDictating ? "stop-dictation" : "start-dictation";
+  }
+
+  if (isShortcutPress(event) && shortcutMatches(event.shortcut, hotkeys.pasteLast)) return "paste-last";
+
+  return "none";
 }
 
 function parseShortcut(shortcut: string): ParsedShortcut {

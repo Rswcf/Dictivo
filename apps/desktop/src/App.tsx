@@ -52,7 +52,7 @@ import { CompanionWindow } from "./components/CompanionWindow";
 import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
-import { isShortcutPress, shortcutMatches, uniqueShortcuts } from "./lib/hotkeys";
+import { resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
 
 type View = "dictation" | "history" | "dictionary" | "settings";
 
@@ -372,25 +372,10 @@ export function App({ windowLabel = "main" }: AppProps) {
     let disposed = false;
     setHotkeyStatus("Registering hotkeys...");
     register(shortcuts, (event) => {
-      if (shortcutMatches(event.shortcut, hotkeys.dictation)) {
-        if (hotkeys.activationMode === "hold") {
-          if (isShortcutPress(event) && !isDictatingRef.current) void startDictationRef.current?.();
-          if (event.state === "Released" && isDictatingRef.current) void stopDictationRef.current?.();
-          return;
-        }
-
-        if (!isShortcutPress(event)) return;
-        if (isDictatingRef.current) {
-          void stopDictationRef.current?.();
-        } else {
-          void startDictationRef.current?.();
-        }
-        return;
-      }
-
-      if (isShortcutPress(event) && shortcutMatches(event.shortcut, hotkeys.pasteLast)) {
-        void pasteLastTranscriptRef.current?.();
-      }
+      const intent = resolveHotkeyIntent(event, hotkeys, isDictatingRef.current);
+      if (intent === "start-dictation") void startDictationRef.current?.();
+      if (intent === "stop-dictation") void stopDictationRef.current?.();
+      if (intent === "paste-last") void pasteLastTranscriptRef.current?.();
     })
       .then(async () => {
         const unavailable = [];
