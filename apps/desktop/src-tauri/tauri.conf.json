@@ -36,6 +36,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "resources/private-fast": "private-fast"
+    },
     "shortDescription": "Local-first voice dictation",
     "longDescription": "Dictivo turns speech into polished text with an on-device dictation engine for macOS and Windows."
   }

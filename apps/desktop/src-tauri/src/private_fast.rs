@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,8 +141,12 @@ pub fn hardware_profile() -> HardwareProfile {
 }
 
 #[tauri::command]
-pub fn private_fast_status() -> PrivateFastStatus {
-    let binary_path = resolve_binary_path();
+pub fn private_fast_status(app: AppHandle) -> PrivateFastStatus {
+    build_private_fast_status(Some(&app))
+}
+
+fn build_private_fast_status(app: Option<&AppHandle>) -> PrivateFastStatus {
+    let binary_path = resolve_binary_path(app);
     let model_path = resolve_model_path();
     let ready = binary_path.is_some() && model_path.is_some();
     let message = match (&binary_path, &model_path) {
@@ -166,7 +171,7 @@ pub fn private_fast_status() -> PrivateFastStatus {
         model_id,
         model_name,
         message,
-        setup_hint: "Run DICTIVO_MODEL=small scripts/setup-private-fast.sh for a low-resource smoke test.".to_string(),
+        setup_hint: "Install the latest Dictivo build, then download or import a local model in Settings -> Local Engine.".to_string(),
     }
 }
 
@@ -176,29 +181,39 @@ pub fn private_fast_models() -> Vec<PrivateFastModel> {
 }
 
 #[tauri::command]
-pub fn select_private_fast_model(model_id: String) -> Result<PrivateFastStatus, String> {
+pub fn select_private_fast_model(
+    app: AppHandle,
+    model_id: String,
+) -> Result<PrivateFastStatus, String> {
     validate_model_id(&model_id)?;
     if model_path_for_id(&model_id).is_none() {
         return Err(format!("Model {model_id} is not installed yet."));
     }
     write_selected_model(&model_id)?;
-    Ok(private_fast_status())
+    Ok(build_private_fast_status(Some(&app)))
 }
 
 #[tauri::command]
-pub async fn download_private_fast_model(model_id: String) -> Result<PrivateFastStatus, String> {
+pub async fn download_private_fast_model(
+    app: AppHandle,
+    model_id: String,
+) -> Result<PrivateFastStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         validate_model_id(&model_id)?;
         download_model(&model_id)?;
         write_selected_model(&model_id)?;
-        Ok(private_fast_status())
+        Ok(build_private_fast_status(Some(&app)))
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn import_private_fast_model(model_id: String, source_path: String) -> Result<PrivateFastStatus, String> {
+pub fn import_private_fast_model(
+    app: AppHandle,
+    model_id: String,
+    source_path: String,
+) -> Result<PrivateFastStatus, String> {
     validate_model_id(&model_id)?;
     let source = PathBuf::from(source_path);
     if !source.exists() {
@@ -213,11 +228,14 @@ pub fn import_private_fast_model(model_id: String, source_path: String) -> Resul
     let output_path = models_dir.join(format!("ggml-{model_id}.bin"));
     fs::copy(&source, output_path).map_err(|error| error.to_string())?;
     write_selected_model(&model_id)?;
-    Ok(private_fast_status())
+    Ok(build_private_fast_status(Some(&app)))
 }
 
 #[tauri::command]
-pub fn delete_private_fast_model(model_id: String) -> Result<PrivateFastStatus, String> {
+pub fn delete_private_fast_model(
+    app: AppHandle,
+    model_id: String,
+) -> Result<PrivateFastStatus, String> {
     validate_model_id(&model_id)?;
     let paths = model_paths_for_id(&model_id);
     if paths.is_empty() {
@@ -232,11 +250,12 @@ pub fn delete_private_fast_model(model_id: String) -> Result<PrivateFastStatus, 
         let _ = fs::remove_file(selection_path()?);
     }
 
-    Ok(private_fast_status())
+    Ok(build_private_fast_status(Some(&app)))
 }
 
 #[tauri::command]
 pub fn transcribe_private_fast(
+    app: AppHandle,
     audio_base64: String,
     language: String,
     prompt_terms: Vec<String>,
@@ -244,8 +263,10 @@ pub fn transcribe_private_fast(
     source: String,
     profile: String,
 ) -> Result<PrivateFastTranscript, String> {
-    let binary_path = resolve_binary_path().ok_or_else(|| "whisper.cpp CLI is missing. Run scripts/setup-private-fast.sh first.".to_string())?;
-    let model_path = resolve_model_path().ok_or_else(|| "Private Fast local model is missing. Run scripts/setup-private-fast.sh first.".to_string())?;
+    let binary_path = resolve_binary_path(Some(&app)).ok_or_else(|| {
+        "whisper.cpp CLI is missing. Install the latest Dictivo build.".to_string()
+    })?;
+    let model_path = resolve_model_path().ok_or_else(|| "Private Fast local model is missing. Download or import a model in Settings -> Local Engine.".to_string())?;
     let work_dir = private_fast_work_dir()?;
     fs::create_dir_all(&work_dir).map_err(|error| error.to_string())?;
 
@@ -314,15 +335,20 @@ pub fn transcribe_private_fast(
         }
     }
 
-    let output = command.output().map_err(|error| format!("Failed to run whisper.cpp: {error}"))?;
+    let output = command
+        .output()
+        .map_err(|error| format!("Failed to run whisper.cpp: {error}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!("Private Fast transcription failed.\n{stderr}\n{stdout}"));
+        return Err(format!(
+            "Private Fast transcription failed.\n{stderr}\n{stdout}"
+        ));
     }
 
-    let mut text = fs::read_to_string(&output_txt).unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
+    let mut text = fs::read_to_string(&output_txt)
+        .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
     text = cleanup_whisper_output(&text);
 
     let _ = fs::remove_file(input_path);
@@ -336,7 +362,7 @@ pub fn transcribe_private_fast(
     })
 }
 
-fn resolve_binary_path() -> Option<PathBuf> {
+fn resolve_binary_path(app: Option<&AppHandle>) -> Option<PathBuf> {
     if let Ok(path) = env::var("DICTIVO_WHISPER_CLI") {
         let candidate = PathBuf::from(path);
         if candidate.exists() {
@@ -344,22 +370,56 @@ fn resolve_binary_path() -> Option<PathBuf> {
         }
     }
 
+    if let Some(path) = bundled_binary_path(app) {
+        return Some(path);
+    }
+
     for path in private_fast_roots()
         .into_iter()
-        .flat_map(|root| {
-            [
-                root.join("whisper.cpp/build/bin/whisper-cli"),
-                root.join("whisper.cpp/main"),
-                root.join("whisper-cli"),
-            ]
-        })
+        .flat_map(|root| binary_candidates_in_root(&root))
     {
         if path.exists() {
             return Some(path);
         }
     }
 
-    which("whisper-cli")
+    which_any(whisper_cli_file_names())
+}
+
+fn bundled_binary_path(app: Option<&AppHandle>) -> Option<PathBuf> {
+    let resource_dir = app?.path().resource_dir().ok()?;
+    for root in [resource_dir.join("private-fast"), resource_dir] {
+        for path in binary_candidates_in_root(&root) {
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn binary_candidates_in_root(root: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    for name in whisper_cli_file_names() {
+        candidates.push(root.join("bin").join(name));
+        candidates.push(root.join(name));
+        candidates.push(root.join("whisper.cpp/build/bin").join(name));
+        candidates.push(root.join("whisper.cpp/build/bin/Release").join(name));
+        candidates.push(root.join("whisper.cpp/build/bin/Debug").join(name));
+        candidates.push(root.join("whisper.cpp").join(name));
+    }
+    candidates
+}
+
+#[cfg(target_os = "windows")]
+fn whisper_cli_file_names() -> &'static [&'static str] {
+    &["whisper-cli.exe", "main.exe", "whisper-cli", "main"]
+}
+
+#[cfg(not(target_os = "windows"))]
+fn whisper_cli_file_names() -> &'static [&'static str] {
+    &["whisper-cli", "main"]
 }
 
 fn resolve_model_path() -> Option<PathBuf> {
@@ -506,8 +566,12 @@ fn build_hardware_profile() -> HardwareProfile {
         .unwrap_or(4);
     let memory_total_bytes = total_memory_bytes();
     let accelerators = detect_accelerators(&platform, &arch);
-    let high_memory = memory_total_bytes.map(|bytes| bytes >= 16 * 1024 * 1024 * 1024).unwrap_or(false);
-    let mid_memory = memory_total_bytes.map(|bytes| bytes >= 8 * 1024 * 1024 * 1024).unwrap_or(true);
+    let high_memory = memory_total_bytes
+        .map(|bytes| bytes >= 16 * 1024 * 1024 * 1024)
+        .unwrap_or(false);
+    let mid_memory = memory_total_bytes
+        .map(|bytes| bytes >= 8 * 1024 * 1024 * 1024)
+        .unwrap_or(true);
     let has_accel = !accelerators.is_empty();
 
     let performance_class = if has_accel && cpu_cores >= 8 && high_memory {
@@ -552,7 +616,11 @@ fn build_hardware_profile() -> HardwareProfile {
 fn total_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("sysctl").arg("-n").arg("hw.memsize").output().ok()?;
+        let output = Command::new("sysctl")
+            .arg("-n")
+            .arg("hw.memsize")
+            .output()
+            .ok()?;
         let value = String::from_utf8_lossy(&output.stdout);
         return value.trim().parse::<u64>().ok();
     }
@@ -574,7 +642,11 @@ fn total_memory_bytes() -> Option<u64> {
     {
         let value = fs::read_to_string("/proc/meminfo").ok()?;
         return value.lines().find_map(|line| {
-            let raw = line.strip_prefix("MemTotal:")?.trim().strip_suffix(" kB")?.trim();
+            let raw = line
+                .strip_prefix("MemTotal:")?
+                .trim()
+                .strip_suffix(" kB")?
+                .trim();
             raw.parse::<u64>().ok().map(|kb| kb * 1024)
         });
     }
@@ -673,7 +745,8 @@ fn download_model(model_id: &str) -> Result<(), String> {
         return Err(format!("Model download failed.\n{stderr}\n{stdout}"));
     }
 
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model_id}.bin");
+    let url =
+        format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model_id}.bin");
     let output = Command::new("curl")
         .arg("-L")
         .arg("--fail")
@@ -702,7 +775,10 @@ fn validate_model_id(model_id: &str) -> Result<(), String> {
 }
 
 fn model_spec(model_id: &str) -> Option<ModelSpec> {
-    MODEL_CATALOG.iter().copied().find(|model| model.id == model_id)
+    MODEL_CATALOG
+        .iter()
+        .copied()
+        .find(|model| model.id == model_id)
 }
 
 fn model_id_from_file_stem(stem: impl AsRef<std::ffi::OsStr>) -> String {
@@ -711,10 +787,56 @@ fn model_id_from_file_stem(stem: impl AsRef<std::ffi::OsStr>) -> String {
 }
 
 fn which(binary: &str) -> Option<PathBuf> {
+    which_any(&[binary])
+}
+
+fn which_any(binaries: &[&str]) -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
-    env::split_paths(&path)
-        .map(|dir| dir.join(binary))
-        .find(|candidate| candidate.exists())
+
+    #[cfg(target_os = "windows")]
+    let names = {
+        let mut names = binaries
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>();
+        let extensions = env::var_os("PATHEXT")
+            .map(|value| {
+                value
+                    .to_string_lossy()
+                    .split(';')
+                    .map(|extension| {
+                        extension
+                            .trim()
+                            .trim_start_matches('.')
+                            .to_ascii_lowercase()
+                    })
+                    .filter(|extension| !extension.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| vec!["exe".to_string(), "cmd".to_string(), "bat".to_string()]);
+        for binary in binaries {
+            if Path::new(binary).extension().is_some() {
+                continue;
+            }
+            for extension in &extensions {
+                names.push(format!("{binary}.{extension}"));
+            }
+        }
+        names
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let names = binaries
+        .iter()
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>();
+
+    env::split_paths(&path).find_map(|dir| {
+        names
+            .iter()
+            .map(|name| dir.join(name))
+            .find(|candidate| candidate.exists())
+    })
 }
 
 fn whisper_language(language: &str) -> &str {
@@ -743,7 +865,12 @@ fn cleanup_whisper_output(text: &str) -> String {
     }
 }
 
-fn build_initial_prompt(language: &str, mode: &str, source: &str, prompt_terms: &[String]) -> Option<String> {
+fn build_initial_prompt(
+    language: &str,
+    mode: &str,
+    source: &str,
+    prompt_terms: &[String],
+) -> Option<String> {
     let mut terms = prompt_terms
         .iter()
         .map(|term| term.trim())
@@ -759,7 +886,11 @@ fn build_initial_prompt(language: &str, mode: &str, source: &str, prompt_terms: 
         "raw" => "verbatim transcript",
         _ => "dictation, complete sentences, clear punctuation",
     };
-    let source_hint = if source == "microphone" { "single speaker dictation" } else { "local dictation" };
+    let source_hint = if source == "microphone" {
+        "single speaker dictation"
+    } else {
+        "local dictation"
+    };
 
     let prompt = match language {
         "zh" => format!(
@@ -783,6 +914,41 @@ fn build_initial_prompt(language: &str, mode: &str, source: &str, prompt_terms: 
         None
     } else {
         Some(trimmed.chars().take(480).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binary_candidates_include_bundled_resource_layout() {
+        let root = Path::new("/resources/private-fast");
+        let candidates = binary_candidates_in_root(root);
+
+        #[cfg(target_os = "windows")]
+        assert!(candidates.contains(&root.join("bin").join("whisper-cli.exe")));
+
+        #[cfg(not(target_os = "windows"))]
+        assert!(candidates.contains(&root.join("bin").join("whisper-cli")));
+    }
+
+    #[test]
+    fn binary_candidates_keep_legacy_setup_layouts() {
+        let root = Path::new("/private-fast");
+        let candidates = binary_candidates_in_root(root);
+
+        #[cfg(target_os = "windows")]
+        assert!(candidates.contains(
+            &root
+                .join("whisper.cpp/build/bin/Release")
+                .join("whisper-cli.exe")
+        ));
+
+        #[cfg(not(target_os = "windows"))]
+        assert!(candidates.contains(&root.join("whisper.cpp/build/bin").join("whisper-cli")));
+
+        assert!(candidates.contains(&root.join("whisper.cpp").join("main")));
     }
 }
 

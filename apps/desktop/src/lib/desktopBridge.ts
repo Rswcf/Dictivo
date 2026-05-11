@@ -118,7 +118,7 @@ export async function getPrivateFastStatus(): Promise<PrivateFastStatus> {
       modelId: "small",
       modelName: "small",
       message: "Private Fast requires the desktop app runtime.",
-      setupHint: "Open Dictivo.app, then run DICTIVO_MODEL=small scripts/setup-private-fast.sh if the local model is missing."
+      setupHint: "Open Dictivo.app, then download or import a local model in Settings -> Local Engine."
     };
   }
 

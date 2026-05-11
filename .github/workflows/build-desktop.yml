@@ -64,6 +64,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Prepare Private Fast engine
+        run: node scripts/prepare-private-fast-engine.mjs
+
       - name: Build Tauri bundle
         run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }}
 

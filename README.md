@@ -38,7 +38,9 @@ npm run tauri:dev -w @dictivo/desktop
 
 ## Local Engine Setup
 
-Use a lightweight model first to validate permissions, hotkeys, and latency:
+The packaged macOS and Windows apps include the whisper.cpp CLI. Users only need to open `Settings -> Local Engine` and download or import a local `.bin` model.
+
+When running from source, use a lightweight model first to validate permissions, hotkeys, and latency:
 
 ```bash
 DICTIVO_MODEL=small scripts/setup-private-fast.sh
@@ -50,7 +52,7 @@ For higher local quality on capable hardware:
 DICTIVO_MODEL=large-v3-turbo-q5_0 scripts/setup-private-fast.sh
 ```
 
-Dictivo detects whisper.cpp and models under `~/Library/Application Support/Dictivo/private-fast` on macOS or `~/.dictivo/private-fast` on other platforms. You can override paths with `DICTIVO_PRIVATE_FAST_HOME`, `DICTIVO_WHISPER_CLI`, and `DICTIVO_WHISPER_MODEL`.
+Dictivo detects bundled whisper.cpp resources first, then local developer installs and models under the platform data directory or `~/.dictivo/private-fast`. You can override paths with `DICTIVO_PRIVATE_FAST_HOME`, `DICTIVO_WHISPER_CLI`, and `DICTIVO_WHISPER_MODEL`.
 
 Users can download, select, delete, or import local models in `Settings -> Local Engine`.
 
