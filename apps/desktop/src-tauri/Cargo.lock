@@ -4261,6 +4261,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "dirs",
+ "global-hotkey",
  "rusqlite",
  "serde",
  "serde_json",

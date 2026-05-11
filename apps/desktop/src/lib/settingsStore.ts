@@ -22,9 +22,15 @@ export type LocalProcessingSettings = {
   smartCapitalization: boolean;
 };
 
-export const DEFAULT_HOTKEYS: HotkeySettings = {
+const LEGACY_DEFAULT_HOTKEYS: HotkeySettings = {
   dictation: "Alt+Space",
   pasteLast: "Alt+Shift+V",
+  activationMode: "toggle"
+};
+
+export const DEFAULT_HOTKEYS: HotkeySettings = {
+  dictation: "CommandOrControl+Shift+Space",
+  pasteLast: "CommandOrControl+Shift+V",
   activationMode: "toggle"
 };
 
@@ -68,8 +74,8 @@ export function saveSettings(settings: PersistedSettings) {
 
 export function normalizeHotkeys(settings?: Partial<HotkeySettings>): HotkeySettings {
   return {
-    dictation: settings?.dictation?.trim() || DEFAULT_HOTKEYS.dictation,
-    pasteLast: settings?.pasteLast?.trim() || DEFAULT_HOTKEYS.pasteLast,
+    dictation: normalizeShortcut(settings?.dictation, DEFAULT_HOTKEYS.dictation, LEGACY_DEFAULT_HOTKEYS.dictation),
+    pasteLast: normalizeShortcut(settings?.pasteLast, DEFAULT_HOTKEYS.pasteLast, LEGACY_DEFAULT_HOTKEYS.pasteLast),
     activationMode: settings?.activationMode === "hold" ? "hold" : "toggle"
   };
 }
@@ -113,4 +119,11 @@ export function migratePersistedSettings(raw: Record<string, unknown>): Partial<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeShortcut(value: unknown, fallback: string, legacyFallback: string) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === legacyFallback) return fallback;
+  return trimmed;
 }

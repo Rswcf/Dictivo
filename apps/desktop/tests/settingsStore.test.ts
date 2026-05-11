@@ -24,8 +24,8 @@ describe("local-only settings migration", () => {
     expect(migrated.selectedMode).toBe("message");
     expect(migrated.privateFastProfile).toBe("quality");
     expect(migrated.hotkeys).toEqual({
-      dictation: "Alt+Space",
-      pasteLast: "Alt+Shift+V",
+      dictation: "CommandOrControl+Shift+Space",
+      pasteLast: "CommandOrControl+Shift+V",
       activationMode: "hold"
     });
   });
@@ -33,8 +33,16 @@ describe("local-only settings migration", () => {
   it("normalizes the local profile and hotkey set", () => {
     expect(normalizePrivateFastProfile("cloud")).toBe("balanced");
     expect(normalizeHotkeys({ dictation: "", pasteLast: "Ctrl+Alt+V" })).toEqual({
-      dictation: "Alt+Space",
+      dictation: "CommandOrControl+Shift+Space",
       pasteLast: "Ctrl+Alt+V",
+      activationMode: "toggle"
+    });
+  });
+
+  it("preserves custom hotkeys while upgrading old default shortcuts", () => {
+    expect(normalizeHotkeys({ dictation: "CommandOrControl+Alt+D", pasteLast: "Alt+Shift+V" })).toEqual({
+      dictation: "CommandOrControl+Alt+D",
+      pasteLast: "CommandOrControl+Shift+V",
       activationMode: "toggle"
     });
   });

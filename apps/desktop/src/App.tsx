@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Languages, Mic2, Settings, TerminalSquare } from "lucide-react";
 import {
   LANGUAGE_LABELS,
@@ -46,6 +46,7 @@ import { DictationWorkbench } from "./components/DictationWorkbench";
 import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
+import { isShortcutPress, uniqueShortcuts } from "./lib/hotkeys";
 
 type View = "dictation" | "history" | "dictionary" | "settings";
 
@@ -135,6 +136,7 @@ export function App() {
   const lastFinalTextRef = useRef("");
   const startDictationRef = useRef<(() => Promise<void>) | null>(null);
   const stopDictationRef = useRef<(() => Promise<void>) | null>(null);
+  const pasteLastTranscriptRef = useRef<(() => Promise<void>) | null>(null);
 
   const selectedModel = useMemo(
     () => privateFastModels.find((model) => model.selected) ?? privateFastModels.find((model) => model.id === privateFastStatus.modelId),
@@ -320,6 +322,10 @@ export function App() {
   }, [liveText, sessions]);
 
   useEffect(() => {
+    pasteLastTranscriptRef.current = pasteLastTranscript;
+  }, [pasteLastTranscript]);
+
+  useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) {
       setHotkeyStatus("Web preview only");
       return;
@@ -332,15 +338,16 @@ export function App() {
     }
 
     let disposed = false;
+    setHotkeyStatus("Registering hotkeys...");
     register(shortcuts, (event) => {
       if (event.shortcut === hotkeys.dictation) {
         if (hotkeys.activationMode === "hold") {
-          if (event.state === "Pressed" && !isDictatingRef.current) void startDictationRef.current?.();
+          if (isShortcutPress(event) && !isDictatingRef.current) void startDictationRef.current?.();
           if (event.state === "Released" && isDictatingRef.current) void stopDictationRef.current?.();
           return;
         }
 
-        if (event.state !== "Pressed") return;
+        if (!isShortcutPress(event)) return;
         if (isDictatingRef.current) {
           void stopDictationRef.current?.();
         } else {
@@ -349,12 +356,24 @@ export function App() {
         return;
       }
 
-      if (event.state === "Pressed" && event.shortcut === hotkeys.pasteLast) {
-        void pasteLastTranscript();
+      if (isShortcutPress(event) && event.shortcut === hotkeys.pasteLast) {
+        void pasteLastTranscriptRef.current?.();
       }
     })
-      .then(() => {
-        if (!disposed) setHotkeyStatus(`${hotkeys.dictation} ready`);
+      .then(async () => {
+        const unavailable = [];
+        for (const shortcut of shortcuts) {
+          if (!(await isRegistered(shortcut))) unavailable.push(shortcut);
+        }
+
+        if (disposed) return;
+        if (unavailable.length > 0) {
+          setHotkeyStatus("Hotkey unavailable");
+          setStatusMessage(`Unable to reserve global hotkey: ${unavailable.join(", ")}`);
+          return;
+        }
+
+        setHotkeyStatus(`${hotkeys.dictation} ready`);
       })
       .catch((error: unknown) => {
         if (!disposed) {
@@ -365,9 +384,9 @@ export function App() {
 
     return () => {
       disposed = true;
-      void unregister(shortcuts);
+      void unregister(shortcuts).catch(() => undefined);
     };
-  }, [hotkeys, pasteLastTranscript]);
+  }, [hotkeys.activationMode, hotkeys.dictation, hotkeys.pasteLast]);
 
   const addDictionaryTerm = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -570,10 +589,6 @@ export function App() {
       </section>
     </main>
   );
-}
-
-function uniqueShortcuts(shortcuts: string[]) {
-  return Array.from(new Set(shortcuts.map((shortcut) => shortcut.trim()).filter(Boolean)));
 }
 
 function NavButton({ active, label, icon, onClick }: { active: boolean; label: string; icon: ReactNode; onClick: () => void }) {

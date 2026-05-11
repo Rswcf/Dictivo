@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { isShortcutPress, uniqueShortcuts } from "../src/lib/hotkeys";
+
+describe("global hotkey helpers", () => {
+  it("handles shortcut press events once and ignores releases", () => {
+    expect(isShortcutPress({ state: "Pressed" })).toBe(true);
+    expect(isShortcutPress({ state: "Released" })).toBe(false);
+  });
+
+  it("removes empty and duplicate shortcut registrations", () => {
+    expect(uniqueShortcuts([" CommandOrControl+Shift+Space ", "", "CommandOrControl+Shift+Space", "CommandOrControl+Shift+V"])).toEqual([
+      "CommandOrControl+Shift+Space",
+      "CommandOrControl+Shift+V"
+    ]);
+  });
+
+  it("keeps Tauri global shortcut commands enabled", () => {
+    const capability = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf8")) as { permissions: string[] };
+
+    expect(capability.permissions).toContain("global-shortcut:allow-register");
+    expect(capability.permissions).toContain("global-shortcut:allow-unregister");
+    expect(capability.permissions).toContain("global-shortcut:allow-is-registered");
+  });
+});
