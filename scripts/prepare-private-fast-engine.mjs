@@ -17,7 +17,11 @@ rmSync(sourceDir, { recursive: true, force: true });
 mkdirSync(dirname(sourceDir), { recursive: true });
 mkdirSync(outputDir, { recursive: true });
 
-run("git", ["clone", "--depth", "1", "--branch", whisperRef, "https://github.com/ggml-org/whisper.cpp.git", sourceDir]);
+const cloneArgs = ["clone", "--depth", "1", "--branch", whisperRef, "https://github.com/ggml-org/whisper.cpp.git", sourceDir];
+runWithRetry("git", cloneArgs, {
+  attempts: 4,
+  beforeRetry: () => rmSync(sourceDir, { recursive: true, force: true })
+});
 
 const cmakeArgs = [
   "-S",
@@ -74,6 +78,29 @@ function run(command, args) {
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed with status ${result.status}`);
   }
+}
+
+function runWithRetry(command, args, { attempts, beforeRetry }) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return run(command, args);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      const delayMs = 2_500 * attempt;
+      console.warn(`${command} ${args.join(" ")} failed on attempt ${attempt}/${attempts}. Retrying in ${delayMs}ms...`);
+      beforeRetry?.();
+      sleep(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function findFile(root, fileName) {
