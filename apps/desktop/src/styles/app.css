@@ -840,6 +840,14 @@ textarea:focus-visible {
   background: linear-gradient(135deg, #94ffb5, #d7ff67);
 }
 
+.avatar-chip img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center 18%;
+}
+
 .avatar-chip--cat {
   background: linear-gradient(135deg, #76e7d8, #b9c6ff);
 }
@@ -1007,6 +1015,8 @@ textarea:focus-visible {
   z-index: 1;
   width: 78px;
   height: 78px;
+  object-fit: cover;
+  object-position: center 18%;
   filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.38));
 }
 
@@ -1029,6 +1039,29 @@ textarea:focus-visible {
   backdrop-filter: blur(22px);
 }
 
+.companion-hide-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(248, 255, 249, 0.12);
+  border-radius: 999px;
+  color: #a9bbb0;
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+}
+
+.companion-hide-button:hover {
+  color: #f8fff9;
+  border-color: rgba(148, 255, 181, 0.32);
+  background: rgba(148, 255, 181, 0.12);
+}
+
 .companion-bubble::before {
   position: absolute;
   top: 22px;
@@ -1047,6 +1080,7 @@ textarea:focus-visible {
   grid-template-columns: 28px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
+  padding-right: 26px;
 }
 
 .companion-topline > svg {

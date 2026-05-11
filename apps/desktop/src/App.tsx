@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Languages, Mic2, Settings, TerminalSquare } from "lucide-react";
@@ -420,6 +420,20 @@ export function App({ windowLabel = "main" }: AppProps) {
       }),
     [companionAvatar, companionEnabled, dictationPhase, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
   );
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let unlisten: (() => void) | undefined;
+    void listen("companion-hide-requested", () => {
+      setCompanionEnabled(false);
+      setStatusMessage("Floating companion hidden. Re-enable it in Settings -> Companion.");
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+
+    return () => unlisten?.();
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

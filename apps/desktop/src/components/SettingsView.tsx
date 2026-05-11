@@ -1,5 +1,6 @@
 import { Bot, Cat, Dog, KeyRound, Lock, Settings, SlidersHorizontal, Sparkles, UserRound, WifiOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus } from "../lib/desktopBridge";
 import type {
   CompanionAvatar,
@@ -43,10 +44,10 @@ const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> =
   { id: "privacy", label: "Privacy", icon: <Lock size={16} /> }
 ];
 
-const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode }> = [
+const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode; image?: string }> = [
   { id: "dog", label: "Dog", icon: <Dog size={18} /> },
   { id: "cat", label: "Cat", icon: <Cat size={18} /> },
-  { id: "trump", label: "Trump", icon: <UserRound size={18} /> }
+  { id: "trump", label: "Trump", icon: <UserRound size={18} />, image: trumpAvatarImage }
 ];
 
 export function SettingsView({
@@ -152,7 +153,9 @@ export function SettingsView({
                   onClick={() => onCompanionAvatarChange(avatar.id)}
                   type="button"
                 >
-                  <span className={`avatar-chip avatar-chip--${avatar.id}`}>{avatar.icon}</span>
+                  <span className={`avatar-chip avatar-chip--${avatar.id}`}>
+                    {avatar.image ? <img src={avatar.image} alt="" draggable={false} /> : avatar.icon}
+                  </span>
                   <strong>{avatar.label}</strong>
                 </button>
               ))}

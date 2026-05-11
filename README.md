@@ -64,6 +64,8 @@ The default dictation hotkey is `CommandOrControl+Shift+Space`; pressing it once
 
 `Settings -> Companion` controls the floating status window and avatar. The companion window is separate from the main app, stays above other windows, and mirrors the current dictation state.
 
+The companion can be hidden from its own close control or from the tray menu. Closing the main Dictivo window hides it and keeps the app running in the background, so global hotkeys stay active. Use the system tray menu to show the main window again or quit Dictivo completely.
+
 ## Hardware Adaptation
 
 Dictivo detects platform, CPU architecture, CPU cores, memory, and local acceleration signals exposed by the native runtime. It recommends:

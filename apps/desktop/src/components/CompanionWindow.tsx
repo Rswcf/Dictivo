@@ -1,7 +1,8 @@
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AlertTriangle, Check, Clipboard, Loader2, Mic2 } from "lucide-react";
+import { AlertTriangle, Check, Clipboard, Loader2, Mic2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import type { CompanionAvatar } from "../lib/settingsStore";
 import type { CompanionPhase, CompanionSnapshot } from "../lib/companion";
 
@@ -45,6 +46,11 @@ export function CompanionWindow() {
     void getCurrentWindow().startDragging().catch(() => undefined);
   };
 
+  const hideCompanion = () => {
+    void emitTo("main", "companion-hide-requested", {});
+    void getCurrentWindow().hide().catch(() => undefined);
+  };
+
   return (
     <section className={`companion-shell companion-shell--${snapshot.phase}`} onPointerDown={startDragging} aria-label="Dictivo floating recording status">
       <div className="companion-avatar-wrap">
@@ -52,6 +58,17 @@ export function CompanionWindow() {
       </div>
 
       <div className="companion-bubble">
+        <button
+          className="companion-hide-button"
+          type="button"
+          title="Hide companion"
+          aria-label="Hide companion"
+          onClick={hideCompanion}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <X size={13} />
+        </button>
+
         <div className="companion-topline">
           <StatusIcon phase={snapshot.phase} />
           <div>
@@ -86,7 +103,16 @@ function StatusIcon({ phase }: { phase: CompanionPhase }) {
 
 function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: CompanionPhase }) {
   if (avatar === "cat") return <CatAvatar phase={phase} />;
-  if (avatar === "trump") return <TrumpAvatar phase={phase} />;
+  if (avatar === "trump") {
+    return (
+      <img
+        className={`companion-avatar companion-avatar--trump is-${phase}`}
+        src={trumpAvatarImage}
+        alt="Cartoon Trump"
+        draggable={false}
+      />
+    );
+  }
   return <DogAvatar phase={phase} />;
 }
 
@@ -115,22 +141,6 @@ function CatAvatar({ phase }: { phase: CompanionPhase }) {
       <path d="M43 56h10l-5 6z" fill="#ffb7c5" />
       <path d="M48 61v7" stroke="#0b1112" strokeWidth="3" strokeLinecap="round" />
       <path d="M32 60h-16m48 0h16M34 66H18m44 0h16" stroke="#e6f5f2" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrumpAvatar({ phase }: { phase: CompanionPhase }) {
-  return (
-    <svg className={`companion-avatar companion-avatar--trump is-${phase}`} viewBox="0 0 96 96" role="img" aria-label="Cartoon Trump">
-      <path d="M30 78h36l6 16H24z" fill="#17203a" />
-      <path d="M43 78h10l3 16H40z" fill="#d91f35" />
-      <circle cx="48" cy="50" r="29" fill="#eaa06a" />
-      <path d="M20 33c12-22 46-26 59-2-10-5-21-6-34-1-9 3-16 4-25 3z" fill="#f3ce4f" />
-      <path d="M27 29c11-9 29-13 44-4-11 1-19 4-27 9-6 3-12 3-17-5z" fill="#ffd86a" />
-      <circle cx="37" cy="50" r="3.5" fill="#1a1210" />
-      <circle cx="59" cy="50" r="3.5" fill="#1a1210" />
-      <path d="M39 63c6 3 13 3 19 0" fill="none" stroke="#8a3124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M27 75c13 12 29 14 43 1" fill="none" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" />
     </svg>
   );
 }
