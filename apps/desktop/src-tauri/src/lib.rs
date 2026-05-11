@@ -1,7 +1,9 @@
 mod private_fast;
 mod storage;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -44,6 +46,13 @@ struct PasteResult {
     method: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardMarker {
+    kind: String,
+    signature: String,
+}
+
 #[tauri::command]
 fn request_permissions() -> PermissionStatus {
     PermissionStatus {
@@ -54,11 +63,31 @@ fn request_permissions() -> PermissionStatus {
 }
 
 #[tauri::command]
-fn paste_text(text: String) -> Result<PasteResult, String> {
+fn clipboard_marker() -> Result<ClipboardMarker, String> {
+    current_clipboard_marker()
+}
+
+#[tauri::command]
+fn paste_text(
+    text: String,
+    expected_clipboard_marker: Option<ClipboardMarker>,
+) -> Result<PasteResult, String> {
+    if let Some(expected) = expected_clipboard_marker {
+        let current = current_clipboard_marker()?;
+        if current != expected {
+            return Ok(PasteResult {
+                pasted: false,
+                copied: false,
+                method: "clipboard-changed".to_string(),
+            });
+        }
+    }
+
     let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
     clipboard
         .set_text(text)
         .map_err(|error| error.to_string())?;
+    drop(clipboard);
 
     #[cfg(target_os = "macos")]
     {
@@ -142,6 +171,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             request_permissions,
+            clipboard_marker,
             paste_text,
             start_dictation,
             stop_dictation,
@@ -236,9 +266,43 @@ fn should_hide_on_close(window_label: &str, is_quitting: bool) -> bool {
     !is_quitting && matches!(window_label, "main" | "companion")
 }
 
+fn current_clipboard_marker() -> Result<ClipboardMarker, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+
+    if let Ok(text) = clipboard.get_text() {
+        return Ok(marker_from_bytes("text", text.as_bytes()));
+    }
+
+    if let Ok(image) = clipboard.get_image() {
+        let mut hasher = DefaultHasher::new();
+        image.width.hash(&mut hasher);
+        image.height.hash(&mut hasher);
+        image.bytes.hash(&mut hasher);
+        return Ok(ClipboardMarker {
+            kind: "image".to_string(),
+            signature: format!("{:016x}", hasher.finish()),
+        });
+    }
+
+    Ok(ClipboardMarker {
+        kind: "empty".to_string(),
+        signature: "0".to_string(),
+    })
+}
+
+fn marker_from_bytes(kind: &str, bytes: &[u8]) -> ClipboardMarker {
+    let mut hasher = DefaultHasher::new();
+    kind.hash(&mut hasher);
+    bytes.hash(&mut hasher);
+    ClipboardMarker {
+        kind: kind.to_string(),
+        signature: format!("{:016x}", hasher.finish()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::should_hide_on_close;
+    use super::{marker_from_bytes, should_hide_on_close};
 
     #[test]
     fn close_hides_main_and_companion_while_app_keeps_running() {
@@ -251,5 +315,25 @@ mod tests {
         assert!(!should_hide_on_close("main", true));
         assert!(!should_hide_on_close("companion", true));
         assert!(!should_hide_on_close("settings", false));
+    }
+
+    #[test]
+    fn clipboard_marker_is_stable_for_the_same_payload() {
+        assert_eq!(
+            marker_from_bytes("text", b"dictivo"),
+            marker_from_bytes("text", b"dictivo")
+        );
+    }
+
+    #[test]
+    fn clipboard_marker_changes_when_payload_or_kind_changes() {
+        assert_ne!(
+            marker_from_bytes("text", b"dictivo"),
+            marker_from_bytes("text", b"other text")
+        );
+        assert_ne!(
+            marker_from_bytes("text", b"dictivo"),
+            marker_from_bytes("image", b"dictivo")
+        );
     }
 }

@@ -26,6 +26,11 @@ export type PasteResult = {
   method?: string;
 };
 
+export type ClipboardMarker = {
+  kind: string;
+  signature: string;
+};
+
 export type PrivateFastModel = {
   id: string;
   label: string;
@@ -78,12 +83,17 @@ export async function requestNativePermissions() {
   return invoke("request_permissions");
 }
 
-export async function pasteText(text: string): Promise<PasteResult> {
+export async function getClipboardMarker(): Promise<ClipboardMarker | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<ClipboardMarker>("clipboard_marker");
+}
+
+export async function pasteText(text: string, expectedClipboardMarker?: ClipboardMarker | null): Promise<PasteResult> {
   if (!isTauriRuntime()) {
     await navigator.clipboard?.writeText(text);
     return { pasted: false, copied: true, method: "clipboard" };
   }
-  return invoke<PasteResult>("paste_text", { text });
+  return invoke<PasteResult>("paste_text", { text, expectedClipboardMarker: expectedClipboardMarker ?? null });
 }
 
 export async function saveLocalSession(session: LocalSession) {

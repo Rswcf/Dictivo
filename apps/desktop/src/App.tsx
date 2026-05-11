@@ -17,6 +17,7 @@ import { startAudioRecording, type RecordingController } from "./lib/mediaCaptur
 import { runLocalDictation } from "./lib/localDictationEngine";
 import {
   clearLocalSessions,
+  getClipboardMarker,
   getHardwareProfile,
   getPrivateFastModels,
   getPrivateFastStatus,
@@ -279,6 +280,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     }
 
     try {
+      const clipboardBeforeTranscription = await getClipboardMarker().catch(() => null);
       const audio = await recording.stop();
       const durationSeconds = Math.max(1, Math.round((Date.now() - recording.startedAt) / 1000));
       const dictionaryValues = dictionary.map((term) => term.value);
@@ -292,7 +294,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         localProcessing
       });
 
-      const pasteResult = await pasteText(result.finalizedText);
+      const pasteResult = await pasteText(result.finalizedText, clipboardBeforeTranscription);
       const wordCount = countWords(result.finalizedText, language);
       await saveSession({
         title: `${modeLabel(selectedMode)} ${new Date().toLocaleTimeString()}`,
@@ -309,13 +311,23 @@ export function App({ windowLabel = "main" }: AppProps) {
       setRawText(result.rawText);
       setLiveText(result.finalizedText);
       setDictationPhase("complete");
-      setPasteStatus(pasteResult.pasted ? "Pasted into active app" : "Copied to clipboard");
-      setStatusMessage(
+      setPasteStatus(
+        pasteResult.copied
+          ? pasteResult.pasted
+            ? "Pasted into active app"
+            : "Copied to clipboard"
+          : "Clipboard changed; transcript kept"
+      );
+      const completionMessage =
         result.fallbackUsed
           ? `Local transcription completed with fast fallback after ${privateFastProfile} profile failed.`
           : result.slowWarning
             ? result.slowWarning
-          : `Local transcription completed with ${result.profileUsed} profile.`
+            : `Local transcription completed with ${result.profileUsed} profile.`;
+      setStatusMessage(
+        pasteResult.copied
+          ? completionMessage
+          : `${completionMessage} Clipboard changed after recording, so Dictivo did not overwrite it.`
       );
     } catch (error) {
       setDictationPhase("error");
