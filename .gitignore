@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.DS_Store
+.env
+.env.*
+!.env.example
+target/
+src-tauri/target/
+*.log
+*.local
+*.sqlite
+*.sqlite3
+coverage/
