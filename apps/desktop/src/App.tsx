@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { emitTo } from "@tauri-apps/api/event";
+import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Languages, Mic2, Settings, TerminalSquare } from "lucide-react";
 import {
@@ -19,6 +21,7 @@ import {
   getPrivateFastModels,
   getPrivateFastStatus,
   importPrivateFastModel,
+  isTauriRuntime,
   listLocalSessions,
   pasteText,
   requestNativePermissions,
@@ -40,15 +43,22 @@ import {
   type HotkeySettings,
   type LocalProcessingSettings,
   type ModelSelectionMode,
-  type PrivateFastProfile
+  type PrivateFastProfile,
+  type CompanionAvatar
 } from "./lib/settingsStore";
+import { buildCompanionSnapshot, type CompanionPhase } from "./lib/companion";
 import { DictationWorkbench } from "./components/DictationWorkbench";
+import { CompanionWindow } from "./components/CompanionWindow";
 import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
-import { isShortcutPress, uniqueShortcuts } from "./lib/hotkeys";
+import { isShortcutPress, shortcutMatches, uniqueShortcuts } from "./lib/hotkeys";
 
 type View = "dictation" | "history" | "dictionary" | "settings";
+
+type AppProps = {
+  windowLabel?: string;
+};
 
 const modeTemplates: ProcessingMode[] = [
   {
@@ -101,7 +111,9 @@ const sampleSnippets: Snippet[] = [
   }
 ];
 
-export function App() {
+export function App({ windowLabel = "main" }: AppProps) {
+  if (windowLabel === "companion") return <CompanionWindow />;
+
   const [view, setView] = useState<View>("dictation");
   const [language, setLanguage] = useState<SupportedLanguage>("en");
   const [selectedMode, setSelectedMode] = useState<InputMode>("message");
@@ -115,6 +127,8 @@ export function App() {
   const [permissions, setPermissions] = useState<Record<string, string>>({});
   const [privateFastProfile, setPrivateFastProfile] = useState<PrivateFastProfile>("balanced");
   const [modelSelectionMode, setModelSelectionMode] = useState<ModelSelectionMode>("auto");
+  const [companionEnabled, setCompanionEnabled] = useState(true);
+  const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>("dog");
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(DEFAULT_HOTKEYS);
   const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(DEFAULT_LOCAL_PROCESSING);
   const [privateFastStatus, setPrivateFastStatus] = useState<PrivateFastStatus>({
@@ -130,9 +144,12 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState("");
   const [hotkeyStatus, setHotkeyStatus] = useState("Not registered");
   const [pasteStatus, setPasteStatus] = useState("");
+  const [dictationPhase, setDictationPhase] = useState<CompanionPhase>("idle");
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>();
 
   const dictationRecordingRef = useRef<RecordingController | null>(null);
   const isDictatingRef = useRef(false);
+  const companionPositionedRef = useRef(false);
   const lastFinalTextRef = useRef("");
   const startDictationRef = useRef<(() => Promise<void>) | null>(null);
   const stopDictationRef = useRef<(() => Promise<void>) | null>(null);
@@ -164,6 +181,8 @@ export function App() {
     if (settings.snippets) setSnippets(settings.snippets);
     if (settings.privateFastProfile) setPrivateFastProfile(settings.privateFastProfile);
     if (settings.modelSelectionMode) setModelSelectionMode(settings.modelSelectionMode);
+    if (typeof settings.companionEnabled === "boolean") setCompanionEnabled(settings.companionEnabled);
+    if (settings.companionAvatar) setCompanionAvatar(settings.companionAvatar);
     setHotkeys(normalizeHotkeys(settings.hotkeys));
     setLocalProcessing(normalizeLocalProcessing(settings.localProcessing));
 
@@ -181,12 +200,14 @@ export function App() {
       selectedMode,
       privateFastProfile,
       modelSelectionMode,
+      companionEnabled,
+      companionAvatar,
       hotkeys,
       localProcessing,
       dictionary,
       snippets
     });
-  }, [dictionary, hotkeys, language, localProcessing, modelSelectionMode, privateFastProfile, selectedMode, snippets]);
+  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, modelSelectionMode, privateFastProfile, selectedMode, snippets]);
 
   useEffect(() => {
     if (modelSelectionMode !== "auto" || !hardwareProfile || privateFastOperation) return;
@@ -220,11 +241,14 @@ export function App() {
   const startDictation = useCallback(async () => {
     if (!privateFastStatus.ready) {
       setStatusMessage(`${privateFastStatus.message} ${privateFastStatus.setupHint}`);
+      setDictationPhase("blocked");
       setView("settings");
       return;
     }
 
     setIsDictating(true);
+    setDictationPhase("recording");
+    setRecordingStartedAt(Date.now());
     setRawText("");
     setLiveText("Recording locally. Stop to transcribe with the on-device engine.");
     setStatusMessage("");
@@ -234,17 +258,22 @@ export function App() {
       dictationRecordingRef.current = await startAudioRecording("microphone", "wav");
     } catch (error) {
       setIsDictating(false);
+      setDictationPhase("error");
+      setRecordingStartedAt(undefined);
       setStatusMessage(error instanceof Error ? error.message : "Unable to start microphone recording.");
     }
   }, [privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint]);
 
   const stopDictation = useCallback(async () => {
     setIsDictating(false);
+    setDictationPhase("processing");
+    setRecordingStartedAt(undefined);
     setStatusMessage("Transcribing with local engine...");
 
     const recording = dictationRecordingRef.current;
     dictationRecordingRef.current = null;
     if (!recording) {
+      setDictationPhase("error");
       setStatusMessage("No active recording was found.");
       return;
     }
@@ -279,6 +308,7 @@ export function App() {
 
       setRawText(result.rawText);
       setLiveText(result.finalizedText);
+      setDictationPhase("complete");
       setPasteStatus(pasteResult.pasted ? "Pasted into active app" : "Copied to clipboard");
       setStatusMessage(
         result.fallbackUsed
@@ -288,6 +318,7 @@ export function App() {
           : `Local transcription completed with ${result.profileUsed} profile.`
       );
     } catch (error) {
+      setDictationPhase("error");
       setStatusMessage(error instanceof Error ? error.message : "Local dictation failed.");
     }
   }, [dictionary, language, localProcessing, privateFastProfile, saveSession, selectedMode, snippets]);
@@ -317,6 +348,7 @@ export function App() {
     }
 
     const result = await pasteText(text);
+    setDictationPhase("complete");
     setPasteStatus(result.pasted ? "Pasted last transcript" : "Copied last transcript");
     setStatusMessage("Last local transcript is ready in the target app or clipboard.");
   }, [liveText, sessions]);
@@ -326,7 +358,7 @@ export function App() {
   }, [pasteLastTranscript]);
 
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) {
+    if (!isTauriRuntime()) {
       setHotkeyStatus("Web preview only");
       return;
     }
@@ -340,7 +372,7 @@ export function App() {
     let disposed = false;
     setHotkeyStatus("Registering hotkeys...");
     register(shortcuts, (event) => {
-      if (event.shortcut === hotkeys.dictation) {
+      if (shortcutMatches(event.shortcut, hotkeys.dictation)) {
         if (hotkeys.activationMode === "hold") {
           if (isShortcutPress(event) && !isDictatingRef.current) void startDictationRef.current?.();
           if (event.state === "Released" && isDictatingRef.current) void stopDictationRef.current?.();
@@ -356,7 +388,7 @@ export function App() {
         return;
       }
 
-      if (isShortcutPress(event) && event.shortcut === hotkeys.pasteLast) {
+      if (isShortcutPress(event) && shortcutMatches(event.shortcut, hotkeys.pasteLast)) {
         void pasteLastTranscriptRef.current?.();
       }
     })
@@ -387,6 +419,54 @@ export function App() {
       void unregister(shortcuts).catch(() => undefined);
     };
   }, [hotkeys.activationMode, hotkeys.dictation, hotkeys.pasteLast]);
+
+  const companionSnapshot = useMemo(
+    () =>
+      buildCompanionSnapshot({
+        enabled: companionEnabled,
+        avatar: companionAvatar,
+        phase: dictationPhase,
+        hotkey: hotkeys.dictation,
+        liveText,
+        statusMessage,
+        pasteStatus,
+        recordingStartedAt,
+        language
+      }),
+    [companionAvatar, companionEnabled, dictationPhase, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
+  );
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let disposed = false;
+    const syncCompanion = async () => {
+      const companion = await TauriWindow.getByLabel("companion");
+      if (!companion || disposed) return;
+
+      if (!companionSnapshot.enabled) {
+        await companion.hide();
+        return;
+      }
+
+      if (!companionPositionedRef.current) {
+        await positionCompanionWindow(companion);
+        companionPositionedRef.current = true;
+      }
+
+      await companion.show();
+      await emitTo("companion", "companion-state", companionSnapshot);
+    };
+
+    void syncCompanion().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unable to sync floating companion.";
+      setStatusMessage((current) => current || message);
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [companionSnapshot]);
 
   const addDictionaryTerm = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -576,11 +656,15 @@ export function App() {
             privateFastOperation={privateFastOperation}
             privateFastProfile={privateFastProfile}
             modelSelectionMode={modelSelectionMode}
+            companionEnabled={companionEnabled}
+            companionAvatar={companionAvatar}
             hardwareProfile={hardwareProfile}
             onHotkeyChange={updateHotkey}
             onProcessingChange={updateProcessingSetting}
             onProfileChange={setPrivateFastProfile}
             onSelectionModeChange={setModelSelectionMode}
+            onCompanionEnabledChange={setCompanionEnabled}
+            onCompanionAvatarChange={setCompanionAvatar}
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
             onImportModel={(modelId, sourcePath) => void runImportModel(modelId, sourcePath)}
             onRefreshNative={() => void refreshNativeState()}
@@ -616,4 +700,15 @@ function countWords(text: string, language: SupportedLanguage) {
   if (!trimmed) return 0;
   if (language === "zh" || language === "ja") return [...trimmed.replace(/\s+/g, "")].length;
   return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
+async function positionCompanionWindow(window: TauriWindow) {
+  const [monitor, size] = await Promise.all([primaryMonitor(), window.outerSize()]);
+  if (!monitor) return;
+
+  const workArea = monitor.workArea;
+  const margin = 24;
+  const x = workArea.position.x + workArea.size.width - size.width - margin;
+  const y = workArea.position.y + margin;
+  await window.setPosition(new PhysicalPosition(Math.max(workArea.position.x, x), Math.max(workArea.position.y, y)));
 }

@@ -17,6 +17,8 @@ Dictivo turns single-speaker speech into polished text with an on-device whisper
 - Tauri v2 + React desktop app shell.
 - Local whisper.cpp transcription through the Private Fast engine.
 - Local text polishing for Message, Email, Raw, and Prompt modes.
+- Global hotkey toggle starts/stops local recording and leaves the transcript in the clipboard.
+- Always-on-top floating companion window for recording, processing, completion, and setup feedback.
 - Fastify API for optional metadata, entitlement, billing, and usage scaffolding.
 - Shared TypeScript contracts for local-only provider and backend privacy rules.
 
@@ -55,6 +57,12 @@ DICTIVO_MODEL=large-v3-turbo-q5_0 scripts/setup-private-fast.sh
 Dictivo detects bundled whisper.cpp resources first, then local developer installs and models under the platform data directory or `~/.dictivo/private-fast`. You can override paths with `DICTIVO_PRIVATE_FAST_HOME`, `DICTIVO_WHISPER_CLI`, and `DICTIVO_WHISPER_MODEL`.
 
 Users can download, select, delete, or import local models in `Settings -> Local Engine`.
+
+## Hotkeys and Companion
+
+The default dictation hotkey is `CommandOrControl+Shift+Space`; pressing it once starts local microphone recording, and pressing it again stops recording, transcribes locally, and copies the final text to the clipboard. `CommandOrControl+Shift+V` pastes the last transcript.
+
+`Settings -> Companion` controls the floating status window and avatar. The companion window is separate from the main app, stays above other windows, and mirrors the current dictation state.
 
 ## Hardware Adaptation
 

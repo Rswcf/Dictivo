@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Dictivo",
         "width": 1240,
         "height": 820,
@@ -19,6 +20,23 @@
         "minHeight": 680,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "companion",
+        "title": "Dictivo Companion",
+        "width": 372,
+        "height": 164,
+        "minWidth": 332,
+        "minHeight": 148,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "shadow": false
       }
     ],
     "security": {

@@ -8,6 +8,7 @@ import type {
 export type PrivateFastProfile = "fast" | "balanced" | "quality";
 export type DictationActivationMode = "toggle" | "hold";
 export type ModelSelectionMode = "auto" | "manual";
+export type CompanionAvatar = "dog" | "cat" | "trump";
 
 export type HotkeySettings = {
   dictation: string;
@@ -46,6 +47,8 @@ export type PersistedSettings = {
   selectedMode: InputMode;
   privateFastProfile: PrivateFastProfile;
   modelSelectionMode: ModelSelectionMode;
+  companionEnabled: boolean;
+  companionAvatar: CompanionAvatar;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   dictionary: DictionaryTerm[];
@@ -95,6 +98,10 @@ export function normalizeModelSelectionMode(value: unknown): ModelSelectionMode 
   return value === "manual" ? "manual" : "auto";
 }
 
+export function normalizeCompanionAvatar(value: unknown): CompanionAvatar {
+  return value === "dog" || value === "cat" || value === "trump" ? value : "dog";
+}
+
 export function migratePersistedSettings(raw: Record<string, unknown>): Partial<PersistedSettings> {
   const migrated: Partial<PersistedSettings> = {};
 
@@ -108,6 +115,8 @@ export function migratePersistedSettings(raw: Record<string, unknown>): Partial<
 
   migrated.privateFastProfile = normalizePrivateFastProfile(raw.privateFastProfile);
   migrated.modelSelectionMode = normalizeModelSelectionMode(raw.modelSelectionMode);
+  migrated.companionEnabled = typeof raw.companionEnabled === "boolean" ? raw.companionEnabled : true;
+  migrated.companionAvatar = normalizeCompanionAvatar(raw.companionAvatar);
   migrated.hotkeys = normalizeHotkeys(isRecord(raw.hotkeys) ? raw.hotkeys : undefined);
   migrated.localProcessing = normalizeLocalProcessing(isRecord(raw.localProcessing) ? raw.localProcessing : undefined);
 

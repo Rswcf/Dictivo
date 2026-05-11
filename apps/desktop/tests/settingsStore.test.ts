@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { migratePersistedSettings, normalizeHotkeys, normalizePrivateFastProfile } from "../src/lib/settingsStore";
+import { migratePersistedSettings, normalizeCompanionAvatar, normalizeHotkeys, normalizePrivateFastProfile } from "../src/lib/settingsStore";
 
 describe("local-only settings migration", () => {
   it("drops legacy cloud provider settings and keeps local dictation preferences", () => {
@@ -28,6 +28,8 @@ describe("local-only settings migration", () => {
       pasteLast: "CommandOrControl+Shift+V",
       activationMode: "hold"
     });
+    expect(migrated.companionEnabled).toBe(true);
+    expect(migrated.companionAvatar).toBe("dog");
   });
 
   it("normalizes the local profile and hotkey set", () => {
@@ -45,5 +47,10 @@ describe("local-only settings migration", () => {
       pasteLast: "CommandOrControl+Shift+V",
       activationMode: "toggle"
     });
+  });
+
+  it("normalizes the floating companion avatar", () => {
+    expect(normalizeCompanionAvatar("trump")).toBe("trump");
+    expect(normalizeCompanionAvatar("horse")).toBe("dog");
   });
 });

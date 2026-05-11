@@ -1,0 +1,142 @@
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { AlertTriangle, Check, Clipboard, Loader2, Mic2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { CompanionAvatar } from "../lib/settingsStore";
+import type { CompanionPhase, CompanionSnapshot } from "../lib/companion";
+
+const defaultSnapshot: CompanionSnapshot = {
+  enabled: true,
+  avatar: "dog",
+  phase: "idle",
+  hotkey: "CommandOrControl+Shift+Space",
+  title: "Standing by",
+  detail: "CommandOrControl+Shift+Space to record",
+  summary: "Local dictation is ready.",
+  transcriptPreview: "",
+  pasteStatus: "",
+  wordCount: 0
+};
+
+export function CompanionWindow() {
+  const [snapshot, setSnapshot] = useState<CompanionSnapshot>(defaultSnapshot);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<CompanionSnapshot>("companion-state", (event) => setSnapshot(event.payload)).then((cleanup) => {
+      unlisten = cleanup;
+    });
+    return () => unlisten?.();
+  }, []);
+
+  useEffect(() => {
+    if (snapshot.phase !== "recording") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [snapshot.phase]);
+
+  const elapsed = useMemo(() => {
+    if (!snapshot.recordingStartedAt) return "00:00";
+    return formatElapsed(Math.max(0, Math.floor((now - snapshot.recordingStartedAt) / 1000)));
+  }, [now, snapshot.recordingStartedAt]);
+
+  const startDragging = () => {
+    void getCurrentWindow().startDragging().catch(() => undefined);
+  };
+
+  return (
+    <section className={`companion-shell companion-shell--${snapshot.phase}`} onPointerDown={startDragging} aria-label="Dictivo floating recording status">
+      <div className="companion-avatar-wrap">
+        <CartoonAvatar avatar={snapshot.avatar} phase={snapshot.phase} />
+      </div>
+
+      <div className="companion-bubble">
+        <div className="companion-topline">
+          <StatusIcon phase={snapshot.phase} />
+          <div>
+            <strong>{snapshot.title}</strong>
+            <span>{snapshot.phase === "recording" ? elapsed : snapshot.detail}</span>
+          </div>
+        </div>
+
+        <p>{snapshot.summary}</p>
+
+        <div className="companion-footer">
+          <span>{snapshot.phase === "recording" ? snapshot.detail : snapshot.hotkey}</span>
+          {snapshot.pasteStatus && (
+            <span>
+              <Clipboard size={12} />
+              {snapshot.pasteStatus}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StatusIcon({ phase }: { phase: CompanionPhase }) {
+  if (phase === "recording") return <Mic2 size={18} />;
+  if (phase === "processing") return <Loader2 className="companion-spin" size={18} />;
+  if (phase === "complete") return <Check size={18} />;
+  if (phase === "blocked" || phase === "error") return <AlertTriangle size={18} />;
+  return <Mic2 size={18} />;
+}
+
+function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: CompanionPhase }) {
+  if (avatar === "cat") return <CatAvatar phase={phase} />;
+  if (avatar === "trump") return <TrumpAvatar phase={phase} />;
+  return <DogAvatar phase={phase} />;
+}
+
+function DogAvatar({ phase }: { phase: CompanionPhase }) {
+  return (
+    <svg className={`companion-avatar companion-avatar--dog is-${phase}`} viewBox="0 0 96 96" role="img" aria-label="Cartoon dog">
+      <circle cx="48" cy="52" r="31" fill="#d89954" />
+      <path d="M23 42c-6-11-3-23 7-26 8 3 12 12 10 25z" fill="#734729" />
+      <path d="M73 42c6-11 3-23-7-26-8 3-12 12-10 25z" fill="#734729" />
+      <circle cx="36" cy="48" r="4" fill="#1a1210" />
+      <circle cx="60" cy="48" r="4" fill="#1a1210" />
+      <path d="M42 59c4 3 8 3 12 0" fill="none" stroke="#1a1210" strokeWidth="4" strokeLinecap="round" />
+      <path d="M43 54h10l-5 6z" fill="#1a1210" />
+      <path d="M26 69c13 13 31 13 44 0" fill="none" stroke="#f2ca89" strokeWidth="8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CatAvatar({ phase }: { phase: CompanionPhase }) {
+  return (
+    <svg className={`companion-avatar companion-avatar--cat is-${phase}`} viewBox="0 0 96 96" role="img" aria-label="Cartoon cat">
+      <path d="M24 35 18 13l22 14m32 8 6-22-22 14" fill="#5a6970" />
+      <circle cx="48" cy="52" r="31" fill="#7f9299" />
+      <circle cx="36" cy="48" r="4" fill="#0b1112" />
+      <circle cx="60" cy="48" r="4" fill="#0b1112" />
+      <path d="M43 56h10l-5 6z" fill="#ffb7c5" />
+      <path d="M48 61v7" stroke="#0b1112" strokeWidth="3" strokeLinecap="round" />
+      <path d="M32 60h-16m48 0h16M34 66H18m44 0h16" stroke="#e6f5f2" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrumpAvatar({ phase }: { phase: CompanionPhase }) {
+  return (
+    <svg className={`companion-avatar companion-avatar--trump is-${phase}`} viewBox="0 0 96 96" role="img" aria-label="Cartoon Trump">
+      <path d="M30 78h36l6 16H24z" fill="#17203a" />
+      <path d="M43 78h10l3 16H40z" fill="#d91f35" />
+      <circle cx="48" cy="50" r="29" fill="#eaa06a" />
+      <path d="M20 33c12-22 46-26 59-2-10-5-21-6-34-1-9 3-16 4-25 3z" fill="#f3ce4f" />
+      <path d="M27 29c11-9 29-13 44-4-11 1-19 4-27 9-6 3-12 3-17-5z" fill="#ffd86a" />
+      <circle cx="37" cy="50" r="3.5" fill="#1a1210" />
+      <circle cx="59" cy="50" r="3.5" fill="#1a1210" />
+      <path d="M39 63c6 3 13 3 19 0" fill="none" stroke="#8a3124" strokeWidth="3" strokeLinecap="round" />
+      <path d="M27 75c13 12 29 14 43 1" fill="none" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}`;
+}

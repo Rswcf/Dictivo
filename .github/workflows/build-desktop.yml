@@ -64,6 +64,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Global hotkey probe
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test global_hotkey_probe -- --ignored --nocapture
+
       - name: Prepare Private Fast engine
         run: node scripts/prepare-private-fast-engine.mjs
 

@@ -1,7 +1,8 @@
-import { KeyRound, Lock, Settings, SlidersHorizontal, Sparkles, WifiOff } from "lucide-react";
+import { Bot, Cat, Dog, KeyRound, Lock, Settings, SlidersHorizontal, Sparkles, UserRound, WifiOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus } from "../lib/desktopBridge";
 import type {
+  CompanionAvatar,
   HotkeySettings,
   LocalProcessingSettings,
   ModelSelectionMode,
@@ -9,7 +10,7 @@ import type {
 } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
-type SettingsSection = "engine" | "hotkeys" | "processing" | "privacy";
+type SettingsSection = "engine" | "hotkeys" | "processing" | "companion" | "privacy";
 
 type SettingsViewProps = {
   hotkeys: HotkeySettings;
@@ -20,11 +21,15 @@ type SettingsViewProps = {
   privateFastOperation: string;
   privateFastProfile: PrivateFastProfile;
   modelSelectionMode: ModelSelectionMode;
+  companionEnabled: boolean;
+  companionAvatar: CompanionAvatar;
   hardwareProfile: HardwareProfile | null;
   onHotkeyChange: (key: keyof HotkeySettings, value: string) => void;
   onProcessingChange: (key: keyof LocalProcessingSettings, value: boolean) => void;
   onProfileChange: (profile: PrivateFastProfile) => void;
   onSelectionModeChange: (mode: ModelSelectionMode) => void;
+  onCompanionEnabledChange: (enabled: boolean) => void;
+  onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
@@ -34,7 +39,14 @@ const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> =
   { id: "engine", label: "Local Engine", icon: <WifiOff size={16} /> },
   { id: "hotkeys", label: "Hotkeys", icon: <KeyRound size={16} /> },
   { id: "processing", label: "Processing", icon: <Sparkles size={16} /> },
+  { id: "companion", label: "Companion", icon: <Bot size={16} /> },
   { id: "privacy", label: "Privacy", icon: <Lock size={16} /> }
+];
+
+const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode }> = [
+  { id: "dog", label: "Dog", icon: <Dog size={18} /> },
+  { id: "cat", label: "Cat", icon: <Cat size={18} /> },
+  { id: "trump", label: "Trump", icon: <UserRound size={18} /> }
 ];
 
 export function SettingsView({
@@ -46,11 +58,15 @@ export function SettingsView({
   privateFastOperation,
   privateFastProfile,
   modelSelectionMode,
+  companionEnabled,
+  companionAvatar,
   hardwareProfile,
   onHotkeyChange,
   onProcessingChange,
   onProfileChange,
   onSelectionModeChange,
+  onCompanionEnabledChange,
+  onCompanionAvatarChange,
   onModelAction,
   onImportModel,
   onRefreshNative
@@ -117,6 +133,29 @@ export function SettingsView({
               <ToggleRow label="Spoken punctuation" checked={localProcessing.spokenPunctuation} onChange={(value) => onProcessingChange("spokenPunctuation", value)} />
               <ToggleRow label="Remove fillers" checked={localProcessing.fillerWords} onChange={(value) => onProcessingChange("fillerWords", value)} />
               <ToggleRow label="Smart capitalization" checked={localProcessing.smartCapitalization} onChange={(value) => onProcessingChange("smartCapitalization", value)} />
+            </div>
+          </div>
+        )}
+
+        {section === "companion" && (
+          <div className="side-panel">
+            <PanelTitle icon={<Bot size={18} />} title="Floating Companion" />
+            <p className="mode-instruction">A small always-on-top window mirrors recording, processing, completion, and setup states outside the main window.</p>
+            <div className="toggle-list">
+              <ToggleRow label="Show floating companion" checked={companionEnabled} onChange={onCompanionEnabledChange} />
+            </div>
+            <div className="avatar-picker" aria-label="Companion avatar">
+              {avatars.map((avatar) => (
+                <button
+                  key={avatar.id}
+                  className={companionAvatar === avatar.id ? "is-selected" : ""}
+                  onClick={() => onCompanionAvatarChange(avatar.id)}
+                  type="button"
+                >
+                  <span className={`avatar-chip avatar-chip--${avatar.id}`}>{avatar.icon}</span>
+                  <strong>{avatar.label}</strong>
+                </button>
+              ))}
             </div>
           </div>
         )}

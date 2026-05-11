@@ -34,7 +34,6 @@ fn request_permissions() -> PermissionStatus {
 #[tauri::command]
 fn paste_text(text: String) -> Result<PasteResult, String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
-    let previous_text = clipboard.get_text().ok();
     clipboard.set_text(text).map_err(|error| error.to_string())?;
 
     #[cfg(target_os = "macos")]
@@ -47,9 +46,6 @@ fn paste_text(text: String) -> Result<PasteResult, String> {
 
         if status.success() {
             thread::sleep(Duration::from_millis(650));
-            if let Some(previous) = previous_text {
-                let _ = clipboard.set_text(previous);
-            }
             return Ok(PasteResult {
                 pasted: true,
                 copied: true,
@@ -69,9 +65,6 @@ fn paste_text(text: String) -> Result<PasteResult, String> {
 
         if status.success() {
             thread::sleep(Duration::from_millis(350));
-            if let Some(previous) = previous_text {
-                let _ = clipboard.set_text(previous);
-            }
             return Ok(PasteResult {
                 pasted: true,
                 copied: true,
