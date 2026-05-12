@@ -84,6 +84,7 @@ function normalizeWhitespace(text: string, language: SupportedLanguage) {
   if (language === "zh" || language === "ja") {
     return text
       .replace(/[ \t]+/g, " ")
+      .replace(/[ \t]*\n[ \t]*/g, "\n")
       .replace(/\s+([，。！？、：；])/g, "$1")
       .replace(/([，。！？、：；])\s+/g, "$1")
       .replace(/\n{3,}/g, "\n\n")
@@ -92,6 +93,7 @@ function normalizeWhitespace(text: string, language: SupportedLanguage) {
 
   return text
     .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\s+([,.!?;:])/g, "$1")
     .replace(/([,.!?;:])(?=\S)/g, "$1 ")
     .replace(/\n{3,}/g, "\n\n")
@@ -116,7 +118,7 @@ function smartCapitalize(text: string, language: SupportedLanguage, dictionary: 
   if (language === "zh" || language === "ja") return text;
 
   let current = text;
-  current = current.replace(/(^|[.!?]\s+)([a-z])/g, (_match, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`);
+  current = current.replace(/(^|[.!?]\s+|\n+)([a-z])/g, (_match, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`);
   current = current.replace(/\b(i|i'm|i'll|i'd|i've)\b/gi, (match) => match[0]!.toUpperCase() + match.slice(1));
 
   for (const term of dictionary) {
@@ -130,18 +132,40 @@ function smartCapitalize(text: string, language: SupportedLanguage, dictionary: 
 
 function applyModeFormat(text: string, options: LocalPolishOptions) {
   if (options.mode === "prompt") {
-    return `Context:\n${text}\n\nTask:\n`;
+    return formatPrompt(text);
   }
 
   if (options.mode === "email") {
-    return text
-      .split(/\n{2,}/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean)
-      .join("\n\n");
+    return formatEmail(text);
   }
 
   return text;
+}
+
+function formatEmail(text: string) {
+  const trimmed = text.trim();
+  const subjectMatch = trimmed.match(/^subject[:\s]+(.+?)(?:\n{2,}|$)([\s\S]*)$/i);
+  const subject = subjectMatch?.[1]?.trim();
+  const body = (subjectMatch ? (subjectMatch[2] ?? "") : trimmed).trim();
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  return [subject ? `Subject: ${capitalizeFirst(trimSubject(subject))}` : "", paragraphs].filter(Boolean).join("\n\n");
+}
+
+function formatPrompt(text: string) {
+  return `Goal:\n${text.trim()}\n\nContext:\n-\n\nRequirements:\n-\n\nOutput:\n`;
+}
+
+function trimSubject(subject: string) {
+  return subject.replace(/[.!?。！？]$/, "");
+}
+
+function capitalizeFirst(value: string) {
+  return value.replace(/^([a-z])/, (letter) => letter.toUpperCase());
 }
 
 function ensureEndingPunctuation(text: string, fallback: string) {

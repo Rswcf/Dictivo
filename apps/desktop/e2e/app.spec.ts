@@ -13,6 +13,19 @@ const seededSessions = [
     wordCount: 4,
     rawText: "seeded raw transcript",
     text: "Seeded final transcript."
+  },
+  {
+    id: "session_second",
+    title: "Second Local Dictation",
+    mode: "message",
+    language: "en",
+    privacyMode: "local-only",
+    provider: "local-whisper",
+    createdAt: "2026-05-11T12:01:00.000Z",
+    durationSeconds: 6,
+    wordCount: 3,
+    rawText: "second raw transcript",
+    text: "Second final transcript."
   }
 ];
 
@@ -33,9 +46,8 @@ test("navigates core screens and handles the blocked dictation path", async ({ p
   await expect(page.getByRole("heading", { name: "Dictation" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start dictation" })).toBeVisible();
   await expect(page.getByLabel("Live dictation text")).toHaveValue("");
-
-  await page.getByRole("button", { name: "Email" }).click();
-  await expect(page.getByRole("button", { name: "Email" })).toHaveClass(/is-selected/);
+  await expect(page.getByRole("button", { name: "Email" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "AI Prompt" })).toHaveCount(0);
 
   await page.getByLabel("Live dictation text").fill("Long draft with symbols !@#$%^&*() and CJK 本地优先");
   await page.getByRole("button", { name: "Start dictation" }).click();
@@ -46,14 +58,32 @@ test("navigates core screens and handles the blocked dictation path", async ({ p
   await page.getByRole("button", { name: "Dictation" }).click();
   await expect(page.getByLabel("Live dictation text")).toHaveValue("Long draft with symbols !@#$%^&*() and CJK 本地优先");
 
-  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Local History" })).toBeVisible();
   await expect(page.getByText("Seeded Local Dictation")).toBeVisible();
+  await expect(page.getByText("Second Local Dictation")).toBeVisible();
 
   await page.getByPlaceholder("Search local history").fill("no-match-!@#");
   await expect(page.getByText("No local dictations match this search.")).toBeVisible();
   await page.getByPlaceholder("Search local history").fill("Seeded");
   await expect(page.getByText("Seeded final transcript.")).toBeVisible();
+
+  const seededItem = page.locator(".session-item", { hasText: "Seeded Local Dictation" });
+  await seededItem.getByRole("button", { name: "Delete message" }).click();
+  await expect(page.locator(".status-banner")).toContainText("Message deleted.");
+  await expect(page.getByText("Seeded Local Dictation")).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("dictivo-local-sessions")))
+    .not.toContain("session_seeded");
+
+  await page.getByPlaceholder("Search local history").fill("");
+  await page.getByRole("button", { name: "Clear local history" }).click();
+  await expect(page.getByText("Delete all local history?")).toBeVisible();
+  await page.getByRole("button", { name: "Delete all" }).click();
+  await expect(page.locator(".status-banner")).toContainText("Local history cleared.");
+  await expect(page.getByText("Second Local Dictation")).toBeHidden();
+  await expect(page.getByText("No local dictations match this search.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("dictivo-local-sessions"))).toBeNull();
 });
 
 test("exercises forms, repeated clicks, keyboard recording, and responsive wireframe styling", async ({ page, viewport }) => {
@@ -79,9 +109,18 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   await page.getByRole("button", { name: "Change" }).first().click();
   await page.keyboard.press("Control+Alt+K");
   await expect(page.getByText("CommandOrControl+Alt+K")).toBeVisible();
+  await page.getByRole("button", { name: "Dictation" }).click();
+  await expect(page.locator(".suggestion-chips .key").first()).toContainText("⌘⌥K");
+  await expect(page.getByText("Start / stop dictation")).toBeVisible();
+  await expect(page.locator(".capture-hint kbd")).toContainText("⌘⌥K");
+  await expect(page.locator(".companion-preview")).toBeHidden();
+  await page.getByRole("button", { name: "Show floating companion" }).click();
+  await expect(page.locator(".companion-preview")).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Hotkeys" }).click();
 
   for (const section of ["Companion", "Privacy", "Local Engine", "Hotkeys"]) {
-    await page.getByRole("button", { name: section }).click();
+    await page.getByRole("button", { name: section, exact: true }).click();
   }
   await expect(page.getByText("Paste Last")).toBeVisible();
 

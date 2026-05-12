@@ -198,7 +198,8 @@ pub fn run() {
             private_fast::finalize_calibration,
             storage::save_session,
             storage::list_sessions,
-            storage::clear_sessions
+            storage::clear_sessions,
+            storage::delete_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dictivo");

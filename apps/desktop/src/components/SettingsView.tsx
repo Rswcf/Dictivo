@@ -10,6 +10,7 @@ import { ModelManager } from "./ModelManager";
 type SettingsSection = "engine" | "hotkeys" | "companion" | "privacy";
 
 type SettingsViewProps = {
+  appVersion: string;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   permissions: Record<string, string>;
@@ -78,6 +79,7 @@ export function describePermissionStatus(value?: string): { label: string; detai
 }
 
 export function SettingsView({
+  appVersion,
   hotkeys,
   localProcessing,
   permissions,
@@ -203,6 +205,10 @@ export function SettingsView({
                 <strong>Local-only by design</strong>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>Audio, text, dictionary terms, snippets, and transcripts stay on this device.</p>
               </div>
+            </div>
+            <div className="version-row" aria-label="App version">
+              <span>Version</span>
+              <code>v{appVersion}</code>
             </div>
             <div className="permission-list">
               {privacyPermissionItems.map((item) => {

@@ -39,16 +39,16 @@ describe("local transcript polishing", () => {
       mode: "prompt"
     });
 
-    expect(result).toBe("Context:\nDraft a release note.\n\nTask:");
+    expect(result).toBe("Goal:\nDraft a release note.\n\nContext:\n-\n\nRequirements:\n-\n\nOutput:");
   });
 
-  it("formats email paragraphs without collapsing intentional paragraph breaks", () => {
-    const result = polishLocalTranscript("hello team new paragraph please review this", {
+  it("formats email subject lines and paragraphs without collapsing intentional paragraph breaks", () => {
+    const result = polishLocalTranscript("subject launch update new paragraph hello team new paragraph please review this", {
       ...baseOptions,
       mode: "email"
     });
 
-    expect(result).toBe("Hello team\n\nplease review this.");
+    expect(result).toBe("Subject: Launch update\n\nHello team\n\nPlease review this.");
   });
 
   it("respects disabled auto-polish while still applying snippets", () => {

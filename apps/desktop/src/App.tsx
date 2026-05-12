@@ -11,7 +11,6 @@ import {
   type DictionaryTerm,
   type InputMode,
   type LocalSession,
-  type ProcessingMode,
   type Snippet,
   type SupportedLanguage
 } from "@dictivo/shared";
@@ -21,6 +20,7 @@ import { runLocalDictation } from "./lib/localDictationEngine";
 import {
   benchmarkTier,
   clearLocalSessions,
+  deleteLocalSession,
   finalizeCalibration,
   getClipboardMarker,
   getHardwareProfile,
@@ -44,8 +44,6 @@ import {
   type Tier
 } from "./lib/desktopBridge";
 import {
-  DEFAULT_HOTKEYS,
-  DEFAULT_LOCAL_PROCESSING,
   loadSettings,
   normalizeHotkeys,
   normalizeLocalProcessing,
@@ -62,6 +60,7 @@ import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
 import { resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
+import { BUNDLED_APP_VERSION, getAppVersion } from "./lib/version";
 
 type View = "dictation" | "history" | "dictionary" | "settings";
 
@@ -69,80 +68,30 @@ type AppProps = {
   windowLabel?: string;
 };
 
-const modeTemplates: ProcessingMode[] = [
-  {
-    id: "message",
-    label: "Message",
-    inputMode: "message",
-    language: "en",
-    localOnly: true,
-    instruction: "Turn speech into a concise message while preserving your natural tone."
-  },
-  {
-    id: "email",
-    label: "Email",
-    inputMode: "email",
-    language: "en",
-    localOnly: true,
-    instruction: "Format the dictation as a polished email using only local text processing."
-  },
-  {
-    id: "raw",
-    label: "Raw",
-    inputMode: "raw",
-    language: "en",
-    localOnly: true,
-    instruction: "Keep the transcript as close to the local model output as possible."
-  },
-  {
-    id: "prompt",
-    label: "Prompt",
-    inputMode: "prompt",
-    language: "en",
-    localOnly: true,
-    instruction: "Structure the dictation as an AI prompt with context and task sections."
-  }
-];
-
-const sampleTerms: DictionaryTerm[] = [
-  { id: "term_1", value: "Dictivo", language: "en", createdAt: new Date().toISOString() },
-  { id: "term_2", value: "whisper.cpp", language: "en", createdAt: new Date().toISOString() },
-  { id: "term_3", value: "本地优先", language: "zh", createdAt: new Date().toISOString() }
-];
-
-const sampleSnippets: Snippet[] = [
-  {
-    id: "snippet_1",
-    trigger: "my calendar link",
-    replacement: "https://cal.com/example",
-    language: "en",
-    createdAt: new Date().toISOString()
-  }
-];
+const DEFAULT_DICTATION_MODE: InputMode = "message";
 
 export function App({ windowLabel = "main" }: AppProps) {
   if (windowLabel === "companion") return <CompanionWindow />;
 
+  const initialSettings = useMemo(() => loadSettings(), []);
   const [view, setView] = useState<View>("dictation");
-  const [language, setLanguage] = useState<SupportedLanguage>("en");
-  const [selectedMode, setSelectedMode] = useState<InputMode>("message");
+  const [language, setLanguage] = useState<SupportedLanguage>(initialSettings.language);
   const [sessions, setSessions] = useState<LocalSession[]>([]);
   const [liveText, setLiveText] = useState("");
-  const [rawText, setRawText] = useState("");
   const [isDictating, setIsDictating] = useState(false);
-  const [dictionary, setDictionary] = useState<DictionaryTerm[]>(sampleTerms);
-  const [snippets, setSnippets] = useState<Snippet[]>(sampleSnippets);
+  const [dictionary, setDictionary] = useState<DictionaryTerm[]>(initialSettings.dictionary);
+  const [snippets, setSnippets] = useState<Snippet[]>(initialSettings.snippets);
   const [query, setQuery] = useState("");
   const [permissions, setPermissions] = useState<Record<string, string>>({});
-  const [selectedTier, setSelectedTier] = useState<Tier>(() => loadSettings().selectedTier ?? "medium");
-  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(() => Boolean(loadSettings().onboardingCompleted));
+  const [selectedTier, setSelectedTier] = useState<Tier>(initialSettings.selectedTier);
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(Boolean(initialSettings.onboardingCompleted));
   const [runnableTiers, setRunnableTiers] = useState<RunnableTiers>(() => placeholderRunnableTiers());
   const [rerunStatus, setRerunStatus] = useState<"idle" | "measuring" | "error">("idle");
   const [rerunError, setRerunError] = useState("");
-  const [companionEnabled, setCompanionEnabled] = useState(true);
-  const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>("dog");
-  const [hotkeys, setHotkeys] = useState<HotkeySettings>(DEFAULT_HOTKEYS);
-  const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(DEFAULT_LOCAL_PROCESSING);
+  const [companionEnabled, setCompanionEnabled] = useState(initialSettings.companionEnabled);
+  const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>(initialSettings.companionAvatar);
+  const [hotkeys, setHotkeys] = useState<HotkeySettings>(normalizeHotkeys(initialSettings.hotkeys));
+  const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(normalizeLocalProcessing(initialSettings.localProcessing));
   const [privateFastStatus, setPrivateFastStatus] = useState<PrivateFastStatus>({
     ready: false,
     modelId: "small",
@@ -153,11 +102,13 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [privateFastModels, setPrivateFastModels] = useState<PrivateFastModel[]>([]);
   const [hardwareProfile, setHardwareProfile] = useState<HardwareProfile | null>(null);
   const [privateFastOperation, setPrivateFastOperation] = useState("");
+  const [historyOperation, setHistoryOperation] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [hotkeyStatus, setHotkeyStatus] = useState("Not registered");
   const [pasteStatus, setPasteStatus] = useState("");
   const [dictationPhase, setDictationPhase] = useState<CompanionPhase>("idle");
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>();
+  const [appVersion, setAppVersion] = useState(BUNDLED_APP_VERSION);
 
   const dictationRecordingRef = useRef<RecordingController | null>(null);
   const isDictatingRef = useRef(false);
@@ -166,6 +117,14 @@ export function App({ windowLabel = "main" }: AppProps) {
   const startDictationRef = useRef<(() => Promise<void>) | null>(null);
   const stopDictationRef = useRef<(() => Promise<void>) | null>(null);
   const pasteLastTranscriptRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getAppVersion().then((version) => {
+      if (!cancelled) setAppVersion(version);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const selectedModel = useMemo(
     () => privateFastModels.find((model) => model.selected) ?? privateFastModels.find((model) => model.id === privateFastStatus.modelId),
@@ -186,18 +145,6 @@ export function App({ windowLabel = "main" }: AppProps) {
   }, []);
 
   useEffect(() => {
-    const settings = loadSettings();
-    if (settings.language) setLanguage(settings.language);
-    if (settings.selectedMode) setSelectedMode(settings.selectedMode);
-    if (settings.dictionary) setDictionary(settings.dictionary);
-    if (settings.snippets) setSnippets(settings.snippets);
-    if (settings.selectedTier) setSelectedTier(settings.selectedTier);
-    setOnboardingCompleted(Boolean(settings.onboardingCompleted));
-    if (typeof settings.companionEnabled === "boolean") setCompanionEnabled(settings.companionEnabled);
-    if (settings.companionAvatar) setCompanionAvatar(settings.companionAvatar);
-    setHotkeys(normalizeHotkeys(settings.hotkeys));
-    setLocalProcessing(normalizeLocalProcessing(settings.localProcessing));
-
     void listLocalSessions().then((items) => {
       setSessions(items);
       lastFinalTextRef.current = items[0]?.text ?? "";
@@ -209,7 +156,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     localStorage.removeItem("dictivo-settings-v2");
     saveSettings({
       language,
-      selectedMode,
+      selectedMode: DEFAULT_DICTATION_MODE,
       selectedTier,
       onboardingCompleted,
       companionEnabled,
@@ -219,7 +166,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedMode, selectedTier, snippets]);
+  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
 
   useEffect(() => {
     void getRunnableTiers().then(setRunnableTiers).catch(() => {});
@@ -312,7 +259,6 @@ export function App({ windowLabel = "main" }: AppProps) {
     setIsDictating(true);
     setDictationPhase("recording");
     setRecordingStartedAt(Date.now());
-    setRawText("");
     setLiveText("Recording locally. Stop to transcribe with the on-device engine.");
     setStatusMessage("");
     setPasteStatus("");
@@ -351,7 +297,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         language,
         dictionary: dictionaryValues,
         snippets: snippetValues,
-        mode: selectedMode,
+        mode: DEFAULT_DICTATION_MODE,
         profile: tierToProfile(selectedTier),
         localProcessing
       });
@@ -359,8 +305,8 @@ export function App({ windowLabel = "main" }: AppProps) {
       const pasteResult = await pasteText(result.finalizedText, clipboardBeforeTranscription);
       const wordCount = countWords(result.finalizedText, language);
       await saveSession({
-        title: `${modeLabel(selectedMode)} ${new Date().toLocaleTimeString()}`,
-        mode: selectedMode,
+        title: `Message ${new Date().toLocaleTimeString()}`,
+        mode: DEFAULT_DICTATION_MODE,
         language,
         privacyMode: "local-only",
         provider: "local-whisper",
@@ -370,7 +316,6 @@ export function App({ windowLabel = "main" }: AppProps) {
         text: result.finalizedText
       });
 
-      setRawText(result.rawText);
       setLiveText(result.finalizedText);
       setDictationPhase("complete");
       setPasteStatus(
@@ -399,7 +344,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       setDictationPhase("error");
       setStatusMessage(error instanceof Error ? error.message : "Local dictation failed.");
     }
-  }, [dictionary, language, localProcessing, saveSession, selectedMode, selectedTier, snippets]);
+  }, [dictionary, language, localProcessing, saveSession, selectedTier, snippets]);
 
   const toggleDictation = useCallback(() => {
     if (isDictatingRef.current) {
@@ -430,6 +375,43 @@ export function App({ windowLabel = "main" }: AppProps) {
     setPasteStatus(result.pasted ? "Pasted last transcript" : "Copied last transcript");
     setStatusMessage("Last local transcript is ready in the target app or clipboard.");
   }, [liveText, sessions]);
+
+  const clearHistory = useCallback(async () => {
+    setStatusMessage("");
+    setHistoryOperation("clear");
+    try {
+      await clearLocalSessions();
+      const remaining = await listLocalSessions();
+      setSessions(remaining);
+      lastFinalTextRef.current = remaining[0]?.text ?? "";
+      setQuery("");
+      setStatusMessage(
+        remaining.length === 0
+          ? "Local history cleared."
+          : "History clear did not remove every session. Restart Dictivo and try again."
+      );
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to clear local history.");
+    } finally {
+      setHistoryOperation("");
+    }
+  }, []);
+
+  const deleteHistorySession = useCallback(async (sessionId: string) => {
+    setStatusMessage("");
+    setHistoryOperation(`delete:${sessionId}`);
+    try {
+      await deleteLocalSession(sessionId);
+      const remaining = await listLocalSessions();
+      setSessions(remaining);
+      lastFinalTextRef.current = remaining[0]?.text ?? "";
+      setStatusMessage("Message deleted.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to delete message.");
+    } finally {
+      setHistoryOperation("");
+    }
+  }, []);
 
   useEffect(() => {
     pasteLastTranscriptRef.current = pasteLastTranscript;
@@ -498,6 +480,31 @@ export function App({ windowLabel = "main" }: AppProps) {
       }),
     [companionAvatar, companionEnabled, dictationPhase, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
   );
+
+  const showCompanionWindow = useCallback(async () => {
+    setCompanionEnabled(true);
+    setStatusMessage("");
+
+    if (!isTauriRuntime()) return;
+
+    try {
+      const companion = await TauriWindow.getByLabel("companion");
+      if (!companion) {
+        setStatusMessage("Floating companion window is unavailable.");
+        return;
+      }
+
+      if (!companionPositionedRef.current) {
+        await positionCompanionWindow(companion);
+        companionPositionedRef.current = true;
+      }
+
+      await companion.show();
+      await emitTo("companion", "companion-state", { ...companionSnapshot, enabled: true });
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to show floating companion.");
+    }
+  }, [companionSnapshot]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -640,7 +647,7 @@ export function App({ windowLabel = "main" }: AppProps) {
           <NavButton active={view === "settings"} label="Settings" icon={<Settings size={18} />} onClick={() => setView("settings")} />
         </nav>
 
-        <SidebarMascot avatar={companionAvatar} />
+        <SidebarMascot avatar={companionAvatar} onClick={() => void showCompanionWindow()} />
       </aside>
 
       <section className="workspace">
@@ -684,8 +691,6 @@ export function App({ windowLabel = "main" }: AppProps) {
         {view === "dictation" && (
           <DictationWorkbench
             language={language}
-            selectedMode={selectedMode}
-            modeTemplates={modeTemplates}
             isDictating={isDictating}
             liveText={liveText}
             hotkeyStatus={hotkeyStatus}
@@ -695,12 +700,13 @@ export function App({ windowLabel = "main" }: AppProps) {
             selectedModel={selectedModel}
             runnableTiers={runnableTiers}
             selectedTier={selectedTier}
+            hotkeys={hotkeys}
             companionAvatar={companionAvatar}
             companionEnabled={companionEnabled}
             onTierChange={(tier) => void handleTierChange(tier)}
-            onModeChange={setSelectedMode}
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
+            onOpenHistory={() => setView("history")}
           />
         )}
 
@@ -709,11 +715,10 @@ export function App({ windowLabel = "main" }: AppProps) {
             sessions={sessions}
             query={query}
             onQueryChange={setQuery}
-            onClear={() => {
-              if (window.confirm("Delete all local dictation history? This cannot be undone.")) {
-                void clearLocalSessions().then(() => setSessions([]));
-              }
-            }}
+            onClear={() => void clearHistory()}
+            onDeleteSession={(sessionId) => void deleteHistorySession(sessionId)}
+            isClearing={historyOperation === "clear"}
+            deletingSessionId={historyOperation.startsWith("delete:") ? historyOperation.slice("delete:".length) : undefined}
           />
         )}
 
@@ -730,6 +735,7 @@ export function App({ windowLabel = "main" }: AppProps) {
 
         {view === "settings" && (
           <SettingsView
+            appVersion={appVersion}
             hotkeys={hotkeys}
             localProcessing={localProcessing}
             permissions={permissions}
@@ -774,11 +780,11 @@ function NavButton({ active, label, icon, onClick }: { active: boolean; label: s
   );
 }
 
-function SidebarMascot({ avatar }: { avatar: CompanionAvatar }) {
+function SidebarMascot({ avatar, onClick }: { avatar: CompanionAvatar; onClick: () => void }) {
   return (
-    <div className="sidebar-mascot" aria-hidden="true">
+    <button type="button" className="sidebar-mascot" title="Show floating companion" aria-label="Show floating companion" onClick={onClick}>
       <MascotGlyph avatar={avatar} />
-    </div>
+    </button>
   );
 }
 
@@ -812,10 +818,6 @@ function viewTitle(view: View) {
   if (view === "dictionary") return "Dictionary & Snippets";
   if (view === "settings") return "Settings";
   return "Dictation";
-}
-
-function modeLabel(mode: InputMode) {
-  return modeTemplates.find((template) => template.inputMode === mode)?.label ?? "Dictation";
 }
 
 function countWords(text: string, language: SupportedLanguage) {

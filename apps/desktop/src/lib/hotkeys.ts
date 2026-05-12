@@ -33,6 +33,14 @@ export function uniqueShortcuts(shortcuts: string[]) {
   return unique;
 }
 
+export function formatShortcutForDisplay(shortcut: string) {
+  const tokens = shortcut
+    .split("+")
+    .map((part) => formatShortcutToken(part.trim()))
+    .filter(Boolean);
+  return tokens.join("") || "Unset";
+}
+
 export function shortcutMatches(actual: string, expected: string) {
   const actualShortcut = parseShortcut(actual);
   const expectedShortcut = parseShortcut(expected);
@@ -68,6 +76,20 @@ export function resolveHotkeyIntent(
   if (isShortcutPress(event) && shortcutMatches(event.shortcut, hotkeys.pasteLast)) return "paste-last";
 
   return "none";
+}
+
+function formatShortcutToken(value: string) {
+  const normalized = value.toLowerCase().replace(/[\s_-]/g, "");
+  if (["commandorcontrol", "commandorctrl", "cmdorcontrol", "cmdorctrl", "primary", "mod"].includes(normalized)) return "⌘";
+  if (["command", "cmd", "meta", "super"].includes(normalized)) return "⌘";
+  if (["control", "ctrl", "ctl"].includes(normalized)) return "⌃";
+  if (["alt", "option", "opt"].includes(normalized)) return "⌥";
+  if (normalized === "shift") return "⇧";
+  if (normalized === "space" || normalized === "spacebar") return "Space";
+  if (normalized === "escape" || normalized === "esc") return "Esc";
+  if (normalized === "return") return "Enter";
+  if (value.length === 1) return value.toUpperCase();
+  return value;
 }
 
 function parseShortcut(shortcut: string): ParsedShortcut {

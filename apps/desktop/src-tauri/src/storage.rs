@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -184,6 +186,15 @@ pub fn clear_sessions() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn delete_session(session_id: String) -> Result<(), String> {
+    let connection = open_connection()?;
+    connection
+        .execute("delete from sessions where id = ?1", params![session_id])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn open_connection() -> Result<Connection, String> {
     let path = database_path()?;
     if let Some(parent) = path.parent() {
@@ -193,8 +204,91 @@ fn open_connection() -> Result<Connection, String> {
 }
 
 fn database_path() -> Result<PathBuf, String> {
+    #[cfg(test)]
+    {
+        if let Some(path) = env::var_os("DICTIVO_DB_PATH") {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
     let base = dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .ok_or_else(|| "Unable to resolve local data directory".to_string())?;
     Ok(base.join("Dictivo").join("local.sqlite3"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_session(id: &str, created_at: &str) -> LocalSession {
+        LocalSession {
+            id: id.to_string(),
+            title: format!("Message {id}"),
+            mode: "message".to_string(),
+            language: "en".to_string(),
+            privacy_mode: "local-only".to_string(),
+            provider: "local-whisper".to_string(),
+            created_at: created_at.to_string(),
+            duration_seconds: 3,
+            word_count: 2,
+            raw_text: Some(format!("raw {id}")),
+            text: format!("final {id}"),
+            summary: None,
+        }
+    }
+
+    fn with_temp_database(test: impl FnOnce()) {
+        let previous_path = env::var_os("DICTIVO_DB_PATH");
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        let path = env::temp_dir().join(format!(
+            "dictivo-storage-{}-{suffix}.sqlite3",
+            std::process::id()
+        ));
+
+        env::set_var("DICTIVO_DB_PATH", &path);
+        init_database().expect("test database should initialize");
+        test();
+
+        if let Some(value) = previous_path {
+            env::set_var("DICTIVO_DB_PATH", value);
+        } else {
+            env::remove_var("DICTIVO_DB_PATH");
+        }
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn deletes_single_session_and_clears_all_sessions() {
+        with_temp_database(|| {
+            save_session(make_session("session_old", "2026-05-11T10:00:00.000Z")).unwrap();
+            save_session(make_session("session_new", "2026-05-11T11:00:00.000Z")).unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(
+                sessions
+                    .iter()
+                    .map(|session| session.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["session_new", "session_old"]
+            );
+
+            delete_session("session_old".to_string()).unwrap();
+            let sessions = list_sessions().unwrap();
+            assert_eq!(
+                sessions
+                    .iter()
+                    .map(|session| session.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["session_new"]
+            );
+
+            clear_sessions().unwrap();
+            assert!(list_sessions().unwrap().is_empty());
+        });
+    }
 }

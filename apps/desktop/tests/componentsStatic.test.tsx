@@ -1,46 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { LocalSession, ProcessingMode } from "@dictivo/shared";
+import type { LocalSession } from "@dictivo/shared";
 import { DictationWorkbench } from "../src/components/DictationWorkbench";
 import { DictionaryView } from "../src/components/DictionaryView";
 import { HistoryView } from "../src/components/HistoryView";
 import { SettingsView } from "../src/components/SettingsView";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../src/lib/desktopBridge";
-
-const modes: ProcessingMode[] = [
-  {
-    id: "message",
-    label: "Message",
-    inputMode: "message",
-    language: "en",
-    localOnly: true,
-    instruction: "Turn speech into a concise message."
-  },
-  {
-    id: "email",
-    label: "Email",
-    inputMode: "email",
-    language: "en",
-    localOnly: true,
-    instruction: "Format as email."
-  },
-  {
-    id: "raw",
-    label: "Raw",
-    inputMode: "raw",
-    language: "en",
-    localOnly: true,
-    instruction: "Keep local output."
-  },
-  {
-    id: "prompt",
-    label: "Prompt",
-    inputMode: "prompt",
-    language: "en",
-    localOnly: true,
-    instruction: "Structure as a prompt."
-  }
-];
 
 const status: PrivateFastStatus = {
   ready: false,
@@ -95,7 +60,7 @@ const models: PrivateFastModel[] = [
 ];
 
 describe("desktop screen render contracts", () => {
-  it("keeps dictation controls, live text, raw preview, and engine telemetry visible", () => {
+  it("keeps dictation controls, live text, shortcuts, and engine telemetry visible", () => {
     const runnableTiers: RunnableTiers = {
       fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true, withinBudget: true },
       medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false, withinBudget: true },
@@ -106,8 +71,6 @@ describe("desktop screen render contracts", () => {
     const markup = renderToStaticMarkup(
       <DictationWorkbench
         language="en"
-        selectedMode="message"
-        modeTemplates={modes}
         isDictating={false}
         liveText="A very long local transcript with punctuation & symbols <> stays editable."
         hotkeyStatus="CommandOrControl+Shift+Space ready"
@@ -117,24 +80,28 @@ describe("desktop screen render contracts", () => {
         selectedModel={models[0]}
         runnableTiers={runnableTiers}
         selectedTier="fast"
+        hotkeys={{ dictation: "Alt+Space", pasteLast: "Alt+Shift+V", activationMode: "hold" }}
         companionAvatar="dog"
         companionEnabled={false}
         onTierChange={vi.fn()}
-        onModeChange={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
+        onOpenHistory={vi.fn()}
       />
     );
 
-    expect(markup).toContain("Message");
-    expect(markup).toContain("Email");
+    expect(markup).toContain("⌥Space");
+    expect(markup).toContain("⌥⇧V");
+    expect(markup).toContain("Hold and speak");
     expect(markup).toContain("Start dictation");
     expect(markup).toContain("CommandOrControl+Shift+Space ready");
     expect(markup).toContain("Copied to clipboard");
   });
 
   it("renders history empty state and dense session actions", () => {
-    const emptyMarkup = renderToStaticMarkup(<HistoryView sessions={[]} query="!@#$" onQueryChange={vi.fn()} onClear={vi.fn()} />);
+    const emptyMarkup = renderToStaticMarkup(
+      <HistoryView sessions={[]} query="!@#$" onQueryChange={vi.fn()} onClear={vi.fn()} onDeleteSession={vi.fn()} />
+    );
     const session: LocalSession = {
       id: "session_1",
       title: "Message 10:30",
@@ -148,13 +115,16 @@ describe("desktop screen render contracts", () => {
       rawText: "raw text",
       text: "final text"
     };
-    const filledMarkup = renderToStaticMarkup(<HistoryView sessions={[session]} query="" onQueryChange={vi.fn()} onClear={vi.fn()} />);
+    const filledMarkup = renderToStaticMarkup(
+      <HistoryView sessions={[session]} query="" onQueryChange={vi.fn()} onClear={vi.fn()} onDeleteSession={vi.fn()} />
+    );
 
     expect(emptyMarkup).toContain("No local dictations match this search.");
     expect(filledMarkup).toContain("Message 10:30");
     expect(filledMarkup).toContain("Copy raw transcript");
     expect(filledMarkup).toContain("Copy final text");
     expect(filledMarkup).toContain("Export markdown");
+    expect(filledMarkup).toContain("Delete message");
   });
 
   it("renders dictionary and snippet empty states plus removal actions for populated data", () => {
@@ -182,6 +152,8 @@ describe("desktop screen render contracts", () => {
 
     expect(emptyMarkup).toContain("No local dictionary terms yet.");
     expect(emptyMarkup).toContain("No local snippets yet.");
+    expect(emptyMarkup).toContain("keeps product names and technical words spelled correctly.");
+    expect(emptyMarkup).toContain("expands to");
     expect(filledMarkup).toContain("SupercalifragilisticDictivoTerm");
     expect(filledMarkup).toContain("Remove");
   });
@@ -195,6 +167,7 @@ describe("desktop screen render contracts", () => {
       benchmarkedAt: "2026-05-12T00:00:00.000Z"
     };
     const sharedProps = {
+      appVersion: "0.2.0",
       hotkeys: {
         dictation: "CommandOrControl+Shift+Space",
         pasteLast: "CommandOrControl+Shift+V",
@@ -250,6 +223,7 @@ describe("desktop screen render contracts", () => {
     expect(companion).toContain("Show floating companion");
     expect(companion).toContain("Cat");
     expect(privacy).toContain("Local-only by design");
+    expect(privacy).toContain("v0.2.0");
     expect(privacy).toContain("Needs permission");
     expect(privacy).toContain("Copy only");
   });

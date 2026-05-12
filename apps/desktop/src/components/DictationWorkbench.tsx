@@ -1,4 +1,4 @@
-import type { InputMode, ProcessingMode, SupportedLanguage } from "@dictivo/shared";
+import type { SupportedLanguage } from "@dictivo/shared";
 import { Mic, X as XIcon } from "lucide-react";
 import { estimateWordCount } from "@dictivo/shared";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
@@ -12,13 +12,12 @@ import type {
   Tier,
   TierAssignment
 } from "../lib/desktopBridge";
-import type { CompanionAvatar } from "../lib/settingsStore";
+import type { CompanionAvatar, HotkeySettings } from "../lib/settingsStore";
+import { formatShortcutForDisplay } from "../lib/hotkeys";
 import { TIER_DISPLAY } from "../lib/tierDisplay";
 
 type DictationWorkbenchProps = {
   language: SupportedLanguage;
-  selectedMode: InputMode;
-  modeTemplates: ProcessingMode[];
   isDictating: boolean;
   liveText: string;
   hotkeyStatus: string;
@@ -28,18 +27,17 @@ type DictationWorkbenchProps = {
   selectedModel: PrivateFastModel | undefined;
   runnableTiers: RunnableTiers;
   selectedTier: Tier;
+  hotkeys: HotkeySettings;
   companionAvatar: CompanionAvatar;
   companionEnabled: boolean;
   onTierChange: (tier: Tier) => void;
-  onModeChange: (mode: InputMode) => void;
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
+  onOpenHistory: () => void;
 };
 
 export function DictationWorkbench({
   language,
-  selectedMode,
-  modeTemplates,
   isDictating,
   liveText,
   hotkeyStatus,
@@ -49,16 +47,20 @@ export function DictationWorkbench({
   selectedModel,
   runnableTiers,
   selectedTier,
+  hotkeys,
   companionAvatar,
   companionEnabled,
   onTierChange,
-  onModeChange,
   onToggleDictation,
-  onLiveTextChange
+  onLiveTextChange,
+  onOpenHistory
 }: DictationWorkbenchProps) {
   const wordCount = estimateWordCount(liveText, language);
   const accel = hardwareProfile?.accelerators?.[0] ?? "CPU";
   const modelLabel = selectedModel?.label ?? privateFastStatus.modelName;
+  const dictationShortcut = formatShortcutForDisplay(hotkeys.dictation);
+  const pasteShortcut = formatShortcutForDisplay(hotkeys.pasteLast);
+  const dictationAction = hotkeys.activationMode === "hold" ? "Hold and speak" : "Start / stop dictation";
 
   const availableTiers: Array<[Tier, TierAssignment]> = (["fast", "medium", "slow"] as const)
     .map((id) => [id, runnableTiers[id]] as [Tier, TierAssignment])
@@ -68,24 +70,9 @@ export function DictationWorkbench({
     <section className="dictation-workbench" aria-label="Local dictation workbench">
       <div className="signal-deck">
         <div className="suggestion-chips" aria-label="Quick tips">
-          <span className="suggestion-chip"><span className="key">⌥Space</span>Hold and speak</span>
-          <span className="suggestion-chip"><span className="key">⌥⇧V</span>Paste last transcript</span>
-          <span className="suggestion-chip">Resume from history…</span>
-        </div>
-
-        <div className="mode-strip">
-          <div className="segmented">
-            {modeTemplates.map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                className={selectedMode === mode.inputMode ? "is-selected" : ""}
-                onClick={() => onModeChange(mode.inputMode)}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
+          <span className="suggestion-chip"><span className="key" title={hotkeys.dictation}>{dictationShortcut}</span>{dictationAction}</span>
+          <span className="suggestion-chip"><span className="key" title={hotkeys.pasteLast}>{pasteShortcut}</span>Paste last transcript</span>
+          <button type="button" className="suggestion-chip suggestion-chip-button" onClick={onOpenHistory}>Resume from history</button>
         </div>
 
         <div className={`capture-stage ${isDictating ? "is-recording" : ""}`}>
@@ -100,7 +87,7 @@ export function DictationWorkbench({
 
           {!liveText && (
             <div className="capture-hint">
-              Tap the mic, or press <kbd>⌥</kbd><kbd>Space</kbd>.
+              Tap the mic, or press <kbd title={hotkeys.dictation}>{dictationShortcut}</kbd>.
             </div>
           )}
           <textarea
@@ -146,13 +133,13 @@ export function DictationWorkbench({
       </div>
 
       {companionEnabled && (
-        <CompanionPreview avatar={companionAvatar} isDictating={isDictating} />
+        <CompanionPreview avatar={companionAvatar} isDictating={isDictating} hotkey={dictationShortcut} />
       )}
     </section>
   );
 }
 
-function CompanionPreview({ avatar, isDictating }: { avatar: CompanionAvatar; isDictating: boolean }) {
+function CompanionPreview({ avatar, isDictating, hotkey }: { avatar: CompanionAvatar; isDictating: boolean; hotkey: string }) {
   return (
     <div className="companion-preview" aria-hidden="true">
       <div className="avatar">
@@ -160,7 +147,7 @@ function CompanionPreview({ avatar, isDictating }: { avatar: CompanionAvatar; is
       </div>
       <div>
         <div className="label">{isDictating ? "Recording" : "Standing by"}</div>
-        <div className="duration">⌥+Space</div>
+        <div className="duration">{hotkey}</div>
       </div>
       <button
         type="button"

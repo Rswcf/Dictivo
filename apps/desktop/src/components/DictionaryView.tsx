@@ -35,6 +35,11 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
             <Plus size={18} />
           </IconButton>
         </div>
+        <div className="field-example">
+          <span>Example</span>
+          <code>Dictivo</code>
+          <small>keeps product names and technical words spelled correctly.</small>
+        </div>
         <div className="token-list">
           {dictionary.length === 0 ? (
             <div className="empty-panel">No local dictionary terms yet.</div>
@@ -64,6 +69,12 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
             <Plus size={16} />
             Add
           </button>
+        </div>
+        <div className="field-example field-example--snippet">
+          <span>Example</span>
+          <code>my calendar link</code>
+          <small>expands to</small>
+          <code>https://cal.com/example</code>
         </div>
         <div className="snippet-list">
           {snippets.length === 0 ? (

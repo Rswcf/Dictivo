@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { isShortcutPress, resolveHotkeyIntent, shortcutMatches, uniqueShortcuts } from "../src/lib/hotkeys";
+import { formatShortcutForDisplay, isShortcutPress, resolveHotkeyIntent, shortcutMatches, uniqueShortcuts } from "../src/lib/hotkeys";
 
 const hotkeys = {
   dictation: "CommandOrControl+Shift+Space",
@@ -27,6 +27,12 @@ describe("global hotkey helpers", () => {
     expect(shortcutMatches("Ctrl+Shift+Space", "CmdOrCtrl+Shift+Space")).toBe(true);
     expect(shortcutMatches("Command+Shift+V", "CommandOrControl+Shift+Space")).toBe(false);
     expect(shortcutMatches("Command+Alt+Space", "CommandOrControl+Shift+Space")).toBe(false);
+  });
+
+  it("formats settings shortcuts for compact workbench chips", () => {
+    expect(formatShortcutForDisplay("Alt+Space")).toBe("⌥Space");
+    expect(formatShortcutForDisplay("CommandOrControl+Alt+K")).toBe("⌘⌥K");
+    expect(formatShortcutForDisplay("")).toBe("Unset");
   });
 
   it("maps toggle dictation events to start and stop actions", () => {

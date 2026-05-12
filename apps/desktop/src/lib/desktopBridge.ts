@@ -144,6 +144,20 @@ export async function clearLocalSessions() {
   await invoke("clear_sessions");
 }
 
+export async function deleteLocalSession(sessionId: string) {
+  if (!isTauriRuntime()) {
+    const sessions = await listLocalSessions();
+    const remaining = sessions.filter((session) => session.id !== sessionId);
+    if (remaining.length === 0) {
+      localStorage.removeItem(storageKey);
+    } else {
+      localStorage.setItem(storageKey, JSON.stringify(remaining));
+    }
+    return;
+  }
+  await invoke("delete_session", { sessionId });
+}
+
 export async function getPrivateFastStatus(): Promise<PrivateFastStatus> {
   if (!isTauriRuntime()) {
     return {

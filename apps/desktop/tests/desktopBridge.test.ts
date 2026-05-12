@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearLocalSessions,
+  deleteLocalSession,
   deletePrivateFastModel,
   downloadPrivateFastModel,
   getClipboardMarker,
@@ -122,7 +123,7 @@ describe("desktop bridge browser fallback", () => {
     expect(writeText).toHaveBeenCalledWith("local transcript");
   });
 
-  it("persists, caps, lists, and clears local sessions in browser preview", async () => {
+  it("persists, caps, lists, deletes one, and clears local sessions in browser preview", async () => {
     const manySessions = Array.from({ length: 101 }, (_, index) => ({
       ...session,
       id: `session_${index}`,
@@ -137,6 +138,12 @@ describe("desktop bridge browser fallback", () => {
     expect(saved).toHaveLength(100);
     expect(saved[0]?.id).toBe("session_100");
     expect(saved[99]?.id).toBe("session_1");
+
+    await deleteLocalSession("session_100");
+    const afterSingleDelete = await listLocalSessions();
+    expect(afterSingleDelete).toHaveLength(99);
+    expect(afterSingleDelete.some((item) => item.id === "session_100")).toBe(false);
+    expect(afterSingleDelete[0]?.id).toBe("session_99");
 
     await clearLocalSessions();
     await expect(listLocalSessions()).resolves.toEqual([]);
