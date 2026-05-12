@@ -2,6 +2,8 @@
 
 [English](../README.md) | [简体中文](README.zh-CN.md) | 日本語 | [Español](README.es.md)
 
+> ⚠️ この日本語翻訳は最新の英語 README より遅れています（Stitch スタイル UI、クリック可能な tier カード、Fast/Medium/Quality 命名、5 種類の mascot アバター、ベトナム語サポートなど）。最新の機能については [English README](../README.md) を参照してください。翻訳 PR を歓迎します。
+
 Dictivo は macOS と Windows 向けのローカルファーストな音声入力アプリです。デバイス上の `whisper.cpp` エンジンで文字起こしを行い、音声、文字起こし、辞書、スニペット、履歴をクラウド AI に送らずに使えることを重視しています。
 
 ## Dictivo が向いていること

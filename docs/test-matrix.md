@@ -9,13 +9,13 @@ Scope: local-first desktop UI, companion window, shared privacy contracts, and m
 | Dictation Workbench | Mode switching surface, live transcript editor, start/stop button, telemetry, hotkey and paste status | Engine not ready, raw transcript preview, long text and special characters, recording animation classes | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/wireframeVisual.test.ts` |
 | Local History | Search input, clear-history control, copy raw, copy final, markdown export | Empty search result, raw transcript present/missing, dense session metadata | `apps/desktop/tests/componentsStatic.test.tsx` |
 | Dictionary & Snippets | Add-term/add-snippet controls, removal controls | Empty dictionary, empty snippets, long term, URL replacement with query characters | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/localPolish.test.ts` |
-| Settings: Local Engine | Model selection mode, profile selection, download/select/delete controls, import path, refresh | Installed selected model, pending download state, hardware recommendation, missing CLI text | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/desktopBridge.test.ts` |
+| Settings: Local Engine | Recommended card + Re-run setup, three clickable tier cards (Fast / Medium / Quality), inline confirm for download / out-of-budget, Advanced collapse with raw catalog + import path | Active tier badge, "↓ Download" / "⚠ may be slow" hints, downloading busy overlay, no-model error, "Run setup wizard instead" link | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/desktopBridge.test.ts`, `apps/desktop/e2e/tier-cards.spec.ts` |
 | Settings: Hotkeys | Dictation and Paste Last shortcut rows, activation mode select | Toggle/hold mapping, duplicate shortcut collapse, press/release behavior | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/hotkeys.test.ts` |
-| Settings: Processing | Auto polish, spoken punctuation, filler removal, capitalization toggles | Raw mode bypass, CJK punctuation, prompt/email/message formatting | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/localPolish.test.ts` |
-| Settings: Companion | Enable toggle, avatar picker | Dog/cat/Trump avatar normalization, hidden companion setting persistence | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/settingsStore.test.ts`, `apps/desktop/tests/companion.test.ts` |
+| Settings: Engine → Advanced → Processing | Auto polish, spoken punctuation, filler removal, capitalization toggles (now collapsed under Engine → Advanced) | Raw mode bypass, CJK punctuation, prompt/email/message formatting | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/localPolish.test.ts` |
+| Settings: Companion | Enable toggle, avatar picker | Dog/cat/Trump/bikini/muscle avatar normalization, hidden companion setting persistence | `apps/desktop/tests/componentsStatic.test.tsx`, `apps/desktop/tests/settingsStore.test.ts`, `apps/desktop/tests/companion.test.ts` |
 | Settings: Privacy | Permission cards, status copy, refresh control | Granted, denied, clipboard-only, web-preview, unknown native placeholder | `apps/desktop/tests/privacySettings.test.ts`, `apps/desktop/tests/componentsStatic.test.tsx` |
 | Floating Companion | Idle, recording, processing, complete, blocked, error summaries | Timer source, word count, paste status, avatar asset, grayscale wireframe styling | `apps/desktop/tests/companion.test.ts`, `apps/desktop/tests/wireframeVisual.test.ts` |
-| Responsive UI | Sidebar collapse, horizontal nav, single-column panels, mobile companion sizing | Desktop and mobile breakpoints, horizontal overflow guard, nonblank screenshot capture | `apps/desktop/tests/wireframeVisual.test.ts`, `apps/desktop/e2e/app.spec.ts` |
+| Desktop UI | Sidebar layout, single-column panels, capture stage centering, horizontal overflow guard, nonblank screenshot capture | Fixed 72px sidebar, 1440×960 chromium baseline | `apps/desktop/tests/wireframeVisual.test.ts`, `apps/desktop/e2e/app.spec.ts` |
 
 ## Core Logic And API
 
@@ -41,25 +41,25 @@ These require a real browser/Tauri runtime, microphone permissions, and a local 
 | Native model operations | Download/select/delete/import every listed model | Operation state disables duplicate clicks and final status updates correctly |
 | Global hotkeys | Toggle and hold modes from another active app | Start/stop/paste-last intents fire exactly once per press/release sequence |
 | Rapid navigation | Click all nav/settings tabs repeatedly during loading/operation | No UI state loss, overlap, or disabled-control escape |
-| Browser sizes | 390px mobile, 768px tablet, 1440px desktop | 390px and 1440px are automated; 768px tablet remains a manual spot check |
+| Browser sizes | 1440×960 chromium desktop is automated; tablet / mobile are manual spot checks since Dictivo is a Tauri desktop app | 1440px desktop covered by Playwright; smaller viewports are not a release-blocking surface |
 | Accessibility pass | Keyboard tab through main nav, forms, settings, companion close | Visible focus outline, named icon buttons, no keyboard trap |
 
 ## Hardware Tier Mapping (manual)
 
-For each row, install Dictivo on the target hardware, run the onboarding wizard, and record what the UI shows. Confirm the footer status line reads `<Tier> · <model> · <accel> · <hotkey>` and that the Companion floating window paints with no window chrome.
+For each row, install Dictivo on the target hardware, run the onboarding wizard, and record what the UI shows. All three tier cards (Fast / Medium / Quality) always render now — entries flagged ⚠ are still clickable but warn before download. Confirm the workspace footer status chips show the active tier + accel + model, and that the Companion floating window paints with no window chrome.
 
 | Machine                              | Expected `performance_class` | Expected tiers visible            | Verified |
 | ------------------------------------ | ---------------------------- | --------------------------------- | -------- |
-| macOS Apple Silicon M3 / 16 GB       | `GpuHigh`                    | Fast, Medium, Slow                |          |
-| macOS Apple Silicon M1 / 8 GB        | `CpuStrong`                  | Fast, Medium (Slow may be hidden) |          |
-| macOS Intel 16 GB with AMD dGPU 8 GB | `GpuHigh`                    | Fast, Medium, Slow                |          |
-| macOS Intel 16 GB, integrated GPU    | `CpuStrong`                  | Fast, Medium                      |          |
-| Windows + RTX 3060 (8 GB) + 16 GB    | `GpuHigh`                    | Fast, Medium, Slow                |          |
-| Windows CPU-only, 8 cores, 16 GB     | `CpuStrong`                  | Fast, Medium                      |          |
-| Windows CPU-only, 4 cores, 8 GB      | `CpuWeak`                    | Fast (Medium maybe; Slow hidden)  |          |
-| Linux + NVIDIA CUDA + 16 GB          | `GpuHigh`                    | Fast, Medium, Slow                |          |
-| Linux CPU-only, 8 cores, 16 GB       | `CpuStrong`                  | Fast, Medium                      |          |
+| macOS Apple Silicon M3 / 16 GB       | `GpuHigh`                    | Fast, Medium, Quality                 |          |
+| macOS Apple Silicon M1 / 8 GB        | `CpuStrong`                  | Fast, Medium (Quality flagged ⚠)      |          |
+| macOS Intel 16 GB with AMD dGPU 8 GB | `GpuHigh`                    | Fast, Medium, Quality                 |          |
+| macOS Intel 16 GB, integrated GPU    | `CpuStrong`                  | Fast, Medium (Quality flagged ⚠)      |          |
+| Windows + RTX 3060 (8 GB) + 16 GB    | `GpuHigh`                    | Fast, Medium, Quality                 |          |
+| Windows CPU-only, 8 cores, 16 GB     | `CpuStrong`                  | Fast, Medium (Quality flagged ⚠)      |          |
+| Windows CPU-only, 4 cores, 8 GB      | `CpuWeak`                    | Fast (Medium / Quality flagged ⚠)     |          |
+| Linux + NVIDIA CUDA + 16 GB          | `GpuHigh`                    | Fast, Medium, Quality                 |          |
+| Linux CPU-only, 8 cores, 16 GB       | `CpuStrong`                  | Fast, Medium (Quality flagged ⚠)      |          |
 
 ## Coverage Limits
 
-The repository now includes Playwright E2E coverage for Chromium desktop and mobile web-preview flows plus Vitest coverage for render contracts, pure logic, fallback behavior, CSS contracts, and API privacy. It still cannot fully prove native microphone capture, Tauri companion window positioning, OS permission dialogs, global shortcut registration in another app, or real whisper.cpp model execution without running the packaged desktop app with local permissions and models. Those are tracked above as manual/native scenarios.
+The repository runs Playwright E2E coverage on a 1440×960 chromium-desktop project plus Vitest coverage for render contracts, pure logic, fallback behavior, CSS contracts, and API privacy. The previous chromium-mobile project was retired since Dictivo ships as a Tauri desktop app; tablet/mobile viewport behavior is a manual spot check. The suite still cannot prove native microphone capture, Tauri companion window positioning, OS permission dialogs, global shortcut registration in another app, or real whisper.cpp model execution without running the packaged desktop app with local permissions and models. Those are tracked above as manual/native scenarios.

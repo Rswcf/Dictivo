@@ -49,17 +49,17 @@ Most dictation apps make you choose between speed, accuracy, and privacy. Dictiv
 
 ## 🖥 The killer feature: hardware-aware tier selection
 
-Dictivo benchmarks your machine on first launch and exposes **only the models you can actually run smoothly**.
+Dictivo benchmarks your machine on first launch and labels each tier with the predicted real-time factor — so you can pick **Fast**, **Medium**, or **Quality** with full knowledge of the tradeoff.
 
 ```
-   Your hardware                Dictivo shows                  Behind the scenes
-─────────────────────       ─────────────────────         ─────────────────────────────
- Apple M3 Pro 18 GB    →     Fast · Medium · Slow    →     small · large-v3-turbo-q5 · large-v3
- Intel i7 16 GB CPU    →     Fast · Medium           →     base · small (Slow hidden — too slow)
- 8 GB integrated GPU   →     Fast                    →     tiny (Medium/Slow hidden honestly)
+   Your hardware                Dictivo shows                          Behind the scenes
+─────────────────────       ──────────────────────────────       ─────────────────────────────
+ Apple M3 Pro 18 GB    →     Fast · Medium · Quality        →     small · large-v3-turbo-q5 · large-v3
+ Intel i7 16 GB CPU    →     Fast · Medium · Quality ⚠      →     base · small · large-v3-turbo-q5
+ 8 GB integrated GPU   →     Fast · Medium ⚠ · Quality ⚠    →     tiny · base · small (warned)
 ```
 
-No more "I downloaded Large-v3 and it took 12 minutes to transcribe a 30-second clip." Dictivo measures the **real-time factor** on your machine and quietly hides any tier that can't keep up.
+Out-of-budget tiers (⚠) are still clickable — you get a warning confirm with the predicted slowdown so you can decide. No more "I downloaded Large-v3 and it took 12 minutes to transcribe a 30-second clip" — you knew up front.
 
 ---
 
@@ -108,7 +108,7 @@ Nothing in this loop ever talks to a cloud API. Audio, transcript, dictionary, s
 
 ## 🐶 The floating companion
 
-A 360 × 100 px transparent window that sits in the corner of your screen, animated by a cartoon mascot. Pick **dog**, **cat**, or **Trump**.
+A 360 × 100 px transparent window that sits in the corner of your screen, animated by a cartoon mascot. Pick **dog**, **cat**, **Trump**, **bikini**, or **muscle** — drop your own 96 × 96 PNG into `apps/desktop/src/assets/avatars/` to add a sixth.
 
 <p align="center">
   <em>[ companion screenshot — drop at <code>docs/assets/companion.png</code> ]</em>
@@ -128,7 +128,7 @@ It's silly. People share it. We're keeping it.
 - **🎙 4 polish modes** — Message, Email, Raw, Prompt. Same recording, four different finished outputs.
 - **🔥 Global hotkeys** — `⌥+Space` to dictate, `⌥+Shift+V` to paste the last transcript anywhere.
 - **📖 Local dictionary & snippets** — Teach Dictivo proper nouns and trigger phrases. Zero round-trip to a server.
-- **🧠 7-language transcription** — English, 中文, Español, 日本語, Français, Deutsch (and any other Whisper-supported tongue at the engine level).
+- **🧠 7-language transcription** — English, 中文, Español, 日本語, Français, Deutsch, Tiếng Việt (and any other Whisper-supported tongue at the engine level).
 - **🪟 Floating companion window** — Always-on-top, transparent, draggable, dismissible.
 - **🛠 Power user escape hatch** — Settings → Local Engine → Advanced exposes the full 7-model `whisper.cpp` catalog if you don't want auto-pick.
 - **🔄 Snappy hot reload** — Tauri 2 + Vite + React 19 + TypeScript. The UI repaints instantly.
