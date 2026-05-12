@@ -186,7 +186,14 @@ describe("desktop screen render contracts", () => {
     expect(filledMarkup).toContain("Remove");
   });
 
-  it("renders every settings subsection with its expected controls", () => {
+  it("renders every settings subsection with its expected controls (4-section layout)", () => {
+    const runnableTiers: RunnableTiers = {
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true },
+      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false },
+      slow: null,
+      fingerprint: "abc123",
+      benchmarkedAt: "2026-05-12T00:00:00.000Z"
+    };
     const sharedProps = {
       hotkeys: {
         dictation: "CommandOrControl+Shift+Space",
@@ -207,15 +214,12 @@ describe("desktop screen render contracts", () => {
       privateFastStatus: installedStatus,
       privateFastModels: models,
       privateFastOperation: "download:large-v3",
-      privateFastProfile: "quality" as const,
-      modelSelectionMode: "manual" as const,
+      runnableTiers,
       companionEnabled: true,
       companionAvatar: "cat" as const,
       hardwareProfile: hardware,
       onHotkeyChange: vi.fn(),
       onProcessingChange: vi.fn(),
-      onProfileChange: vi.fn(),
-      onSelectionModeChange: vi.fn(),
       onCompanionEnabledChange: vi.fn(),
       onCompanionAvatarChange: vi.fn(),
       onModelAction: vi.fn(),
@@ -225,7 +229,6 @@ describe("desktop screen render contracts", () => {
 
     const engine = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="engine" />);
     const hotkeys = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="hotkeys" />);
-    const processing = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="processing" />);
     const companion = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="companion" />);
     const privacy = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="privacy" />);
 
@@ -233,10 +236,11 @@ describe("desktop screen render contracts", () => {
     expect(engine).toContain("Selected");
     expect(engine).toContain("Downloading");
     expect(engine).toContain("Import");
+    // Processing toggles are now collapsed under Engine → Advanced (details/summary)
+    expect(engine).toContain("Auto polish");
+    expect(engine).toContain("Smart capitalization");
     expect(hotkeys).toContain("Paste Last");
     expect(hotkeys).toContain("Dictation activation");
-    expect(processing).toContain("Auto polish");
-    expect(processing).toContain("Smart capitalization");
     expect(companion).toContain("Show floating companion");
     expect(companion).toContain("Cat");
     expect(privacy).toContain("Local-only by design");
