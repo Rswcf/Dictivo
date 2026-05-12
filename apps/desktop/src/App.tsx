@@ -21,6 +21,7 @@ import {
   getHardwareProfile,
   getPrivateFastModels,
   getPrivateFastStatus,
+  getRunnableTiers,
   importPrivateFastModel,
   isTauriRuntime,
   listLocalSessions,
@@ -32,7 +33,9 @@ import {
   downloadPrivateFastModel,
   type HardwareProfile,
   type PrivateFastModel,
-  type PrivateFastStatus
+  type PrivateFastStatus,
+  type RunnableTiers,
+  type Tier
 } from "./lib/desktopBridge";
 import {
   DEFAULT_HOTKEYS,
@@ -43,11 +46,10 @@ import {
   saveSettings,
   type HotkeySettings,
   type LocalProcessingSettings,
-  type ModelSelectionMode,
-  type PrivateFastProfile,
   type CompanionAvatar
 } from "./lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase } from "./lib/companion";
+import { OnboardingWizard } from "./components/OnboardingWizard";
 import { DictationWorkbench } from "./components/DictationWorkbench";
 import { CompanionWindow } from "./components/CompanionWindow";
 import { HistoryView } from "./components/HistoryView";
@@ -126,8 +128,15 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [snippets, setSnippets] = useState<Snippet[]>(sampleSnippets);
   const [query, setQuery] = useState("");
   const [permissions, setPermissions] = useState<Record<string, string>>({});
-  const [privateFastProfile, setPrivateFastProfile] = useState<PrivateFastProfile>("balanced");
-  const [modelSelectionMode, setModelSelectionMode] = useState<ModelSelectionMode>("auto");
+  const [selectedTier, setSelectedTier] = useState<Tier>("medium");
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(false);
+  const [runnableTiers, setRunnableTiers] = useState<RunnableTiers>({
+    fast: null,
+    medium: null,
+    slow: null,
+    fingerprint: "",
+    benchmarkedAt: ""
+  });
   const [companionEnabled, setCompanionEnabled] = useState(true);
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>("dog");
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(DEFAULT_HOTKEYS);
@@ -180,8 +189,8 @@ export function App({ windowLabel = "main" }: AppProps) {
     if (settings.selectedMode) setSelectedMode(settings.selectedMode);
     if (settings.dictionary) setDictionary(settings.dictionary);
     if (settings.snippets) setSnippets(settings.snippets);
-    if (settings.privateFastProfile) setPrivateFastProfile(settings.privateFastProfile);
-    if (settings.modelSelectionMode) setModelSelectionMode(settings.modelSelectionMode);
+    if (settings.selectedTier) setSelectedTier(settings.selectedTier);
+    setOnboardingCompleted(Boolean(settings.onboardingCompleted));
     if (typeof settings.companionEnabled === "boolean") setCompanionEnabled(settings.companionEnabled);
     if (settings.companionAvatar) setCompanionAvatar(settings.companionAvatar);
     setHotkeys(normalizeHotkeys(settings.hotkeys));
@@ -199,8 +208,8 @@ export function App({ windowLabel = "main" }: AppProps) {
     saveSettings({
       language,
       selectedMode,
-      privateFastProfile,
-      modelSelectionMode,
+      selectedTier,
+      onboardingCompleted,
       companionEnabled,
       companionAvatar,
       hotkeys,
@@ -208,24 +217,24 @@ export function App({ windowLabel = "main" }: AppProps) {
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, modelSelectionMode, privateFastProfile, selectedMode, snippets]);
+  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedMode, selectedTier, snippets]);
 
   useEffect(() => {
-    if (modelSelectionMode !== "auto" || !hardwareProfile || privateFastOperation) return;
-    setPrivateFastProfile(hardwareProfile.recommendedProfile);
-    const recommended = privateFastModels.find((model) => model.id === hardwareProfile.recommendedModelId);
-    if (!recommended?.installed || recommended.selected) return;
+    void getRunnableTiers().then(setRunnableTiers).catch(() => {});
+  }, [onboardingCompleted]);
 
-    void selectPrivateFastModel(recommended.id)
+  useEffect(() => {
+    const assignment = runnableTiers[selectedTier];
+    if (!assignment?.downloaded) return;
+    if (assignment.modelId === selectedModel?.id) return;
+    void selectPrivateFastModel(assignment.modelId)
       .then((status) => {
         setPrivateFastStatus(status);
         return getPrivateFastModels();
       })
       .then(setPrivateFastModels)
-      .catch(() => {
-        // Auto-selection is best-effort; the user can still select a model manually.
-      });
-  }, [hardwareProfile, modelSelectionMode, privateFastModels, privateFastOperation]);
+      .catch(() => {});
+  }, [runnableTiers, selectedModel?.id, selectedTier]);
 
   const saveSession = useCallback(async (partial: Omit<LocalSession, "id" | "createdAt">) => {
     const session: LocalSession = {
@@ -290,7 +299,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         dictionary: dictionaryValues,
         snippets: snippetValues,
         mode: selectedMode,
-        profile: privateFastProfile,
+        profile: tierToProfile(selectedTier),
         localProcessing
       });
 
@@ -322,7 +331,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       );
       const completionMessage =
         result.fallbackUsed
-          ? `Local transcription completed with fast fallback after ${privateFastProfile} profile failed.`
+          ? `Local transcription completed with fast fallback after ${selectedTier} profile failed.`
           : result.slowWarning
             ? result.slowWarning
             : `Local transcription completed with ${result.profileUsed} profile.`;
@@ -337,7 +346,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       setDictationPhase("error");
       setStatusMessage(error instanceof Error ? error.message : "Local dictation failed.");
     }
-  }, [dictionary, language, localProcessing, privateFastProfile, saveSession, selectedMode, snippets]);
+  }, [dictionary, language, localProcessing, saveSession, selectedMode, selectedTier, snippets]);
 
   const toggleDictation = useCallback(() => {
     if (isDictatingRef.current) {
@@ -521,7 +530,6 @@ export function App({ windowLabel = "main" }: AppProps) {
               : await deletePrivateFastModel(modelId);
         setPrivateFastStatus(nextStatus);
         setPrivateFastModels(await getPrivateFastModels());
-        setModelSelectionMode(action === "select" ? "manual" : modelSelectionMode);
         setStatusMessage(action === "delete" ? "Local model deleted." : action === "download" ? "Local model downloaded and selected." : "Local model selected.");
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : "Local model operation failed.");
@@ -529,7 +537,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         setPrivateFastOperation("");
       }
     },
-    [modelSelectionMode]
+    []
   );
 
   const runImportModel = useCallback(async (modelId: string, sourcePath: string) => {
@@ -544,7 +552,6 @@ export function App({ windowLabel = "main" }: AppProps) {
       const nextStatus = await importPrivateFastModel(modelId, trimmed);
       setPrivateFastStatus(nextStatus);
       setPrivateFastModels(await getPrivateFastModels());
-      setModelSelectionMode("manual");
       setStatusMessage("Local model imported and selected.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Local model import failed.");
@@ -563,6 +570,10 @@ export function App({ windowLabel = "main" }: AppProps) {
       [key]: value
     }));
   }, []);
+
+  if (!onboardingCompleted) {
+    return <OnboardingWizard onComplete={() => setOnboardingCompleted(true)} />;
+  }
 
   return (
     <main className="app-shell">
@@ -629,7 +640,9 @@ export function App({ windowLabel = "main" }: AppProps) {
             privateFastStatus={privateFastStatus}
             hardwareProfile={hardwareProfile}
             selectedModel={selectedModel}
-            privateFastProfile={privateFastProfile}
+            runnableTiers={runnableTiers}
+            selectedTier={selectedTier}
+            onTierChange={setSelectedTier}
             onModeChange={setSelectedMode}
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
@@ -669,15 +682,12 @@ export function App({ windowLabel = "main" }: AppProps) {
             privateFastStatus={privateFastStatus}
             privateFastModels={privateFastModels}
             privateFastOperation={privateFastOperation}
-            privateFastProfile={privateFastProfile}
-            modelSelectionMode={modelSelectionMode}
             companionEnabled={companionEnabled}
             companionAvatar={companionAvatar}
             hardwareProfile={hardwareProfile}
+            runnableTiers={runnableTiers}
             onHotkeyChange={updateHotkey}
             onProcessingChange={updateProcessingSetting}
-            onProfileChange={setPrivateFastProfile}
-            onSelectionModeChange={setModelSelectionMode}
             onCompanionEnabledChange={setCompanionEnabled}
             onCompanionAvatarChange={setCompanionAvatar}
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
@@ -715,6 +725,12 @@ function countWords(text: string, language: SupportedLanguage) {
   if (!trimmed) return 0;
   if (language === "zh" || language === "ja") return [...trimmed.replace(/\s+/g, "")].length;
   return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
+function tierToProfile(tier: Tier): "fast" | "balanced" | "quality" {
+  if (tier === "fast") return "fast";
+  if (tier === "slow") return "quality";
+  return "balanced";
 }
 
 async function positionCompanionWindow(window: TauriWindow) {

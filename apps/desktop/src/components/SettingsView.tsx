@@ -1,7 +1,7 @@
 import { Bot, Cat, ClipboardCheck, Dog, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, WifiOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
-import type { HardwareProfile, PrivateFastModel, PrivateFastStatus } from "../lib/desktopBridge";
+import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../lib/desktopBridge";
 import type {
   CompanionAvatar,
   HotkeySettings,
@@ -20,15 +20,16 @@ type SettingsViewProps = {
   privateFastStatus: PrivateFastStatus;
   privateFastModels: PrivateFastModel[];
   privateFastOperation: string;
-  privateFastProfile: PrivateFastProfile;
-  modelSelectionMode: ModelSelectionMode;
+  privateFastProfile?: PrivateFastProfile;
+  modelSelectionMode?: ModelSelectionMode;
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
   hardwareProfile: HardwareProfile | null;
+  runnableTiers?: RunnableTiers;
   onHotkeyChange: (key: keyof HotkeySettings, value: string) => void;
   onProcessingChange: (key: keyof LocalProcessingSettings, value: boolean) => void;
-  onProfileChange: (profile: PrivateFastProfile) => void;
-  onSelectionModeChange: (mode: ModelSelectionMode) => void;
+  onProfileChange?: (profile: PrivateFastProfile) => void;
+  onSelectionModeChange?: (mode: ModelSelectionMode) => void;
   onCompanionEnabledChange: (enabled: boolean) => void;
   onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
@@ -179,10 +180,10 @@ export function SettingsView({
               models={privateFastModels}
               hardwareProfile={hardwareProfile}
               operation={privateFastOperation}
-              profile={privateFastProfile}
-              selectionMode={modelSelectionMode}
-              onProfileChange={onProfileChange}
-              onSelectionModeChange={onSelectionModeChange}
+              profile={privateFastProfile ?? "balanced"}
+              selectionMode={modelSelectionMode ?? "auto"}
+              onProfileChange={onProfileChange ?? (() => {})}
+              onSelectionModeChange={onSelectionModeChange ?? (() => {})}
               onModelAction={onModelAction}
               onImportModel={onImportModel}
               onRefresh={onRefreshNative}

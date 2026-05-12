@@ -90,7 +90,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               <ul className="hw-list">
                 <li>CPU · {hardware.cpuCores} cores</li>
                 <li>RAM · {Math.round((hardware.memoryTotalBytes ?? 0) / 1024 ** 3)} GB</li>
-                <li>GPU · {gpus.length > 0 ? gpus[0].name : "Not detected"}</li>
+                <li>GPU · {gpus.length > 0 ? (gpus[0]?.name ?? "Unknown") : "Not detected"}</li>
               </ul>
             )}
             {error && <p className="error">{error}</p>}
