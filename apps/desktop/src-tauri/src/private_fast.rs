@@ -78,16 +78,69 @@ pub struct TierAssignment {
     pub realtime_factor: f32,
     pub predicted: bool,
     pub downloaded: bool,
+    pub within_budget: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnableTiers {
-    pub fast: Option<TierAssignment>,
-    pub medium: Option<TierAssignment>,
-    pub slow: Option<TierAssignment>,
+    pub fast: TierAssignment,
+    pub medium: TierAssignment,
+    pub slow: TierAssignment,
     pub fingerprint: String,
     pub benchmarked_at: String,
+}
+
+/// Legacy shape used by benchmark.json caches written before the
+/// within_budget refactor. Used only to migrate old caches forward.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyTierAssignment {
+    model_id: String,
+    realtime_factor: f32,
+    predicted: bool,
+    downloaded: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyRunnableTiers {
+    fast: Option<LegacyTierAssignment>,
+    medium: Option<LegacyTierAssignment>,
+    slow: Option<LegacyTierAssignment>,
+    fingerprint: String,
+    benchmarked_at: String,
+}
+
+fn migrate_legacy_tiers(legacy: LegacyRunnableTiers) -> RunnableTiers {
+    let synth = |slot: Option<LegacyTierAssignment>, default_model: &str| -> TierAssignment {
+        match slot {
+            Some(a) => TierAssignment {
+                model_id: a.model_id,
+                realtime_factor: a.realtime_factor,
+                predicted: a.predicted,
+                downloaded: a.downloaded,
+                within_budget: true,
+            },
+            None => TierAssignment {
+                model_id: default_model.to_string(),
+                realtime_factor: 0.0,
+                predicted: true,
+                downloaded: false,
+                within_budget: false,
+            },
+        }
+    };
+    let fast_default = legacy.fast.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "base".to_string());
+    let medium_default = legacy.medium.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "small".to_string());
+    let slow_default = legacy.slow.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "large-v3".to_string());
+    RunnableTiers {
+        fast: synth(legacy.fast, &fast_default),
+        medium: synth(legacy.medium, &medium_default),
+        slow: synth(legacy.slow, &slow_default),
+        fingerprint: legacy.fingerprint,
+        benchmarked_at: legacy.benchmarked_at,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,41 +302,30 @@ where
 {
     let medium_model = default_model_for_tier(class, Tier::Medium);
     let medium_ratio = ratio_of(medium_model);
-    let baseline = if medium_ratio > 0.0 { measured_medium_rtf / medium_ratio } else { 0.0 };
+    let baseline = if medium_ratio > 0.0 {
+        measured_medium_rtf / medium_ratio
+    } else {
+        0.0
+    };
 
-    let mut assignments: [Option<TierAssignment>; 3] = [None, None, None];
-    for (idx, tier) in [Tier::Fast, Tier::Medium, Tier::Slow].into_iter().enumerate() {
+    let make_assignment = |tier: Tier| -> TierAssignment {
         let model_id = default_model_for_tier(class, tier).to_string();
         let rtf = baseline * ratio_of(&model_id);
-        let within_budget = rtf <= tier_budget(tier);
         let is_medium = matches!(tier, Tier::Medium);
-        if within_budget || is_medium {
-            assignments[idx] = Some(TierAssignment {
-                downloaded: is_installed(&model_id),
-                predicted: !is_medium,
-                realtime_factor: rtf,
-                model_id,
-            });
-        }
-    }
-
-    // Edge case: guarantee at least one tier.
-    // Fast is always force-shown so there is a usable option even on very slow machines.
-    if assignments.iter().all(|a| a.is_none()) || assignments[0].is_none() {
-        let model_id = default_model_for_tier(class, Tier::Fast).to_string();
-        let rtf = baseline * ratio_of(&model_id);
-        assignments[0] = Some(TierAssignment {
+        let within_budget = rtf <= tier_budget(tier);
+        TierAssignment {
             downloaded: is_installed(&model_id),
-            predicted: true,
+            predicted: !is_medium,
             realtime_factor: rtf,
             model_id,
-        });
-    }
+            within_budget,
+        }
+    };
 
     RunnableTiers {
-        fast: assignments[0].clone(),
-        medium: assignments[1].clone(),
-        slow: assignments[2].clone(),
+        fast: make_assignment(Tier::Fast),
+        medium: make_assignment(Tier::Medium),
+        slow: make_assignment(Tier::Slow),
         fingerprint: fingerprint.to_string(),
         benchmarked_at: benchmarked_at.to_string(),
     }
@@ -1300,28 +1342,26 @@ mod tests {
 
     #[test]
     fn runnable_tiers_roundtrip_json() {
+        let make = |model_id: &str, rtf: f32, predicted: bool, downloaded: bool, within_budget: bool| TierAssignment {
+            model_id: model_id.into(),
+            realtime_factor: rtf,
+            predicted,
+            downloaded,
+            within_budget,
+        };
         let original = RunnableTiers {
-            fast: Some(TierAssignment {
-                model_id: "small".into(),
-                realtime_factor: 0.65,
-                predicted: false,
-                downloaded: true,
-            }),
-            medium: Some(TierAssignment {
-                model_id: "large-v3-turbo-q5_0".into(),
-                realtime_factor: 0.85,
-                predicted: false,
-                downloaded: true,
-            }),
-            slow: None,
+            fast: make("small", 0.65, false, true, true),
+            medium: make("large-v3-turbo-q5_0", 0.85, false, true, true),
+            slow: make("large-v3", 3.2, true, false, false),
             fingerprint: "ab12".into(),
             benchmarked_at: "2026-05-12T10:14:00Z".into(),
         };
         let json = serde_json::to_string(&original).unwrap();
         assert!(json.contains("\"realtimeFactor\":0.65"), "uses camelCase: {}", json);
+        assert!(json.contains("\"withinBudget\":true"), "withinBudget serialized: {}", json);
         let back: RunnableTiers = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.fast.as_ref().unwrap().model_id, "small");
-        assert!(back.slow.is_none());
+        assert_eq!(back.fast.model_id, "small");
+        assert!(!back.slow.within_budget, "slow is over budget");
     }
 
     #[test]
@@ -1371,9 +1411,8 @@ Graphics/Displays:
     }
 
     #[test]
-    fn build_runnable_tiers_filters_by_budget() {
+    fn build_runnable_tiers_marks_in_budget_when_medium_is_fast() {
         use PerformanceClass::*;
-        // Medium RTF measured at 0.8 on a CpuStrong machine
         let result = build_runnable_tiers_with_rtfs(
             CpuStrong,
             0.8,
@@ -1381,36 +1420,45 @@ Graphics/Displays:
             "2026-05-12T00:00:00Z",
             |id| installed_in_test(id),
         );
-        // CpuStrong: Fast=base, Medium=small, Slow=large-v3-turbo-q5_0
-        // All three should appear (predictions within budgets).
-        assert!(result.fast.is_some());
-        assert!(result.medium.is_some());
-        assert!(result.slow.is_some());
+        assert!(result.fast.within_budget, "fast should be within budget");
+        assert!(result.medium.within_budget, "medium should be within budget");
+        assert!(result.slow.within_budget, "slow should be within budget");
     }
 
     #[test]
     fn finalize_calibration_writes_cache_matching_fingerprint() {
-        // The inner helper bypasses the `AppHandle`-based cache write, but the
-        // returned RunnableTiers fingerprint must equal `current_fingerprint()`
-        // computed at the same moment, otherwise `runnable_tiers()` would
-        // silently discard the cache on the next launch.
         let tiers = finalize_calibration_inner(0.8);
         assert_eq!(tiers.fingerprint, current_fingerprint());
-        assert!(tiers.medium.is_some(), "Medium tier is always populated");
-        // benchmarked_at is non-empty (either RFC-3339 or unix seconds).
         assert!(!tiers.benchmarked_at.is_empty());
     }
 
     #[test]
-    fn build_runnable_tiers_drops_slow_when_predicted_too_slow() {
+    fn build_runnable_tiers_flags_slow_out_of_budget_on_weak_hardware() {
         use PerformanceClass::*;
-        // Very weak: Medium RTF = 5.0
         let result = build_runnable_tiers_with_rtfs(
             CpuWeak, 5.0, "fp", "ts",
             |_| false,
         );
-        // Edge case: Fast force-shown to guarantee at least one tier
-        assert!(result.fast.is_some(), "Fast must be force-shown when all else fails");
+        // Every tier still has an assignment now — slow is flagged out of budget.
+        assert!(!result.slow.within_budget, "slow should be flagged as out of budget");
+        assert!(!result.medium.within_budget, "medium too on this hypothetical weak machine");
+    }
+
+    #[test]
+    fn legacy_runnable_tiers_json_loads() {
+        let legacy_json = r#"{
+            "fast": {"modelId":"base","realtimeFactor":0.45,"predicted":true,"downloaded":true},
+            "medium": {"modelId":"small","realtimeFactor":0.82,"predicted":false,"downloaded":true},
+            "slow": null,
+            "fingerprint":"abc",
+            "benchmarkedAt":"2026-05-12T00:00:00Z"
+        }"#;
+        let legacy: LegacyRunnableTiers = serde_json::from_str(legacy_json).expect("legacy parses");
+        let migrated = migrate_legacy_tiers(legacy);
+        assert_eq!(migrated.fast.model_id, "base");
+        assert!(migrated.fast.within_budget);  // synthesized as true for present slots
+        assert_eq!(migrated.slow.model_id, "large-v3");
+        assert!(!migrated.slow.within_budget);  // synthesized as false for None slot
     }
 
     fn installed_in_test(_model_id: &str) -> bool { false }
@@ -1651,19 +1699,48 @@ fn sysctl_cpu_brand() -> String {
 pub fn runnable_tiers(app: AppHandle) -> Result<RunnableTiers, String> {
     let path = benchmark_cache_path(&app)?;
     let fp = current_fingerprint();
+
     if path.exists() {
         if let Ok(text) = fs::read_to_string(&path) {
+            // First try the current shape.
             if let Ok(cached) = serde_json::from_str::<RunnableTiers>(&text) {
                 if cached.fingerprint == fp {
                     return Ok(cached);
                 }
+            } else if let Ok(legacy) = serde_json::from_str::<LegacyRunnableTiers>(&text) {
+                if legacy.fingerprint == fp {
+                    return Ok(migrate_legacy_tiers(legacy));
+                }
             }
         }
     }
+
+    // No valid cache: return placeholder assignments so the UI can prompt
+    // re-run setup. Use the default mapping for the current performance
+    // class with predicted=true, downloaded=false, within_budget=false.
+    let class = current_performance_class();
+    let placeholder = |tier: Tier| TierAssignment {
+        model_id: default_model_for_tier(class, tier).to_string(),
+        realtime_factor: 0.0,
+        predicted: true,
+        downloaded: false,
+        within_budget: false,
+    };
     Ok(RunnableTiers {
-        fast: None, medium: None, slow: None,
-        fingerprint: fp, benchmarked_at: String::new(),
+        fast: placeholder(Tier::Fast),
+        medium: placeholder(Tier::Medium),
+        slow: placeholder(Tier::Slow),
+        fingerprint: fp,
+        benchmarked_at: String::new(),
     })
+}
+
+fn current_performance_class() -> PerformanceClass {
+    let cores = std::thread::available_parallelism().map(|v| v.get()).unwrap_or(4);
+    let ram = total_memory_bytes();
+    let gpus = detect_gpu();
+    let primary_vram = gpus.iter().filter_map(|g| g.vram_bytes).max();
+    compute_performance_class(cores, ram, primary_vram)
 }
 
 #[tauri::command]
@@ -1674,14 +1751,7 @@ pub fn write_runnable_tiers(app: AppHandle, tiers: RunnableTiers) -> Result<(), 
 }
 
 pub(crate) fn finalize_calibration_inner(measured_medium_rtf: f32) -> RunnableTiers {
-    let cores = std::thread::available_parallelism()
-        .map(|v| v.get())
-        .unwrap_or(4);
-    let ram = total_memory_bytes();
-    let gpus = detect_gpu();
-    let primary_vram = gpus.iter().filter_map(|g| g.vram_bytes).max();
-    let class = compute_performance_class(cores, ram, primary_vram);
-
+    let class = current_performance_class();
     let fingerprint = current_fingerprint();
     let now = chrono_like_now_iso();
 
