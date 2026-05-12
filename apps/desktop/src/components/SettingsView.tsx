@@ -5,9 +5,7 @@ import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTier
 import type {
   CompanionAvatar,
   HotkeySettings,
-  LocalProcessingSettings,
-  ModelSelectionMode,
-  PrivateFastProfile
+  LocalProcessingSettings
 } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
@@ -20,16 +18,12 @@ type SettingsViewProps = {
   privateFastStatus: PrivateFastStatus;
   privateFastModels: PrivateFastModel[];
   privateFastOperation: string;
-  privateFastProfile?: PrivateFastProfile;
-  modelSelectionMode?: ModelSelectionMode;
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
   hardwareProfile: HardwareProfile | null;
   runnableTiers?: RunnableTiers;
   onHotkeyChange: (key: keyof HotkeySettings, value: string) => void;
   onProcessingChange: (key: keyof LocalProcessingSettings, value: boolean) => void;
-  onProfileChange?: (profile: PrivateFastProfile) => void;
-  onSelectionModeChange?: (mode: ModelSelectionMode) => void;
   onCompanionEnabledChange: (enabled: boolean) => void;
   onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
@@ -141,15 +135,12 @@ export function SettingsView({
   privateFastStatus,
   privateFastModels,
   privateFastOperation,
-  privateFastProfile,
-  modelSelectionMode,
   companionEnabled,
   companionAvatar,
   hardwareProfile,
+  runnableTiers,
   onHotkeyChange,
   onProcessingChange,
-  onProfileChange,
-  onSelectionModeChange,
   onCompanionEnabledChange,
   onCompanionAvatarChange,
   onModelAction,
@@ -179,11 +170,8 @@ export function SettingsView({
               status={privateFastStatus}
               models={privateFastModels}
               hardwareProfile={hardwareProfile}
+              runnableTiers={runnableTiers ?? { fast: null, medium: null, slow: null, fingerprint: "", benchmarkedAt: "" }}
               operation={privateFastOperation}
-              profile={privateFastProfile ?? "balanced"}
-              selectionMode={modelSelectionMode ?? "auto"}
-              onProfileChange={onProfileChange ?? (() => {})}
-              onSelectionModeChange={onSelectionModeChange ?? (() => {})}
               onModelAction={onModelAction}
               onImportModel={onImportModel}
               onRefresh={onRefreshNative}
