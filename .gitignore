@@ -13,3 +13,4 @@ src-tauri/target/
 *.sqlite3
 coverage/
 .private-fast-build/
+.superpowers/
