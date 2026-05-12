@@ -44,6 +44,22 @@ These require a real browser/Tauri runtime, microphone permissions, and a local 
 | Browser sizes | 390px mobile, 768px tablet, 1440px desktop | 390px and 1440px are automated; 768px tablet remains a manual spot check |
 | Accessibility pass | Keyboard tab through main nav, forms, settings, companion close | Visible focus outline, named icon buttons, no keyboard trap |
 
+## Hardware Tier Mapping (manual)
+
+For each row, install Dictivo on the target hardware, run the onboarding wizard, and record what the UI shows. Confirm the footer status line reads `<Tier> · <model> · <accel> · <hotkey>` and that the Companion floating window paints with no window chrome.
+
+| Machine                              | Expected `performance_class` | Expected tiers visible            | Verified |
+| ------------------------------------ | ---------------------------- | --------------------------------- | -------- |
+| macOS Apple Silicon M3 / 16 GB       | `GpuHigh`                    | Fast, Medium, Slow                |          |
+| macOS Apple Silicon M1 / 8 GB        | `CpuStrong`                  | Fast, Medium (Slow may be hidden) |          |
+| macOS Intel 16 GB with AMD dGPU 8 GB | `GpuHigh`                    | Fast, Medium, Slow                |          |
+| macOS Intel 16 GB, integrated GPU    | `CpuStrong`                  | Fast, Medium                      |          |
+| Windows + RTX 3060 (8 GB) + 16 GB    | `GpuHigh`                    | Fast, Medium, Slow                |          |
+| Windows CPU-only, 8 cores, 16 GB     | `CpuStrong`                  | Fast, Medium                      |          |
+| Windows CPU-only, 4 cores, 8 GB      | `CpuWeak`                    | Fast (Medium maybe; Slow hidden)  |          |
+| Linux + NVIDIA CUDA + 16 GB          | `GpuHigh`                    | Fast, Medium, Slow                |          |
+| Linux CPU-only, 8 cores, 16 GB       | `CpuStrong`                  | Fast, Medium                      |          |
+
 ## Coverage Limits
 
 The repository now includes Playwright E2E coverage for Chromium desktop and mobile web-preview flows plus Vitest coverage for render contracts, pure logic, fallback behavior, CSS contracts, and API privacy. It still cannot fully prove native microphone capture, Tauri companion window positioning, OS permission dialogs, global shortcut registration in another app, or real whisper.cpp model execution without running the packaged desktop app with local permissions and models. Those are tracked above as manual/native scenarios.
