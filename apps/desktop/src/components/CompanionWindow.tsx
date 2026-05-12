@@ -1,6 +1,6 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AlertTriangle, Check, Clipboard, Loader2, Mic2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import type { CompanionAvatar } from "../lib/settingsStore";
@@ -51,10 +51,23 @@ export function CompanionWindow() {
     void getCurrentWindow().hide().catch(() => undefined);
   };
 
+  const emoteFor = (phase: CompanionPhase) => {
+    if (phase === "recording") return <div className="companion-emote companion-emote--rec">●</div>;
+    if (phase === "processing") return <div className="companion-emote companion-emote--proc">…</div>;
+    if (phase === "complete") return <div className="companion-emote companion-emote--done">✓</div>;
+    if (phase === "error" || phase === "blocked") return <div className="companion-emote companion-emote--err">!</div>;
+    return null;
+  };
+
   return (
-    <section className={`companion-shell companion-shell--${snapshot.phase}`} onPointerDown={startDragging} aria-label="Dictivo floating recording status">
+    <section
+      className={`companion-shell companion-shell--${snapshot.phase}`}
+      onPointerDown={startDragging}
+      aria-label="Dictivo floating recording status"
+    >
       <div className="companion-avatar-wrap">
         <CartoonAvatar avatar={snapshot.avatar} phase={snapshot.phase} />
+        {emoteFor(snapshot.phase)}
       </div>
 
       <div className="companion-bubble">
@@ -66,39 +79,17 @@ export function CompanionWindow() {
           onClick={hideCompanion}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <X size={13} />
+          <X size={11} />
         </button>
 
-        <div className="companion-topline">
-          <StatusIcon phase={snapshot.phase} />
-          <div>
-            <strong>{snapshot.title}</strong>
-            <span>{snapshot.phase === "recording" ? elapsed : snapshot.detail}</span>
-          </div>
-        </div>
-
-        <p>{snapshot.summary}</p>
-
-        <div className="companion-footer">
-          <span>{snapshot.phase === "recording" ? snapshot.detail : snapshot.hotkey}</span>
-          {snapshot.pasteStatus && (
-            <span>
-              <Clipboard size={12} />
-              {snapshot.pasteStatus}
-            </span>
-          )}
-        </div>
+        <div className="companion-title">{snapshot.title}</div>
+        {snapshot.phase === "recording" ? (
+          <div className="companion-timer">{elapsed}</div>
+        ) : null}
+        <div className="companion-sub">{snapshot.detail || snapshot.summary}</div>
       </div>
     </section>
   );
-}
-
-function StatusIcon({ phase }: { phase: CompanionPhase }) {
-  if (phase === "recording") return <Mic2 size={18} />;
-  if (phase === "processing") return <Loader2 className="companion-spin" size={18} />;
-  if (phase === "complete") return <Check size={18} />;
-  if (phase === "blocked" || phase === "error") return <AlertTriangle size={18} />;
-  return <Mic2 size={18} />;
 }
 
 function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: CompanionPhase }) {
