@@ -1,226 +1,240 @@
-# Dictivo
+<h1 align="center">🎙 Dictivo</h1>
 
-Private, local-first voice dictation for macOS and Windows.
+<p align="center">
+  <strong>Private voice dictation that runs entirely on your laptop.</strong><br/>
+  Whisper-grade transcription, zero cloud, one hotkey to paste anywhere.
+</p>
 
-Dictivo turns speech into polished text with an on-device `whisper.cpp` engine. It is built for people who want fast dictation, reusable snippets, local history, global hotkeys, and paste-to-active-app workflows without sending audio or transcripts to cloud AI providers.
+<p align="center">
+  <a href="https://github.com/Rswcf/Dictivo/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Rswcf/Dictivo/build-desktop.yml?branch=main&label=build&style=flat-square"></a>
+  <a href="https://github.com/Rswcf/Dictivo/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Rswcf/Dictivo?style=flat-square"></a>
+  <a href="https://github.com/Rswcf/Dictivo/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Rswcf/Dictivo?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/macOS%20%7C%20Windows-supported-success?style=flat-square">
+  <img alt="100% Local" src="https://img.shields.io/badge/🔒_100%25-local-blue?style=flat-square">
+</p>
 
-## Languages
+<p align="center">
+  <em>[ screenshot / demo GIF goes here — drop at <code>docs/assets/hero.gif</code> ]</em>
+</p>
 
-- English: `README.md`
-- 简体中文: [docs/README.zh-CN.md](docs/README.zh-CN.md)
-- 日本語: [docs/README.ja.md](docs/README.ja.md)
-- Español: [docs/README.es.md](docs/README.es.md)
+<p align="center">
+  🔒 <strong>Audio never leaves your Mac/PC</strong> &nbsp;·&nbsp;
+  ⚡ <strong>30-second setup, one hotkey</strong> &nbsp;·&nbsp;
+  🖥 <strong>Auto-picks the right model for your hardware</strong>
+</p>
+
+<p align="center">
+  <a href="docs/README.zh-CN.md">简体中文</a> &nbsp;·&nbsp;
+  <a href="docs/README.ja.md">日本語</a> &nbsp;·&nbsp;
+  <a href="docs/README.es.md">Español</a>
+</p>
+
+---
 
 ## Why Dictivo
 
-Most dictation tools ask you to choose between convenience and privacy. Dictivo is designed around a different default:
+Most dictation apps make you choose between speed, accuracy, and privacy. Dictivo picks **all three** — by running [`whisper.cpp`](https://github.com/ggml-org/whisper.cpp) on-device with a model tuned to your specific machine.
 
-| Need | Dictivo approach |
-| --- | --- |
-| Dictate quickly | Press the global hotkey, speak, stop, and paste. |
-| Keep work private | Audio, transcripts, dictionary terms, snippets, and history stay on your device. |
-| Write in your own style | Choose Message, Email, Raw, or Prompt mode. |
-| Reuse repeated text | Add local dictionary terms and snippets for names, product words, links, and phrases. |
-| Run on different machines | Select a Fast, Balanced, or Quality local engine profile based on your hardware. |
+|  | Dictivo | Wispr Flow | Superwhisper | Otter.ai | macOS Dictation |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 🔒 100% on-device | ✅ | ❌ cloud | ✅ | ❌ cloud | ✅ |
+| 🖥 Auto-tunes to your hardware | ✅ | ❌ | ❌ | — | ❌ |
+| ⚡ Global hotkey + paste-to-active-app | ✅ | ✅ | ✅ | ❌ | partial |
+| 🎯 Message / Email / Prompt modes | ✅ | ✅ | partial | ❌ | ❌ |
+| 📖 Local dictionary + snippets | ✅ | partial | ✅ | ❌ | ❌ |
+| 🌍 macOS **and** Windows | ✅ | ✅ | macOS only | ✅ | macOS only |
+| 💰 Free, open source | ✅ MIT | ❌ paid | ❌ paid | ❌ paid | ✅ bundled |
 
-## Product Tour
+---
 
-Dictivo is intentionally focused on one job: reliable single-person dictation.
+## 🖥 The killer feature: hardware-aware tier selection
 
-- Local dictation workbench with live editable transcript text.
-- On-device transcription through the Private Fast `whisper.cpp` engine.
-- Local polishing for Message, Email, Raw, and Prompt workflows.
-- Local history for recent dictations.
-- Local dictionary and snippets for custom words and reusable replacements.
-- Local model manager for downloading, importing, selecting, and deleting models.
-- Global hotkeys for start/stop and paste-last.
-- Floating companion window for recording, processing, completion, and setup states.
-- Metadata-only backend scaffolding for entitlement, billing, and usage events.
+Dictivo benchmarks your machine on first launch and exposes **only the models you can actually run smoothly**.
 
-## Quick Start
+```
+   Your hardware                Dictivo shows                  Behind the scenes
+─────────────────────       ─────────────────────         ─────────────────────────────
+ Apple M3 Pro 18 GB    →     Fast · Medium · Slow    →     small · large-v3-turbo-q5 · large-v3
+ Intel i7 16 GB CPU    →     Fast · Medium           →     base · small (Slow hidden — too slow)
+ 8 GB integrated GPU   →     Fast                    →     tiny (Medium/Slow hidden honestly)
+```
 
-### Install a release build
+No more "I downloaded Large-v3 and it took 12 minutes to transcribe a 30-second clip." Dictivo measures the **real-time factor** on your machine and quietly hides any tier that can't keep up.
 
-When release artifacts are published, download the latest build from GitHub Releases:
+---
 
-- macOS: `Dictivo.app` or `.dmg`
-- Windows: installer bundle from the release assets
+## ⚡ 30-second quick start
 
-Open Dictivo, then go to `Settings -> Local Engine` and download or import a local model.
+**Install a release build** (recommended)
 
-### Run from source
+```text
+1. Download the latest Dictivo.dmg (macOS) or .msi (Windows) from Releases
+2. Open Dictivo
+3. The setup wizard scans your hardware → downloads one recommended model → measures speed
+4. Press ⌥ Space, speak, press ⌥ Space again. Done.
+```
 
-Requirements:
-
-- Node.js 20+
-- Rust stable
-- macOS or Windows for the native desktop shell
+**Or run from source**
 
 ```bash
+git clone https://github.com/Rswcf/Dictivo && cd Dictivo
 npm install
 npm run tauri:dev -w @dictivo/desktop
 ```
 
-For a browser-only frontend preview:
+Requirements: Node 20+, Rust stable, macOS or Windows.
 
-```bash
-npm run dev
+---
+
+## How it works
+
+```text
+   ┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐
+   │  Microphone │───▶│  whisper.cpp     │───▶│  Local polish   │
+   │  ⌥ Space    │    │  (your hardware) │    │  (Msg / Email / │
+   └─────────────┘    └──────────────────┘    │   Raw / Prompt) │
+          ▲                                    └────────┬────────┘
+          │                                             │
+          │                                             ▼
+   ⌥ Space                                  ┌──────────────────────┐
+   to start/stop                            │ Pasted into active   │
+                                            │ app · saved locally  │
+                                            └──────────────────────┘
 ```
 
-## First Dictation
+Nothing in this loop ever talks to a cloud API. Audio, transcript, dictionary, snippets, history — all stay on disk.
 
-1. Open `Settings -> Local Engine`.
-2. Download or import a `.bin` model.
-3. Confirm microphone and accessibility permissions when your OS asks.
-4. Press `CommandOrControl+Shift+Space` to start recording.
-5. Speak naturally.
-6. Press the same hotkey again to stop.
-7. Dictivo transcribes locally, copies the final text, and attempts to paste into the active app.
+---
 
-If automatic paste is blocked by the OS, the transcript is still copied. Press `Command+V` on macOS or `Ctrl+V` on Windows.
+## 🐶 The floating companion
 
-## Troubleshooting
+A 360 × 100 px transparent window that sits in the corner of your screen, animated by a cartoon mascot. Pick **dog**, **cat**, or **Trump**.
 
-| Problem | What to check |
-| --- | --- |
-| Nothing records | Confirm microphone permission, then restart Dictivo. |
-| No local model appears | Open `Settings -> Local Engine` and download or import a `.bin` model. |
-| Transcript copies but does not paste | Confirm accessibility permission on macOS, focus the target text field, then use `Command+V`. |
-| Global hotkey does not respond | Change the shortcut in `Settings -> Hotkeys` if another app already owns it. |
-| The first transcription is slow | Use a smaller model first, then switch to a quality model after setup is confirmed. |
+<p align="center">
+  <em>[ companion screenshot — drop at <code>docs/assets/companion.png</code> ]</em>
+</p>
 
-## Local Engine Setup
+The mascot:
+- breathes while you're recording
+- sways while transcribing
+- shows a green ✓ when paste lands
 
-Packaged desktop builds include the expected Private Fast engine layout. When running from source, start with a small model to validate permissions, hotkeys, and latency:
+It's silly. People share it. We're keeping it.
 
-```bash
-DICTIVO_MODEL=small scripts/setup-private-fast.sh
-```
+---
 
-For higher local quality on capable hardware:
+## Features
 
-```bash
-DICTIVO_MODEL=large-v3-turbo-q5_0 scripts/setup-private-fast.sh
-```
+- **🎙 4 polish modes** — Message, Email, Raw, Prompt. Same recording, four different finished outputs.
+- **🔥 Global hotkeys** — `⌥+Space` to dictate, `⌥+Shift+V` to paste the last transcript anywhere.
+- **📖 Local dictionary & snippets** — Teach Dictivo proper nouns and trigger phrases. Zero round-trip to a server.
+- **🧠 7-language transcription** — English, 中文, Español, 日本語, Français, Deutsch (and any other Whisper-supported tongue at the engine level).
+- **🪟 Floating companion window** — Always-on-top, transparent, draggable, dismissible.
+- **🛠 Power user escape hatch** — Settings → Local Engine → Advanced exposes the full 7-model `whisper.cpp` catalog if you don't want auto-pick.
+- **🔄 Snappy hot reload** — Tauri 2 + Vite + React 19 + TypeScript. The UI repaints instantly.
 
-Dictivo detects bundled resources first, then developer installs and models under the platform data directory or `~/.dictivo/private-fast`.
+---
 
-Optional overrides:
+## Privacy contract
 
-```bash
-DICTIVO_PRIVATE_FAST_HOME=/path/to/private-fast
-DICTIVO_WHISPER_CLI=/path/to/whisper-cli
-DICTIVO_WHISPER_MODEL=/path/to/model.bin
-```
+The desktop app **never** sends audio, transcripts, snippets, dictionary terms, or any user content to a remote service.
 
-## Privacy Model
+The optional metadata backend (`apps/api`) accepts only: local session ID, provider name, privacy mode, duration in seconds, and word count. The privacy guard rejects anything else at the type and runtime level — see [`packages/shared/src/privacy.ts`](packages/shared/src/privacy.ts) and the API privacy tests.
 
-Dictivo is local-first by design.
+---
 
-The desktop app does not call cloud AI APIs for dictation. The backend must never receive or store:
-
-- audio blobs or audio URLs
-- transcript text
-- meeting summaries
-- dictionary terms
-- snippets
-- provider credentials
-- API keys
-
-The backend accepts metadata only, such as local session IDs, provider name, privacy mode, duration, and word count.
-
-## Supported Languages
-
-The current app supports local dictation settings for:
-
-- English
-- 中文
-- Español
-- 日本語
-- Français
-- Deutsch
-
-The interface documentation currently ships in English, Simplified Chinese, Japanese, and Spanish. More community translations are welcome.
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| `CommandOrControl+Shift+Space` | Start or stop dictation |
-| `CommandOrControl+Shift+V` | Paste the last transcript |
-
-Shortcuts can be changed in `Settings -> Hotkeys`.
-
-## Project Structure
+<details>
+<summary>📂 <strong>Project structure</strong></summary>
 
 ```text
 apps/
-  api/          Fastify metadata API
+  api/          Fastify metadata API (no transcripts ever)
   desktop/      Tauri + React desktop app
 packages/
-  shared/       Shared TypeScript contracts and privacy helpers
+  shared/       Privacy contract + shared types
 docs/
-  README.*      Localized GitHub documentation
-  test-matrix   Product and QA coverage matrix
+  test-matrix   Product / QA coverage matrix
+  README.*.md   Localized README files
 scripts/
   setup-private-fast.sh
   prepare-private-fast-engine.mjs
 ```
 
-## Development Commands
+</details>
+
+<details>
+<summary>🛠 <strong>Development commands</strong></summary>
 
 ```bash
-npm install
-npm run dev
-npm run typecheck
-npm run test
-npm run e2e
-npm run test:coverage
-npm run build
-```
-
-Native desktop commands:
-
-```bash
-npm run tauri:dev -w @dictivo/desktop
+npm install                 # workspace install
+npm run dev                 # vite preview (no Tauri shell)
+npm run tauri:dev   -w @dictivo/desktop
 npm run tauri:build -w @dictivo/desktop
+
+npm run typecheck           # all packages
+npm run test                # vitest across shared/desktop/api
+npm run e2e                 # playwright web-preview suite
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
 
-## Quality Gates
+</details>
 
-The repository includes:
+<details>
+<summary>🧰 <strong>Troubleshooting</strong></summary>
 
-- TypeScript type checks for shared, API, and desktop packages.
-- Vitest tests for shared privacy contracts, API metadata/privacy behavior, frontend render contracts, local polishing, hotkeys, settings migration, and bridge fallbacks.
-- Playwright E2E tests for desktop and mobile Chromium web-preview flows.
-- Rust tests for Tauri-side clipboard markers, lifecycle behavior, and Private Fast path selection.
-- A product test matrix in [docs/test-matrix.md](docs/test-matrix.md).
+| Problem | Fix |
+| --- | --- |
+| Nothing records | Grant Microphone permission, restart Dictivo |
+| No tiers visible | Re-run setup from Settings → Local Engine → Re-run setup |
+| Transcript copies but doesn't paste | Grant Accessibility permission on macOS, focus a text field, `⌘+V` |
+| Global hotkey ignored | Another app claimed it — change in Settings → Hotkeys |
+| First transcription is slow | Switch to Fast tier; it auto-uses a smaller model |
+
+</details>
+
+<details>
+<summary>🧪 <strong>Quality gates</strong></summary>
+
+- TypeScript type checks: shared, API, desktop
+- Vitest: privacy contracts, API behavior, render contracts, polishing, hotkeys, settings migration, bridge fallbacks
+- Playwright: Chromium desktop + mobile web-preview flows
+- Rust unit tests: hardware detection, tier resolution, benchmark, fingerprint hashing, clipboard markers
+- Manual hardware-tier matrix in [`docs/test-matrix.md`](docs/test-matrix.md)
+
+</details>
+
+---
 
 ## Roadmap
 
-Near-term:
+**Near-term:** Signed macOS + Windows release artifacts · screenshots + demo GIFs in README · expanded native E2E around real microphone permissions and global hotkeys · more community translations.
 
-- Publish signed macOS and Windows release artifacts.
-- Add product screenshots and short demo clips to the README.
-- Expand native E2E coverage around microphone permissions, global hotkeys, and local model execution.
-- Add more community translations.
+**Out of scope** (by design, for now): meeting transcription · speaker diarization · meeting summaries · system-audio capture · any cloud-AI execution path.
 
-Out of scope for the current product slice:
+---
 
-- Meeting transcription
-- Speaker diarization
-- Meeting summaries
-- System-audio capture
-- Cloud AI provider execution paths
+## ⭐ Star history
+
+<p align="center">
+  <a href="https://star-history.com/#Rswcf/Dictivo&Date">
+    <img alt="Star history" src="https://api.star-history.com/svg?repos=Rswcf/Dictivo&type=Date">
+  </a>
+</p>
+
+If Dictivo saves you from typing up another email, give the repo a star — it's how we measure whether this experiment matters to people.
+
+---
 
 ## Community
 
-- Questions and setup help: use GitHub Discussions when the repository is public.
-- Bugs: open a GitHub Issue with OS, app version, local model, and reproduction steps.
-- Contributions: read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-- Security or privacy concerns: do not post sensitive logs publicly; use the repository security contact once configured.
-- Translations: open a pull request that updates the matching `docs/README.<locale>.md` file.
+- 💬 **Questions / setup help** — GitHub Discussions
+- 🐛 **Bugs** — open an issue with OS, Dictivo version, selected tier, and repro steps
+- 🌍 **Translations** — PR updating the matching `docs/README.<locale>.md`
+- 🤝 **Contributions** — read [`CONTRIBUTING.md`](CONTRIBUTING.md), then open a PR
+- 🔒 **Security** — do not file public issues with sensitive logs; use the repo's security contact
 
-## Documentation Research
+---
 
-This README was redesigned after reviewing documentation patterns from high-traffic open-source repositories. See [docs/github-docs-research.md](docs/github-docs-research.md) for the research notes and adopted principles.
+<p align="center">
+  Built with Tauri 2, React 19, whisper.cpp, and an irrational love for tiny binaries that respect your privacy.
+</p>
