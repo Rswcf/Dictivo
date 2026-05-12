@@ -1,5 +1,6 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -202,6 +203,28 @@ fn predict_rtf_from_medium(model_id: &str, medium_rtf: f32) -> f32 {
         _ => return medium_rtf,
     };
     medium_rtf * ratio
+}
+
+fn compute_fingerprint(cpu_model: &str, ram_bytes: u64, gpu_names: &[String]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(cpu_model.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ram_bytes.to_le_bytes());
+    hasher.update(b"|");
+    for name in gpu_names {
+        hasher.update(name.as_bytes());
+        hasher.update(b",");
+    }
+    hex_encode(&hasher.finalize())
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{:02x}", byte);
+    }
+    s
 }
 
 #[tauri::command]
@@ -1135,6 +1158,23 @@ mod tests {
     #[test]
     fn predict_rtf_unknown_model_returns_input() {
         assert_eq!(predict_rtf_from_medium("unknown-id", 1.5), 1.5);
+    }
+
+    #[test]
+    fn fingerprint_is_deterministic_and_sensitive() {
+        let a = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
+        let b = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
+        assert_eq!(a, b, "same inputs must hash equal");
+        assert_eq!(a.len(), 64, "sha256 hex digest is 64 chars");
+
+        let c = compute_fingerprint("Apple M2 Pro", 18 * 1024 * 1024 * 1024, &["Apple M2 Pro GPU".to_string()]);
+        assert_ne!(a, c, "different CPU must hash different");
+
+        let d = compute_fingerprint("Apple M3 Pro", 16 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
+        assert_ne!(a, d, "different RAM must hash different");
+
+        let e = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &[]);
+        assert_ne!(a, e, "different GPU list must hash different");
     }
 }
 
