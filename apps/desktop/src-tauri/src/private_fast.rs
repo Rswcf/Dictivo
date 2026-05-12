@@ -1352,6 +1352,50 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
     gpus
 }
 
+#[tauri::command]
+pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, String> {
+    let binary_path = resolve_binary_path(Some(&app))
+        .ok_or_else(|| "whisper-cli binary missing".to_string())?;
+    let model_path = private_fast_models_dir()?
+        .join(format!("ggml-{model_id}.bin"));
+    if !model_path.exists() {
+        return Err(format!("Model {model_id} is not installed"));
+    }
+
+    let sample_path = app
+        .path()
+        .resolve("benchmark-5s.wav", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| e.to_string())?;
+
+    let start = std::time::Instant::now();
+    let output = Command::new(&binary_path)
+        .args([
+            "-m",
+            model_path.to_string_lossy().as_ref(),
+            "-f",
+            sample_path.to_string_lossy().as_ref(),
+            "-l",
+            "en",
+            "-otxt",
+            "-of",
+            "/dev/null",
+            "--no-prints",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "whisper-cli exited {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let elapsed = start.elapsed().as_secs_f32();
+    let audio_secs = 5.0_f32;
+    Ok(elapsed / audio_secs)
+}
+
 #[cfg(target_os = "windows")]
 fn windows_primary_gpu() -> Option<GpuInfo> {
     let output = Command::new("powershell")

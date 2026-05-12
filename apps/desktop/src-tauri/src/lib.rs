@@ -191,6 +191,7 @@ pub fn run() {
             private_fast::delete_private_fast_model,
             private_fast::transcribe_private_fast,
             private_fast::detect_gpu,
+            private_fast::benchmark_tier,
             storage::save_session,
             storage::list_sessions,
             storage::clear_sessions
