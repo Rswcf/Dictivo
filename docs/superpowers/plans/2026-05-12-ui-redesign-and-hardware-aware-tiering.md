@@ -1519,7 +1519,7 @@ Expected: PASS (5 passed).
 Run typecheck — this will fail in `App.tsx` and `SettingsView.tsx` because they reference removed fields. **Do not fix those callers yet — they'll be fixed in later tasks.** Note the errors for now:
 
 Run: `npm run typecheck -w @dictivo/desktop`
-Expected: errors in `App.tsx`, `SettingsView.tsx` referring to `privateFastProfile`, `modelSelectionMode`. Capture these locations — they're TODO for Phase D.
+Expected: errors in `App.tsx`, `SettingsView.tsx` referring to `privateFastProfile`, `modelSelectionMode`. Note these locations — they are addressed in Phase D below.
 
 - [ ] **Step 5: Commit**
 
