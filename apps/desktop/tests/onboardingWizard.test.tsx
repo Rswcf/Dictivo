@@ -17,7 +17,16 @@ vi.mock("../src/lib/desktopBridge", () => ({
   detectGpu: vi.fn().mockResolvedValue([{ name: "Apple Silicon GPU (Metal)", vramBytes: 9_000_000_000 }]),
   downloadPrivateFastModel: vi.fn().mockResolvedValue({ ready: true, modelId: "large-v3-turbo-q5_0", modelName: "Large v3 Turbo Q5", message: "ok", setupHint: "" }),
   benchmarkTier: vi.fn().mockResolvedValue(0.85),
-  writeRunnableTiers: vi.fn().mockResolvedValue(undefined)
+  finalizeCalibration: vi.fn().mockResolvedValue({
+    fast: { modelId: "small", realtimeFactor: 0.4, predicted: true, downloaded: false },
+    medium: { modelId: "large-v3-turbo-q5_0", realtimeFactor: 0.85, predicted: false, downloaded: true },
+    slow: { modelId: "large-v3", realtimeFactor: 1.5, predicted: true, downloaded: false },
+    fingerprint: "fp-test",
+    benchmarkedAt: "2026-05-12T00:00:00Z"
+  }),
+  getPrivateFastModels: vi.fn().mockResolvedValue([
+    { id: "large-v3-turbo-q5_0", label: "Large v3 Turbo Q5", useCase: "", speed: "", quality: "", sizeLabel: "~600 MB", notes: "", installed: true, selected: true }
+  ])
 }));
 
 describe("OnboardingWizard", () => {
@@ -33,10 +42,12 @@ describe("OnboardingWizard", () => {
     await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /continue/i }));
 
-    await waitFor(() => expect(screen.getByText(/Recommended/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Recommended for your hardware/i)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /download/i }));
 
     await waitFor(() => expect(screen.getByText(/Ready/i)).toBeTruthy(), { timeout: 5000 });
+    // Branching copy fired: Fast + Slow are also available.
+    expect(screen.getByText(/Fast and Slow are also available/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /start dictating/i }));
 
     expect(onComplete).toHaveBeenCalled();

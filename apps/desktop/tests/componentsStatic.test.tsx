@@ -62,7 +62,7 @@ const hardware: HardwareProfile = {
   cpuCores: 12,
   memoryTotalBytes: 32 * 1024 ** 3,
   accelerators: ["Metal"],
-  performanceClass: "high",
+  performanceClass: "gpuHigh",
   recommendedModelId: "small",
   recommendedProfile: "quality",
   reason: "High-end local hardware can use a quality profile."
@@ -110,7 +110,6 @@ describe("desktop screen render contracts", () => {
         modeTemplates={modes}
         isDictating={false}
         liveText="A very long local transcript with punctuation & symbols <> stays editable."
-        rawText="raw local transcript"
         hotkeyStatus="CommandOrControl+Shift+Space ready"
         pasteStatus="Copied to clipboard"
         privateFastStatus={status}
@@ -122,7 +121,6 @@ describe("desktop screen render contracts", () => {
         onModeChange={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
-        onCopyRaw={vi.fn()}
       />
     );
 

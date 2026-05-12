@@ -104,7 +104,7 @@ describe("desktop bridge browser fallback", () => {
       platform: "web",
       cpuCores: 12,
       memoryTotalBytes: 16 * 1024 ** 3,
-      performanceClass: "high",
+      performanceClass: "gpuHigh",
       recommendedModelId: "large-v3-turbo-q5_0",
       recommendedProfile: "quality"
     });
