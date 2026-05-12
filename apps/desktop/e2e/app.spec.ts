@@ -84,12 +84,24 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   const bodyStyles = await page.locator("body").evaluate((node) => {
     const styles = getComputedStyle(node);
     return {
-      backgroundColor: styles.backgroundColor,
+      backgroundImage: styles.backgroundImage,
+      colorScheme: styles.colorScheme,
       fontFamily: styles.fontFamily
     };
   });
-  expect(bodyStyles.backgroundColor).toBe("rgb(243, 242, 234)");
-  expect(bodyStyles.fontFamily).toContain("Comic Sans MS");
+  expect(bodyStyles.colorScheme).toBe("dark");
+  expect(bodyStyles.backgroundImage).toContain("linear-gradient");
+  expect(bodyStyles.fontFamily).toContain("Sora");
+
+  const techSurface = await page.locator(".side-panel").first().evaluate((node) => {
+    const styles = getComputedStyle(node);
+    return {
+      backdropFilter: styles.backdropFilter,
+      borderColor: styles.borderColor
+    };
+  });
+  expect(techSurface.backdropFilter).toContain("blur");
+  expect(techSurface.borderColor).toBe("rgba(122, 247, 255, 0.28)");
 
   const navBox = await page.locator(".sidebar").boundingBox();
   const workspaceBox = await page.locator(".workspace").boundingBox();
