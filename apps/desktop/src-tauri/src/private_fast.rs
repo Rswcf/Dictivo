@@ -1,5 +1,5 @@
 use base64::Engine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -134,6 +134,22 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         notes: "Use when quality matters more than disk, memory, and latency.",
     },
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tier {
+    Fast,
+    Medium,
+    Slow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PerformanceClass {
+    GpuHigh,
+    CpuStrong,
+    CpuWeak,
+}
 
 #[tauri::command]
 pub fn hardware_profile() -> HardwareProfile {
@@ -958,6 +974,20 @@ mod tests {
         assert!(candidates.contains(&root.join("whisper.cpp/build/bin").join("whisper-cli")));
 
         assert!(candidates.contains(&root.join("whisper.cpp").join("main")));
+    }
+
+    #[test]
+    fn tier_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&Tier::Fast).unwrap(), "\"fast\"");
+        assert_eq!(serde_json::to_string(&Tier::Medium).unwrap(), "\"medium\"");
+        assert_eq!(serde_json::to_string(&Tier::Slow).unwrap(), "\"slow\"");
+    }
+
+    #[test]
+    fn performance_class_serializes_camel_case() {
+        assert_eq!(serde_json::to_string(&PerformanceClass::GpuHigh).unwrap(), "\"gpuHigh\"");
+        assert_eq!(serde_json::to_string(&PerformanceClass::CpuStrong).unwrap(), "\"cpuStrong\"");
+        assert_eq!(serde_json::to_string(&PerformanceClass::CpuWeak).unwrap(), "\"cpuWeak\"");
     }
 }
 
