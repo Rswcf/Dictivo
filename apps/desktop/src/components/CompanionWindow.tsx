@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
+import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
 import type { CompanionAvatar } from "../lib/settingsStore";
 import type { CompanionPhase, CompanionSnapshot } from "../lib/companion";
 
@@ -111,6 +112,16 @@ function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: Comp
         className={`companion-avatar companion-avatar--bikini is-${phase}`}
         src={bikiniAvatarImage}
         alt="Bikini companion"
+        draggable={false}
+      />
+    );
+  }
+  if (avatar === "muscle") {
+    return (
+      <img
+        className={`companion-avatar companion-avatar--muscle is-${phase}`}
+        src={muscleAvatarImage}
+        alt="Muscle companion"
         draggable={false}
       />
     );

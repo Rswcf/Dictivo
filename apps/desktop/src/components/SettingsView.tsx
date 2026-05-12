@@ -2,6 +2,7 @@ import { Bot, ClipboardCheck, Cat, Dog, Keyboard, KeyRound, Lock, Mic2, RefreshC
 import { useEffect, useState, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
+import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../lib/desktopBridge";
 import type { CompanionAvatar, HotkeySettings, LocalProcessingSettings } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
@@ -40,7 +41,8 @@ const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode; imag
   { id: "dog", label: "Dog", icon: <Dog size={18} /> },
   { id: "cat", label: "Cat", icon: <Cat size={18} /> },
   { id: "trump", label: "Trump", icon: <UserRound size={18} />, image: trumpAvatarImage },
-  { id: "bikini", label: "Bikini", icon: <Sparkles size={18} />, image: bikiniAvatarImage }
+  { id: "bikini", label: "Bikini", icon: <Sparkles size={18} />, image: bikiniAvatarImage },
+  { id: "muscle", label: "Muscle", icon: <Sparkles size={18} />, image: muscleAvatarImage }
 ];
 
 export const privacyPermissionItems: Array<{

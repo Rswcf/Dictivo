@@ -3,7 +3,7 @@ import type { DictionaryTerm, InputMode, Snippet, SupportedLanguage } from "@dic
 const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
 
-export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini";
+export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini" | "muscle";
 
 export type HotkeySettings = {
   dictation: string;
