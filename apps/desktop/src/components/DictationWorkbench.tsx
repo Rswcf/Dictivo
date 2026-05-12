@@ -61,7 +61,6 @@ export function DictationWorkbench({
   onToggleDictation,
   onLiveTextChange
 }: DictationWorkbenchProps) {
-  const activeMode = modeTemplates.find((mode) => mode.inputMode === selectedMode) ?? modeTemplates[0]!;
   const wordCount = estimateWordCount(liveText, language);
   const accel = hardwareProfile?.accelerators?.[0] ?? "CPU";
   const modelLabel = selectedModel?.label ?? privateFastStatus.modelName;
@@ -80,7 +79,6 @@ export function DictationWorkbench({
         </div>
 
         <div className="mode-strip">
-          <h2>{activeMode.label}</h2>
           <div className="segmented">
             {modeTemplates.map((mode) => (
               <button
