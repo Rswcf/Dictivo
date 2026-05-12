@@ -59,6 +59,25 @@ pub struct HardwareProfile {
     reason: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TierAssignment {
+    pub model_id: String,
+    pub realtime_factor: f32,
+    pub predicted: bool,
+    pub downloaded: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunnableTiers {
+    pub fast: Option<TierAssignment>,
+    pub medium: Option<TierAssignment>,
+    pub slow: Option<TierAssignment>,
+    pub fingerprint: String,
+    pub benchmarked_at: String,
+}
+
 #[derive(Clone, Copy)]
 struct ModelSpec {
     id: &'static str,
@@ -1158,6 +1177,32 @@ mod tests {
     #[test]
     fn predict_rtf_unknown_model_returns_input() {
         assert_eq!(predict_rtf_from_medium("unknown-id", 1.5), 1.5);
+    }
+
+    #[test]
+    fn runnable_tiers_roundtrip_json() {
+        let original = RunnableTiers {
+            fast: Some(TierAssignment {
+                model_id: "small".into(),
+                realtime_factor: 0.65,
+                predicted: false,
+                downloaded: true,
+            }),
+            medium: Some(TierAssignment {
+                model_id: "large-v3-turbo-q5_0".into(),
+                realtime_factor: 0.85,
+                predicted: false,
+                downloaded: true,
+            }),
+            slow: None,
+            fingerprint: "ab12".into(),
+            benchmarked_at: "2026-05-12T10:14:00Z".into(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(json.contains("\"realtimeFactor\":0.65"), "uses camelCase: {}", json);
+        let back: RunnableTiers = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.fast.as_ref().unwrap().model_id, "small");
+        assert!(back.slow.is_none());
     }
 
     #[test]
