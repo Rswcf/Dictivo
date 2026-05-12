@@ -75,7 +75,7 @@ export type HardwareProfile = {
   cpuCores: number;
   memoryTotalBytes?: number;
   accelerators: string[];
-  performanceClass: "low" | "mid" | "high";
+  performanceClass: "gpuHigh" | "cpuStrong" | "cpuWeak";
   recommendedModelId: string;
   recommendedProfile: PrivateFastProfile;
   reason: string;
@@ -248,7 +248,8 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
     const cores = globalThis.navigator?.hardwareConcurrency || 4;
     const deviceMemory = (globalThis.navigator as Navigator & { deviceMemory?: number } | undefined)?.deviceMemory;
     const memoryTotalBytes = typeof deviceMemory === "number" ? deviceMemory * 1024 ** 3 : undefined;
-    const performanceClass = cores >= 10 ? "high" : cores >= 6 ? "mid" : "low";
+    const performanceClass: "gpuHigh" | "cpuStrong" | "cpuWeak" =
+      cores >= 10 ? "gpuHigh" : cores >= 6 ? "cpuStrong" : "cpuWeak";
     return {
       platform: "web",
       arch: "browser",
@@ -256,8 +257,18 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
       memoryTotalBytes,
       accelerators: [],
       performanceClass,
-      recommendedModelId: performanceClass === "high" ? "large-v3-turbo-q5_0" : performanceClass === "mid" ? "small" : "base",
-      recommendedProfile: performanceClass === "high" ? "quality" : performanceClass === "mid" ? "balanced" : "fast",
+      recommendedModelId:
+        performanceClass === "gpuHigh"
+          ? "large-v3-turbo-q5_0"
+          : performanceClass === "cpuStrong"
+            ? "small"
+            : "base",
+      recommendedProfile:
+        performanceClass === "gpuHigh"
+          ? "quality"
+          : performanceClass === "cpuStrong"
+            ? "balanced"
+            : "fast",
       reason: "Browser preview can only estimate hardware from exposed navigator signals."
     };
   }
@@ -272,9 +283,11 @@ export async function detectGpu(): Promise<GpuInfo[]> {
 
 export async function getRunnableTiers(): Promise<RunnableTiers> {
   if (!isTauriRuntime()) {
+    // Web preview pretends all advertised tiers are downloaded so the UI can be
+    // exercised without driving the native download/calibration pipeline.
     return {
-      fast: { modelId: "base", realtimeFactor: 0.5, predicted: true, downloaded: false },
-      medium: { modelId: "small", realtimeFactor: 0.9, predicted: false, downloaded: false },
+      fast: { modelId: "base", realtimeFactor: 0.5, predicted: true, downloaded: true },
+      medium: { modelId: "small", realtimeFactor: 0.9, predicted: false, downloaded: true },
       slow: null,
       fingerprint: "web-preview",
       benchmarkedAt: ""
@@ -291,6 +304,22 @@ export async function writeRunnableTiers(tiers: RunnableTiers): Promise<void> {
 export async function benchmarkTier(modelId: string): Promise<number> {
   if (!isTauriRuntime()) throw new Error("Benchmark requires the desktop app runtime.");
   return invoke<number>("benchmark_tier", { modelId });
+}
+
+export async function finalizeCalibration(
+  measuredMediumRtf: number,
+  mediumModelId: string
+): Promise<RunnableTiers> {
+  if (!isTauriRuntime()) {
+    return {
+      fast: { modelId: "base", realtimeFactor: (measuredMediumRtf * 0.4) / 0.7, predicted: true, downloaded: false },
+      medium: { modelId: mediumModelId, realtimeFactor: measuredMediumRtf, predicted: false, downloaded: true },
+      slow: null,
+      fingerprint: "web-preview",
+      benchmarkedAt: new Date().toISOString()
+    };
+  }
+  return invoke<RunnableTiers>("finalize_calibration", { measuredMediumRtf, mediumModelId });
 }
 
 export async function rerunBenchmark(): Promise<void> {

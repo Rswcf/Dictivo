@@ -3,10 +3,12 @@ import {
   benchmarkTier,
   detectGpu,
   downloadPrivateFastModel,
+  finalizeCalibration,
   getHardwareProfile,
-  writeRunnableTiers,
+  getPrivateFastModels,
   type GpuInfo,
   type HardwareProfile,
+  type PrivateFastModel,
   type RunnableTiers
 } from "../lib/desktopBridge";
 
@@ -20,6 +22,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [step, setStep] = useState<Step>("scan");
   const [hardware, setHardware] = useState<HardwareProfile | null>(null);
   const [gpus, setGpus] = useState<GpuInfo[]>([]);
+  const [models, setModels] = useState<PrivateFastModel[]>([]);
   const [error, setError] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [progressLabel, setProgressLabel] = useState<string>("");
@@ -40,29 +43,23 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    void getPrivateFastModels().then(setModels).catch(() => {});
+  }, []);
+
   const handleDownload = async () => {
     if (!hardware) return;
     setBusy(true);
     setError("");
     setProgressLabel("Downloading model...");
     try {
+      // TODO: pre-flight disk-free check before downloading (see spec §6).
+      // statvfs requires platform-specific bindings; deferred until a Rust helper exists.
       await downloadPrivateFastModel(hardware.recommendedModelId);
       setProgressLabel("Running quick calibration...");
       setStep("calibrate");
       const rtf = await benchmarkTier(hardware.recommendedModelId);
-      const runnable: RunnableTiers = {
-        fast: null,
-        medium: {
-          modelId: hardware.recommendedModelId,
-          realtimeFactor: rtf,
-          predicted: false,
-          downloaded: true
-        },
-        slow: null,
-        fingerprint: "",
-        benchmarkedAt: new Date().toISOString()
-      };
-      await writeRunnableTiers(runnable);
+      const runnable = await finalizeCalibration(rtf, hardware.recommendedModelId);
       setTiers(runnable);
       setStep("done");
     } catch (e) {
@@ -72,6 +69,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       setProgressLabel("");
     }
   };
+
+  const recommended = hardware ? models.find((model) => model.id === hardware.recommendedModelId) : undefined;
 
   return (
     <div className="wizard-shell">
@@ -107,7 +106,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           <section>
             <h2>Recommended for your hardware</h2>
             <p className="muted">
-              Model: <strong>{hardware.recommendedModelId}</strong> — best balance for your machine.
+              Recommended: <strong>{recommended?.label ?? hardware.recommendedModelId}</strong>
+              {recommended?.sizeLabel ? ` · ${recommended.sizeLabel}` : ""} — best balance for your hardware.
             </p>
             {error && <p className="error">{error}</p>}
             <div className="wizard-actions">
@@ -129,7 +129,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         {step === "done" && tiers && (
           <section>
             <h2>Ready</h2>
-            <p>Your computer can run <strong>Medium</strong> smoothly.</p>
+            {tiers.fast && tiers.slow ? (
+              <p>Your computer can run <strong>Medium</strong> smoothly. Fast and Slow are also available.</p>
+            ) : tiers.fast ? (
+              <p>Your computer can run <strong>Medium</strong> smoothly. Fast is also available.</p>
+            ) : (
+              <p>Only <strong>Medium</strong> is available on this hardware.</p>
+            )}
             <div className="wizard-actions">
               <button type="button" className="primary" onClick={onComplete}>Start dictating →</button>
             </div>
