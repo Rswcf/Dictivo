@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
-import { BookOpenText, History, Languages, Mic2, Settings, TerminalSquare } from "lucide-react";
+import { BookOpenText, History, Settings, TerminalSquare } from "lucide-react";
+import trumpAvatarImage from "./assets/avatars/trump-companion.png";
+import bikiniAvatarImage from "./assets/avatars/bikini-companion.png";
+import muscleAvatarImage from "./assets/avatars/muscle-companion.png";
 import {
   LANGUAGE_LABELS,
   type DictionaryTerm,
@@ -613,14 +616,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Primary">
-        <div className="brand-block">
-          <div className="brand-mark">
-            <Mic2 size={22} />
-          </div>
-          <div>
-            <strong>Dictivo</strong>
-          </div>
-        </div>
+        <div className="brand-mark">D</div>
 
         <nav className="nav-list">
           <NavButton active={view === "dictation"} label="Dictation" icon={<TerminalSquare size={18} />} onClick={() => setView("dictation")} />
@@ -628,17 +624,31 @@ export function App({ windowLabel = "main" }: AppProps) {
           <NavButton active={view === "dictionary"} label="Dictionary" icon={<BookOpenText size={18} />} onClick={() => setView("dictionary")} />
           <NavButton active={view === "settings"} label="Settings" icon={<Settings size={18} />} onClick={() => setView("settings")} />
         </nav>
+
+        <SidebarMascot avatar={companionAvatar} />
       </aside>
 
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">{view}</p>
-            <h1>{viewTitle(view)}</h1>
-          </div>
+          {view === "dictation" ? (
+            <div className="heading-block">
+              <div className="title-row">
+                <h1>Private Dictation.</h1>
+                <span className="beta-chip">BETA</span>
+              </div>
+              <p className="promise">
+                Audio, transcripts, dictionary, snippets — <b>everything stays on this device</b>. No cloud round-trip, no API keys, no account required.
+              </p>
+            </div>
+          ) : (
+            <div className="heading-block">
+              <div className="title-row">
+                <h1>{viewTitle(view)}</h1>
+              </div>
+            </div>
+          )}
           <div className="toolbar">
             <label className="select-control">
-              <Languages size={16} />
               <select value={language} onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}>
                 {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -670,6 +680,8 @@ export function App({ windowLabel = "main" }: AppProps) {
             selectedModel={selectedModel}
             runnableTiers={runnableTiers}
             selectedTier={selectedTier}
+            companionAvatar={companionAvatar}
+            companionEnabled={companionEnabled}
             onTierChange={(tier) => void handleTierChange(tier)}
             onModeChange={setSelectedMode}
             onToggleDictation={toggleDictation}
@@ -729,10 +741,48 @@ export function App({ windowLabel = "main" }: AppProps) {
 
 function NavButton({ active, label, icon, onClick }: { active: boolean; label: string; icon: ReactNode; onClick: () => void }) {
   return (
-    <button className={`nav-button ${active ? "is-active" : ""}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`nav-button ${active ? "is-active" : ""}`}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+    >
       {icon}
-      <span>{label}</span>
     </button>
+  );
+}
+
+function SidebarMascot({ avatar }: { avatar: CompanionAvatar }) {
+  return (
+    <div className="sidebar-mascot" aria-hidden="true">
+      <MascotGlyph avatar={avatar} />
+    </div>
+  );
+}
+
+function MascotGlyph({ avatar }: { avatar: CompanionAvatar }) {
+  if (avatar === "cat") {
+    return (
+      <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon cat">
+        <path d="M24 35 18 13l22 14m32 8 6-22-22 14" fill="#5a6970" />
+        <circle cx="48" cy="52" r="31" fill="#7f9299" />
+        <circle cx="36" cy="48" r="4" fill="#0b1112" />
+        <circle cx="60" cy="48" r="4" fill="#0b1112" />
+        <path d="M43 56h10l-5 6z" fill="#ffb7c5" />
+      </svg>
+    );
+  }
+  if (avatar === "trump") return <img src={trumpAvatarImage} alt="" draggable={false} />;
+  if (avatar === "bikini") return <img src={bikiniAvatarImage} alt="" draggable={false} />;
+  if (avatar === "muscle") return <img src={muscleAvatarImage} alt="" draggable={false} />;
+  return (
+    <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon dog">
+      <circle cx="48" cy="52" r="31" fill="#d89954" />
+      <circle cx="36" cy="48" r="4" fill="#1a1210" />
+      <circle cx="60" cy="48" r="4" fill="#1a1210" />
+      <path d="M42 59c4 3 8 3 12 0" fill="none" stroke="#1a1210" strokeWidth="4" strokeLinecap="round" />
+    </svg>
   );
 }
 
