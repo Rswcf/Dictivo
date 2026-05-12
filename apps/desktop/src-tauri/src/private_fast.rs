@@ -5,8 +5,20 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
+
+/// Builds a `Command` that never flashes a console window on Windows.
+/// On other platforms it's equivalent to `Command::new`.
+fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -517,7 +529,7 @@ pub fn transcribe_private_fast(
     let quality_mode = profile == "quality";
     let balanced_mode = profile == "balanced";
     let started = Instant::now();
-    let mut command = Command::new(&binary_path);
+    let mut command = quiet_command(&binary_path);
     command
         .arg("-m")
         .arg(&model_path)
@@ -839,7 +851,7 @@ fn build_hardware_profile() -> HardwareProfile {
 fn total_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("sysctl")
+        let output = quiet_command("sysctl")
             .arg("-n")
             .arg("hw.memsize")
             .output()
@@ -850,7 +862,7 @@ fn total_memory_bytes() -> Option<u64> {
 
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("wmic")
+        let output = quiet_command("wmic")
             .args(["computersystem", "get", "TotalPhysicalMemory", "/value"])
             .output()
             .ok()?;
@@ -904,7 +916,7 @@ fn detect_accelerators(platform: &str, arch: &str) -> Vec<String> {
 
 #[cfg(target_os = "windows")]
 fn windows_gpu_detected() -> bool {
-    Command::new("powershell")
+    quiet_command("powershell")
         .args([
             "-NoProfile",
             "-Command",
@@ -955,7 +967,7 @@ fn download_model(model_id: &str) -> Result<(), String> {
     let whisper_dir = private_fast_whisper_dir()?;
     let download_script = whisper_dir.join("models/download-ggml-model.sh");
     if download_script.exists() {
-        let output = Command::new("bash")
+        let output = quiet_command("bash")
             .arg(download_script)
             .arg(model_id)
             .arg(&models_dir)
@@ -973,7 +985,7 @@ fn download_model(model_id: &str) -> Result<(), String> {
 
     let url =
         format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model_id}.bin");
-    let output = Command::new("curl")
+    let output = quiet_command("curl")
         .arg("-L")
         .arg("--fail")
         .arg(url)
@@ -1422,7 +1434,7 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
                 vram_bytes: Some(ram.saturating_div(2).max(8 * 1024 * 1024 * 1024)),
             });
         } else {
-            if let Ok(out) = Command::new("system_profiler")
+            if let Ok(out) = quiet_command("system_profiler")
                 .arg("SPDisplaysDataType")
                 .output()
             {
@@ -1476,7 +1488,7 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
         .map_err(|e| e.to_string())?;
 
     let start = std::time::Instant::now();
-    let mut child = Command::new(&binary_path)
+    let mut child = quiet_command(&binary_path)
         .args([
             "-m",
             model_path.to_string_lossy().as_ref(),
@@ -1522,7 +1534,7 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
 
 #[cfg(target_os = "windows")]
 fn windows_primary_gpu() -> Option<GpuInfo> {
-    let output = Command::new("powershell")
+    let output = quiet_command("powershell")
         .args([
             "-NoProfile",
             "-Command",
@@ -1543,7 +1555,7 @@ fn windows_primary_gpu() -> Option<GpuInfo> { None }
 
 #[cfg(target_os = "linux")]
 fn linux_nvidia_gpu() -> Option<GpuInfo> {
-    let output = Command::new("nvidia-smi")
+    let output = quiet_command("nvidia-smi")
         .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
         .output()
         .ok()?;
@@ -1562,7 +1574,7 @@ fn linux_nvidia_gpu() -> Option<GpuInfo> { None }
 
 #[cfg(target_os = "linux")]
 fn linux_amd_gpu() -> Option<GpuInfo> {
-    let output = Command::new("rocm-smi")
+    let output = quiet_command("rocm-smi")
         .args(["--showmeminfo", "vram", "--csv"])
         .output()
         .ok()?;
@@ -1597,7 +1609,7 @@ fn current_fingerprint() -> String {
 fn sysctl_cpu_brand() -> String {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(out) = Command::new("sysctl").args(["-n", "machdep.cpu.brand_string"]).output() {
+        if let Ok(out) = quiet_command("sysctl").args(["-n", "machdep.cpu.brand_string"]).output() {
             return String::from_utf8_lossy(&out.stdout).trim().to_string();
         }
     }
@@ -1613,7 +1625,7 @@ fn sysctl_cpu_brand() -> String {
     }
     #[cfg(target_os = "windows")]
     {
-        if let Ok(out) = Command::new("powershell").args([
+        if let Ok(out) = quiet_command("powershell").args([
             "-NoProfile", "-Command",
             "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name"
         ]).output() {
