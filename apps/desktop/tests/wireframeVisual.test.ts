@@ -4,14 +4,14 @@ import { readFileSync } from "node:fs";
 const css = readFileSync("src/styles/app.css", "utf8");
 
 describe("wireframe visual system", () => {
-  it("uses a high-tech private compute foundation", () => {
-    expect(css).toContain("color-scheme: dark");
-    expect(css).toContain("--cyan");
-    expect(css).toContain("--lime");
-    expect(css).toContain("--amber");
-    expect(css).toContain("--panel");
-    expect(css).toContain("backdrop-filter");
-    expect(css).toContain("mix-blend-mode: screen");
+  it("uses Calm Native design tokens", () => {
+    expect(css).toContain("--bg:");
+    expect(css).toContain("--surface:");
+    expect(css).toContain("--ink:");
+    expect(css).toContain("--accent:");
+    expect(css).toContain("--accent-soft:");
+    expect(css).toContain("--radius");
+    expect(css).toContain("-webkit-font-smoothing: antialiased");
   });
 
   it("keeps the hand-drawn notebook theme from returning", () => {
@@ -22,18 +22,17 @@ describe("wireframe visual system", () => {
     expect(css).not.toContain("5px 5px 0 #111111");
   });
 
-  it("renders signal-grid motion and durable panel primitives", () => {
-    expect(css).toContain("repeating-linear-gradient");
+  it("renders capture stage and tier primitives", () => {
     expect(css).toContain("box-shadow: var(--shadow");
     expect(css).toContain(".capture-orbit");
-    expect(css).toContain(".level-bars");
-    expect(css).toContain("@keyframes pulse");
+    expect(css).toContain(".tier-button");
+    expect(css).toContain(".tier-card");
   });
 
-  it("covers responsive breakpoints and companion styling in the same visual language", () => {
-    expect(css).toContain("@media (max-width: 1040px)");
-    expect(css).toContain("@media (max-width: 720px)");
-    expect(css).toContain(".companion-bubble");
-    expect(css).toContain("filter: saturate(1.08)");
+  it("covers dark-mode overrides and companion styling", () => {
+    expect(css).toContain("prefers-color-scheme: dark");
+    expect(css).toContain(".companion-shell");
+    expect(css).toContain(".wizard-card");
+    expect(css).toContain(".wizard-shell");
   });
 });
