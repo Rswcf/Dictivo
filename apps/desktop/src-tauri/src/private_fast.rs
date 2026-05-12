@@ -53,7 +53,7 @@ pub struct HardwareProfile {
     cpu_cores: usize,
     memory_total_bytes: Option<u64>,
     accelerators: Vec<String>,
-    performance_class: String,
+    performance_class: PerformanceClass,
     recommended_model_id: String,
     recommended_profile: String,
     reason: String,
@@ -804,35 +804,20 @@ fn build_hardware_profile() -> HardwareProfile {
         .unwrap_or(4);
     let memory_total_bytes = total_memory_bytes();
     let accelerators = detect_accelerators(&platform, &arch);
-    let high_memory = memory_total_bytes
-        .map(|bytes| bytes >= 16 * 1024 * 1024 * 1024)
-        .unwrap_or(false);
-    let mid_memory = memory_total_bytes
-        .map(|bytes| bytes >= 8 * 1024 * 1024 * 1024)
-        .unwrap_or(true);
-    let has_accel = !accelerators.is_empty();
+    let gpu_vram_max = detect_gpu().iter().filter_map(|g| g.vram_bytes).max();
+    let performance_class = compute_performance_class(cpu_cores, memory_total_bytes, gpu_vram_max);
 
-    let performance_class = if has_accel && cpu_cores >= 8 && high_memory {
-        "high"
-    } else if cpu_cores >= 6 && mid_memory {
-        "mid"
-    } else {
-        "low"
-    };
-
-    let (recommended_model_id, recommended_profile, reason) = match performance_class {
-        "high" => (
-            "large-v3-turbo-q5_0",
+    let recommended_model_id = default_model_for_tier(performance_class, Tier::Medium).to_string();
+    let (recommended_profile, reason) = match performance_class {
+        PerformanceClass::GpuHigh => (
             "quality",
             "Hardware acceleration and memory are available, so Dictivo can prioritize local accuracy.",
         ),
-        "mid" => (
-            "small",
+        PerformanceClass::CpuStrong => (
             "balanced",
             "CPU and memory look suitable for balanced local dictation without forcing a large model.",
         ),
-        _ => (
-            "base",
+        PerformanceClass::CpuWeak => (
             "fast",
             "This machine appears resource constrained or CPU-only, so Dictivo prioritizes latency.",
         ),
@@ -844,8 +829,8 @@ fn build_hardware_profile() -> HardwareProfile {
         cpu_cores,
         memory_total_bytes,
         accelerators,
-        performance_class: performance_class.to_string(),
-        recommended_model_id: recommended_model_id.to_string(),
+        performance_class,
+        recommended_model_id,
         recommended_profile: recommended_profile.to_string(),
         reason: reason.to_string(),
     }
@@ -1391,6 +1376,19 @@ Graphics/Displays:
     }
 
     #[test]
+    fn finalize_calibration_writes_cache_matching_fingerprint() {
+        // The inner helper bypasses the `AppHandle`-based cache write, but the
+        // returned RunnableTiers fingerprint must equal `current_fingerprint()`
+        // computed at the same moment, otherwise `runnable_tiers()` would
+        // silently discard the cache on the next launch.
+        let tiers = finalize_calibration_inner(0.8);
+        assert_eq!(tiers.fingerprint, current_fingerprint());
+        assert!(tiers.medium.is_some(), "Medium tier is always populated");
+        // benchmarked_at is non-empty (either RFC-3339 or unix seconds).
+        assert!(!tiers.benchmarked_at.is_empty());
+    }
+
+    #[test]
     fn build_runnable_tiers_drops_slow_when_predicted_too_slow() {
         use PerformanceClass::*;
         // Very weak: Medium RTF = 5.0
@@ -1459,6 +1457,11 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
 
 #[tauri::command]
 pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::thread;
+    use std::time::Duration;
+
     let binary_path = resolve_binary_path(Some(&app))
         .ok_or_else(|| "whisper-cli binary missing".to_string())?;
     let model_path = private_fast_models_dir()?
@@ -1473,7 +1476,7 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
         .map_err(|e| e.to_string())?;
 
     let start = std::time::Instant::now();
-    let output = Command::new(&binary_path)
+    let mut child = Command::new(&binary_path)
         .args([
             "-m",
             model_path.to_string_lossy().as_ref(),
@@ -1486,19 +1489,35 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
             "/dev/null",
             "--no-prints",
         ])
-        .output()
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| e.to_string())?;
 
-    if !output.status.success() {
-        return Err(format!(
-            "whisper-cli exited {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ));
+    let timeout = Duration::from_secs(30);
+    loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(status) => {
+                let elapsed = start.elapsed().as_secs_f32();
+                if !status.success() {
+                    let mut stderr = String::new();
+                    if let Some(mut s) = child.stderr.take() {
+                        let _ = s.read_to_string(&mut stderr);
+                    }
+                    return Err(format!("whisper-cli exited {}: {}", status, stderr));
+                }
+                let audio_secs = 5.0_f32;
+                return Ok(elapsed / audio_secs);
+            }
+            None => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Err("Benchmark timed out after 30 s".to_string());
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+        }
     }
-    let elapsed = start.elapsed().as_secs_f32();
-    let audio_secs = 5.0_f32;
-    Ok(elapsed / audio_secs)
 }
 
 #[cfg(target_os = "windows")]
@@ -1628,6 +1647,61 @@ pub fn write_runnable_tiers(app: AppHandle, tiers: RunnableTiers) -> Result<(), 
     let path = benchmark_cache_path(&app)?;
     let text = serde_json::to_string_pretty(&tiers).map_err(|e| e.to_string())?;
     fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+pub(crate) fn finalize_calibration_inner(measured_medium_rtf: f32) -> RunnableTiers {
+    let cores = std::thread::available_parallelism()
+        .map(|v| v.get())
+        .unwrap_or(4);
+    let ram = total_memory_bytes();
+    let gpus = detect_gpu();
+    let primary_vram = gpus.iter().filter_map(|g| g.vram_bytes).max();
+    let class = compute_performance_class(cores, ram, primary_vram);
+
+    let fingerprint = current_fingerprint();
+    let now = chrono_like_now_iso();
+
+    let models_dir = private_fast_models_dir().ok();
+    build_runnable_tiers_with_rtfs(
+        class,
+        measured_medium_rtf,
+        &fingerprint,
+        &now,
+        |id| {
+            models_dir
+                .as_ref()
+                .map(|dir| dir.join(format!("ggml-{id}.bin")).exists())
+                .unwrap_or(false)
+        },
+    )
+}
+
+#[tauri::command]
+pub fn finalize_calibration(
+    app: AppHandle,
+    measured_medium_rtf: f32,
+    medium_model_id: String,
+) -> Result<RunnableTiers, String> {
+    let _ = medium_model_id; // Reserved for future "force Medium to specific model" override; currently the class already determines it.
+    let tiers = finalize_calibration_inner(measured_medium_rtf);
+
+    // Persist the cache so subsequent `runnable_tiers()` calls return it.
+    let path = benchmark_cache_path(&app)?;
+    let text = serde_json::to_string_pretty(&tiers).map_err(|e| e.to_string())?;
+    fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(tiers)
+}
+
+fn chrono_like_now_iso() -> String {
+    if let Ok(stamp) = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
+        return stamp;
+    }
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{}", secs)
 }
 
 #[tauri::command]

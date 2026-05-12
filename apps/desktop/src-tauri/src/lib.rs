@@ -195,6 +195,7 @@ pub fn run() {
             private_fast::runnable_tiers,
             private_fast::write_runnable_tiers,
             private_fast::rerun_benchmark,
+            private_fast::finalize_calibration,
             storage::save_session,
             storage::list_sessions,
             storage::clear_sessions
