@@ -1084,6 +1084,7 @@ fn whisper_language(language: &str) -> &str {
         "es" => "es",
         "fr" => "fr",
         "de" => "de",
+        "vi" => "vi",
         _ => "en",
     }
 }
@@ -1413,6 +1414,17 @@ Graphics/Displays:
     }
 
     fn installed_in_test(_model_id: &str) -> bool { false }
+
+    #[test]
+    fn vietnamese_language_maps_to_vi() {
+        assert_eq!(whisper_language("vi"), "vi");
+    }
+
+    #[test]
+    fn unknown_language_still_falls_to_english() {
+        assert_eq!(whisper_language("xx"), "en");
+        assert_eq!(whisper_language(""), "en");
+    }
 }
 
 fn path_to_string(path: impl AsRef<Path>) -> String {
