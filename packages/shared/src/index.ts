@@ -4,7 +4,8 @@ export const SUPPORTED_LANGUAGES = [
   "es",
   "ja",
   "fr",
-  "de"
+  "de",
+  "vi"
 ] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
@@ -15,7 +16,8 @@ export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   es: "Español",
   ja: "日本語",
   fr: "Français",
-  de: "Deutsch"
+  de: "Deutsch",
+  vi: "Tiếng Việt"
 };
 
 export const PROVIDERS = ["local-whisper"] as const;

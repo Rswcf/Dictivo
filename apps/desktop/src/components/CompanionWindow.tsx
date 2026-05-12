@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
+import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import type { CompanionAvatar } from "../lib/settingsStore";
 import type { CompanionPhase, CompanionSnapshot } from "../lib/companion";
 
@@ -100,6 +101,16 @@ function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: Comp
         className={`companion-avatar companion-avatar--trump is-${phase}`}
         src={trumpAvatarImage}
         alt="Cartoon Trump"
+        draggable={false}
+      />
+    );
+  }
+  if (avatar === "bikini") {
+    return (
+      <img
+        className={`companion-avatar companion-avatar--bikini is-${phase}`}
+        src={bikiniAvatarImage}
+        alt="Bikini companion"
         draggable={false}
       />
     );
