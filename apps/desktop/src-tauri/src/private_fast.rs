@@ -190,6 +190,20 @@ fn compute_performance_class(
     }
 }
 
+fn predict_rtf_from_medium(model_id: &str, medium_rtf: f32) -> f32 {
+    let ratio: f32 = match model_id {
+        "tiny" => 0.2,
+        "base" => 0.4,
+        "small" => 0.7,
+        "medium-q5_0" => 1.1,
+        "large-v3-turbo-q5_0" => 1.5,
+        "large-v3-turbo" => 2.0,
+        "large-v3" => 2.5,
+        _ => return medium_rtf,
+    };
+    medium_rtf * ratio
+}
+
 #[tauri::command]
 pub fn hardware_profile() -> HardwareProfile {
     build_hardware_profile()
@@ -1089,6 +1103,38 @@ mod tests {
             compute_performance_class(8, None, None),
             PerformanceClass::CpuWeak
         );
+    }
+
+    #[test]
+    fn predict_rtf_ratios() {
+        let medium_rtf = 1.0f32;
+        let expectations: &[(&str, f32)] = &[
+            ("tiny",                  1.0 * 0.2),
+            ("base",                  1.0 * 0.4),
+            ("small",                 1.0 * 0.7),
+            ("medium-q5_0",           1.0 * 1.1),
+            ("large-v3-turbo-q5_0",   1.0 * 1.5),
+            ("large-v3-turbo",        1.0 * 2.0),
+            ("large-v3",              1.0 * 2.5),
+        ];
+        for &(model_id, expected) in expectations {
+            let got = predict_rtf_from_medium(model_id, medium_rtf);
+            assert!(
+                (got - expected).abs() < 1e-4,
+                "{} predicted {} expected {}",
+                model_id, got, expected
+            );
+        }
+    }
+
+    #[test]
+    fn predict_rtf_scales_linearly_with_medium() {
+        assert!((predict_rtf_from_medium("large-v3", 2.0) - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn predict_rtf_unknown_model_returns_input() {
+        assert_eq!(predict_rtf_from_medium("unknown-id", 1.5), 1.5);
     }
 }
 
