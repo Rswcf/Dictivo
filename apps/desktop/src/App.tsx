@@ -128,8 +128,8 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [snippets, setSnippets] = useState<Snippet[]>(sampleSnippets);
   const [query, setQuery] = useState("");
   const [permissions, setPermissions] = useState<Record<string, string>>({});
-  const [selectedTier, setSelectedTier] = useState<Tier>("medium");
-  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(false);
+  const [selectedTier, setSelectedTier] = useState<Tier>(() => loadSettings().selectedTier ?? "medium");
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(() => Boolean(loadSettings().onboardingCompleted));
   const [runnableTiers, setRunnableTiers] = useState<RunnableTiers>({
     fast: null,
     medium: null,
@@ -713,7 +713,7 @@ function viewTitle(view: View) {
   if (view === "history") return "Local History";
   if (view === "dictionary") return "Dictionary & Snippets";
   if (view === "settings") return "Settings";
-  return "Dictation Workbench";
+  return "Dictation";
 }
 
 function modeLabel(mode: InputMode) {
