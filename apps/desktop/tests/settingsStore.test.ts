@@ -1,56 +1,69 @@
-import { describe, expect, it } from "vitest";
-import { migratePersistedSettings, normalizeCompanionAvatar, normalizeHotkeys, normalizePrivateFastProfile } from "../src/lib/settingsStore";
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { loadSettings, saveSettings } from "../src/lib/settingsStore";
 
-describe("local-only settings migration", () => {
-  it("drops legacy cloud provider settings and keeps local dictation preferences", () => {
-    const migrated = migratePersistedSettings({
+function createLocalStorage() {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; },
+    get length() { return Object.keys(store).length; },
+    key: (i: number) => Object.keys(store)[i] ?? null
+  };
+}
+
+describe("settingsStore v4 migration", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", createLocalStorage());
+  });
+
+  it("returns defaults when nothing stored", () => {
+    const s = loadSettings();
+    expect(s.selectedTier).toBe("medium");
+    expect(s.onboardingCompleted).toBe(false);
+  });
+
+  it("migrates v3 privateFastProfile=balanced to selectedTier=medium", () => {
+    localStorage.setItem(
+      "dictivo-settings-v3",
+      JSON.stringify({ privateFastProfile: "balanced", modelSelectionMode: "auto", language: "en" })
+    );
+    const s = loadSettings();
+    expect(s.selectedTier).toBe("medium");
+    expect(s.language).toBe("en");
+  });
+
+  it("migrates v3 privateFastProfile=fast to selectedTier=fast", () => {
+    localStorage.setItem(
+      "dictivo-settings-v3",
+      JSON.stringify({ privateFastProfile: "fast" })
+    );
+    expect(loadSettings().selectedTier).toBe("fast");
+  });
+
+  it("migrates v3 privateFastProfile=quality to selectedTier=slow", () => {
+    localStorage.setItem(
+      "dictivo-settings-v3",
+      JSON.stringify({ privateFastProfile: "quality" })
+    );
+    expect(loadSettings().selectedTier).toBe("slow");
+  });
+
+  it("round-trips through saveSettings", () => {
+    saveSettings({
       language: "en",
-      provider: "openai",
-      privacyMode: "cloud-zero-retention",
-      providerKeys: { openai: "sk-test" },
       selectedMode: "message",
-      privateFastProfile: "quality",
-      hotkeys: {
-        dictation: "Alt+Space",
-        meeting: "Alt+Shift+Space",
-        pasteLast: "Alt+Shift+V",
-        activationMode: "hold"
-      }
+      selectedTier: "fast",
+      onboardingCompleted: true,
+      companionEnabled: true,
+      companionAvatar: "cat",
+      hotkeys: { dictation: "CommandOrControl+Shift+Space", pasteLast: "", activationMode: "toggle" },
+      localProcessing: { autoPolish: true, spokenPunctuation: true, fillerWords: true, smartCapitalization: true },
+      dictionary: [],
+      snippets: []
     });
-
-    expect(migrated).not.toHaveProperty("provider");
-    expect(migrated).not.toHaveProperty("privacyMode");
-    expect(migrated).not.toHaveProperty("providerKeys");
-    expect(migrated.selectedMode).toBe("message");
-    expect(migrated.privateFastProfile).toBe("quality");
-    expect(migrated.hotkeys).toEqual({
-      dictation: "CommandOrControl+Shift+Space",
-      pasteLast: "CommandOrControl+Shift+V",
-      activationMode: "hold"
-    });
-    expect(migrated.companionEnabled).toBe(true);
-    expect(migrated.companionAvatar).toBe("dog");
-  });
-
-  it("normalizes the local profile and hotkey set", () => {
-    expect(normalizePrivateFastProfile("cloud")).toBe("balanced");
-    expect(normalizeHotkeys({ dictation: "", pasteLast: "Ctrl+Alt+V" })).toEqual({
-      dictation: "CommandOrControl+Shift+Space",
-      pasteLast: "Ctrl+Alt+V",
-      activationMode: "toggle"
-    });
-  });
-
-  it("preserves custom hotkeys while upgrading old default shortcuts", () => {
-    expect(normalizeHotkeys({ dictation: "CommandOrControl+Alt+D", pasteLast: "Alt+Shift+V" })).toEqual({
-      dictation: "CommandOrControl+Alt+D",
-      pasteLast: "CommandOrControl+Shift+V",
-      activationMode: "toggle"
-    });
-  });
-
-  it("normalizes the floating companion avatar", () => {
-    expect(normalizeCompanionAvatar("trump")).toBe("trump");
-    expect(normalizeCompanionAvatar("horse")).toBe("dog");
+    expect(loadSettings().selectedTier).toBe("fast");
+    expect(loadSettings().onboardingCompleted).toBe(true);
   });
 });

@@ -1,19 +1,16 @@
-import type {
-  DictionaryTerm,
-  InputMode,
-  Snippet,
-  SupportedLanguage
-} from "@dictivo/shared";
+import type { DictionaryTerm, InputMode, Snippet, SupportedLanguage } from "@dictivo/shared";
 
-export type PrivateFastProfile = "fast" | "balanced" | "quality";
-export type DictationActivationMode = "toggle" | "hold";
+const STORAGE_KEY = "dictivo-settings-v4";
+const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
+
 export type ModelSelectionMode = "auto" | "manual";
+export type PrivateFastProfile = "fast" | "balanced" | "quality";
 export type CompanionAvatar = "dog" | "cat" | "trump";
 
 export type HotkeySettings = {
   dictation: string;
   pasteLast: string;
-  activationMode: DictationActivationMode;
+  activationMode: "toggle" | "hold";
 };
 
 export type LocalProcessingSettings = {
@@ -21,12 +18,6 @@ export type LocalProcessingSettings = {
   spokenPunctuation: boolean;
   fillerWords: boolean;
   smartCapitalization: boolean;
-};
-
-const LEGACY_DEFAULT_HOTKEYS: HotkeySettings = {
-  dictation: "Alt+Space",
-  pasteLast: "Alt+Shift+V",
-  activationMode: "toggle"
 };
 
 export const DEFAULT_HOTKEYS: HotkeySettings = {
@@ -42,11 +33,11 @@ export const DEFAULT_LOCAL_PROCESSING: LocalProcessingSettings = {
   smartCapitalization: true
 };
 
-export type PersistedSettings = {
+export type Settings = {
   language: SupportedLanguage;
   selectedMode: InputMode;
-  privateFastProfile: PrivateFastProfile;
-  modelSelectionMode: ModelSelectionMode;
+  selectedTier: "fast" | "medium" | "slow";
+  onboardingCompleted: boolean;
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
   hotkeys: HotkeySettings;
@@ -55,84 +46,78 @@ export type PersistedSettings = {
   snippets: Snippet[];
 };
 
-const settingsKey = "dictivo-settings-v3-local";
-const legacySettingsKeys = ["dictivo-settings-v2"];
-const supportedLanguages = new Set(["en", "zh", "es", "ja", "fr", "de"]);
-const supportedModes = new Set(["dictation", "email", "message", "raw", "prompt"]);
+const DEFAULTS: Settings = {
+  language: "en",
+  selectedMode: "message",
+  selectedTier: "medium",
+  onboardingCompleted: false,
+  companionEnabled: true,
+  companionAvatar: "dog",
+  hotkeys: DEFAULT_HOTKEYS,
+  localProcessing: DEFAULT_LOCAL_PROCESSING,
+  dictionary: [],
+  snippets: []
+};
 
-export function loadSettings(): Partial<PersistedSettings> {
-  const raw = localStorage.getItem(settingsKey) ?? legacySettingsKeys.map((key) => localStorage.getItem(key)).find(Boolean);
-  if (!raw) return {};
+export function normalizeHotkeys(value: Partial<HotkeySettings> | undefined): HotkeySettings {
+  return {
+    dictation: value?.dictation ?? DEFAULT_HOTKEYS.dictation,
+    pasteLast: value?.pasteLast ?? DEFAULT_HOTKEYS.pasteLast,
+    activationMode: value?.activationMode ?? DEFAULT_HOTKEYS.activationMode
+  };
+}
 
+export function normalizeLocalProcessing(
+  value: Partial<LocalProcessingSettings> | undefined
+): LocalProcessingSettings {
+  return {
+    autoPolish: value?.autoPolish ?? DEFAULT_LOCAL_PROCESSING.autoPolish,
+    spokenPunctuation: value?.spokenPunctuation ?? DEFAULT_LOCAL_PROCESSING.spokenPunctuation,
+    fillerWords: value?.fillerWords ?? DEFAULT_LOCAL_PROCESSING.fillerWords,
+    smartCapitalization: value?.smartCapitalization ?? DEFAULT_LOCAL_PROCESSING.smartCapitalization
+  };
+}
+
+function profileToTier(profile: unknown): Settings["selectedTier"] {
+  if (profile === "fast") return "fast";
+  if (profile === "quality") return "slow";
+  return "medium";
+}
+
+export function loadSettings(): Settings {
+  if (typeof localStorage === "undefined") return DEFAULTS;
   try {
-    return migratePersistedSettings(JSON.parse(raw) as Record<string, unknown>);
-  } catch {
-    return {};
+    const fresh = localStorage.getItem(STORAGE_KEY);
+    if (fresh) return { ...DEFAULTS, ...JSON.parse(fresh) };
+
+    for (const key of LEGACY_KEYS) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const migrated: Settings = {
+        ...DEFAULTS,
+        ...(parsed as Partial<Settings>),
+        selectedTier: profileToTier(parsed.privateFastProfile),
+        onboardingCompleted: Boolean(parsed.onboardingCompleted),
+        hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
+        localProcessing: normalizeLocalProcessing(
+          parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
+        )
+      };
+      return migrated;
+    }
+  } catch (error) {
+    console.warn("settingsStore: load failed, using defaults", error);
   }
+  return DEFAULTS;
 }
 
-export function saveSettings(settings: PersistedSettings) {
-  localStorage.setItem(settingsKey, JSON.stringify(settings));
-}
-
-export function normalizeHotkeys(settings?: Partial<HotkeySettings>): HotkeySettings {
-  return {
-    dictation: normalizeShortcut(settings?.dictation, DEFAULT_HOTKEYS.dictation, LEGACY_DEFAULT_HOTKEYS.dictation),
-    pasteLast: normalizeShortcut(settings?.pasteLast, DEFAULT_HOTKEYS.pasteLast, LEGACY_DEFAULT_HOTKEYS.pasteLast),
-    activationMode: settings?.activationMode === "hold" ? "hold" : "toggle"
-  };
-}
-
-export function normalizeLocalProcessing(settings?: Partial<LocalProcessingSettings>): LocalProcessingSettings {
-  return {
-    ...DEFAULT_LOCAL_PROCESSING,
-    ...settings
-  };
-}
-
-export function normalizePrivateFastProfile(value: unknown): PrivateFastProfile {
-  return value === "fast" || value === "balanced" || value === "quality" ? value : "balanced";
-}
-
-export function normalizeModelSelectionMode(value: unknown): ModelSelectionMode {
-  return value === "manual" ? "manual" : "auto";
-}
-
-export function normalizeCompanionAvatar(value: unknown): CompanionAvatar {
-  return value === "dog" || value === "cat" || value === "trump" ? value : "dog";
-}
-
-export function migratePersistedSettings(raw: Record<string, unknown>): Partial<PersistedSettings> {
-  const migrated: Partial<PersistedSettings> = {};
-
-  if (typeof raw.language === "string" && supportedLanguages.has(raw.language)) {
-    migrated.language = raw.language as SupportedLanguage;
+export function saveSettings(settings: Settings) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+  } catch (error) {
+    console.warn("settingsStore: save failed", error);
   }
-
-  if (typeof raw.selectedMode === "string" && supportedModes.has(raw.selectedMode)) {
-    migrated.selectedMode = raw.selectedMode as InputMode;
-  }
-
-  migrated.privateFastProfile = normalizePrivateFastProfile(raw.privateFastProfile);
-  migrated.modelSelectionMode = normalizeModelSelectionMode(raw.modelSelectionMode);
-  migrated.companionEnabled = typeof raw.companionEnabled === "boolean" ? raw.companionEnabled : true;
-  migrated.companionAvatar = normalizeCompanionAvatar(raw.companionAvatar);
-  migrated.hotkeys = normalizeHotkeys(isRecord(raw.hotkeys) ? raw.hotkeys : undefined);
-  migrated.localProcessing = normalizeLocalProcessing(isRecord(raw.localProcessing) ? raw.localProcessing : undefined);
-
-  if (Array.isArray(raw.dictionary)) migrated.dictionary = raw.dictionary as DictionaryTerm[];
-  if (Array.isArray(raw.snippets)) migrated.snippets = raw.snippets as Snippet[];
-
-  return migrated;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function normalizeShortcut(value: unknown, fallback: string, legacyFallback: string) {
-  if (typeof value !== "string") return fallback;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === legacyFallback) return fallback;
-  return trimmed;
 }
