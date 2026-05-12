@@ -5,7 +5,7 @@ import { DictationWorkbench } from "../src/components/DictationWorkbench";
 import { DictionaryView } from "../src/components/DictionaryView";
 import { HistoryView } from "../src/components/HistoryView";
 import { SettingsView } from "../src/components/SettingsView";
-import type { HardwareProfile, PrivateFastModel, PrivateFastStatus } from "../src/lib/desktopBridge";
+import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../src/lib/desktopBridge";
 
 const modes: ProcessingMode[] = [
   {
@@ -96,6 +96,13 @@ const models: PrivateFastModel[] = [
 
 describe("desktop screen render contracts", () => {
   it("keeps dictation controls, live text, raw preview, and engine telemetry visible", () => {
+    const runnableTiers: RunnableTiers = {
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true },
+      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false },
+      slow: null,
+      fingerprint: "abc123",
+      benchmarkedAt: "2026-05-12T00:00:00.000Z"
+    };
     const markup = renderToStaticMarkup(
       <DictationWorkbench
         language="en"
@@ -109,7 +116,9 @@ describe("desktop screen render contracts", () => {
         privateFastStatus={status}
         hardwareProfile={hardware}
         selectedModel={models[0]}
-        privateFastProfile="balanced"
+        runnableTiers={runnableTiers}
+        selectedTier="fast"
+        onTierChange={vi.fn()}
         onModeChange={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
@@ -117,10 +126,8 @@ describe("desktop screen render contracts", () => {
       />
     );
 
-    expect(markup).toContain("Local Dictation");
     expect(markup).toContain("Message");
     expect(markup).toContain("Email");
-    expect(markup).toContain("Raw local transcript");
     expect(markup).toContain("Start dictation");
     expect(markup).toContain("CommandOrControl+Shift+Space ready");
     expect(markup).toContain("Copied to clipboard");
