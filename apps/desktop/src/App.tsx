@@ -32,6 +32,7 @@ import {
   listLocalSessions,
   pasteText,
   requestNativePermissions,
+  rerunBenchmark,
   saveLocalSession,
   selectPrivateFastModel,
   deletePrivateFastModel,
@@ -135,13 +136,9 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [permissions, setPermissions] = useState<Record<string, string>>({});
   const [selectedTier, setSelectedTier] = useState<Tier>(() => loadSettings().selectedTier ?? "medium");
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(() => Boolean(loadSettings().onboardingCompleted));
-  const [runnableTiers, setRunnableTiers] = useState<RunnableTiers>({
-    fast: null,
-    medium: null,
-    slow: null,
-    fingerprint: "",
-    benchmarkedAt: ""
-  });
+  const [runnableTiers, setRunnableTiers] = useState<RunnableTiers>(() => placeholderRunnableTiers());
+  const [rerunStatus, setRerunStatus] = useState<"idle" | "measuring" | "error">("idle");
+  const [rerunError, setRerunError] = useState("");
   const [companionEnabled, setCompanionEnabled] = useState(true);
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>("dog");
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(DEFAULT_HOTKEYS);
@@ -233,13 +230,8 @@ export function App({ windowLabel = "main" }: AppProps) {
       const previous = selectedTier;
       setSelectedTier(next);
       const assignment = runnableTiers[next];
-      if (!assignment) return;
 
       if (!assignment.downloaded) {
-        if (!window.confirm(`Switching to ${next} will download ${assignment.modelId}. Continue?`)) {
-          setSelectedTier(previous);
-          return;
-        }
         setPrivateFastOperation(`download:${assignment.modelId}`);
         try {
           const downloadStatus = await downloadPrivateFastModel(assignment.modelId);
@@ -248,7 +240,7 @@ export function App({ windowLabel = "main" }: AppProps) {
           const rtf = await benchmarkTier(assignment.modelId);
           const refreshed = await finalizeCalibration(
             rtf,
-            runnableTiers.medium?.modelId ?? assignment.modelId
+            runnableTiers.medium.modelId
           );
           setRunnableTiers(refreshed);
         } catch (error) {
@@ -261,7 +253,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       }
 
       const final = runnableTiers[next];
-      if (final?.modelId && final.modelId !== selectedModel?.id) {
+      if (final.modelId && final.modelId !== selectedModel?.id) {
         try {
           const status = await selectPrivateFastModel(final.modelId);
           setPrivateFastStatus(status);
@@ -273,6 +265,29 @@ export function App({ windowLabel = "main" }: AppProps) {
     },
     [runnableTiers, selectedTier, selectedModel?.id]
   );
+
+  const handleRerunBenchmark = useCallback(async () => {
+    setRerunStatus("measuring");
+    setRerunError("");
+    try {
+      await rerunBenchmark();
+      const mediumAssignment = runnableTiers.medium;
+      if (!mediumAssignment.downloaded) {
+        throw new Error("Install a model first by picking a tier below.");
+      }
+      const rtf = await benchmarkTier(mediumAssignment.modelId);
+      const fresh = await finalizeCalibration(rtf, mediumAssignment.modelId);
+      setRunnableTiers(fresh);
+      setRerunStatus("idle");
+    } catch (error) {
+      setRerunError(error instanceof Error ? error.message : "Re-run failed.");
+      setRerunStatus("error");
+    }
+  }, [runnableTiers.medium]);
+
+  const handleOpenWizard = useCallback(() => {
+    setOnboardingCompleted(false);
+  }, []);
 
   const saveSession = useCallback(async (partial: Omit<LocalSession, "id" | "createdAt">) => {
     const session: LocalSession = {
@@ -732,6 +747,12 @@ export function App({ windowLabel = "main" }: AppProps) {
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
             onImportModel={(modelId, sourcePath) => void runImportModel(modelId, sourcePath)}
             onRefreshNative={() => void refreshNativeState()}
+            selectedTier={selectedTier}
+            rerunStatus={rerunStatus}
+            rerunError={rerunError}
+            onTierChange={(tier) => void handleTierChange(tier)}
+            onRerunBenchmark={() => void handleRerunBenchmark()}
+            onOpenWizard={handleOpenWizard}
           />
         )}
       </section>
@@ -808,6 +829,23 @@ function tierToProfile(tier: Tier): "fast" | "balanced" | "quality" {
   if (tier === "fast") return "fast";
   if (tier === "slow") return "quality";
   return "balanced";
+}
+
+function placeholderRunnableTiers(): RunnableTiers {
+  const empty = {
+    modelId: "",
+    realtimeFactor: 0,
+    predicted: true,
+    downloaded: false,
+    withinBudget: false
+  };
+  return {
+    fast: { ...empty, modelId: "base" },
+    medium: { ...empty, modelId: "small" },
+    slow: { ...empty, modelId: "large-v3" },
+    fingerprint: "",
+    benchmarkedAt: ""
+  };
 }
 
 async function positionCompanionWindow(window: TauriWindow) {

@@ -97,9 +97,9 @@ const models: PrivateFastModel[] = [
 describe("desktop screen render contracts", () => {
   it("keeps dictation controls, live text, raw preview, and engine telemetry visible", () => {
     const runnableTiers: RunnableTiers = {
-      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true },
-      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false },
-      slow: null,
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true, withinBudget: true },
+      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: 3.5, predicted: true, downloaded: false, withinBudget: false },
       fingerprint: "abc123",
       benchmarkedAt: "2026-05-12T00:00:00.000Z"
     };
@@ -188,9 +188,9 @@ describe("desktop screen render contracts", () => {
 
   it("renders every settings subsection with its expected controls (4-section layout)", () => {
     const runnableTiers: RunnableTiers = {
-      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true },
-      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false },
-      slow: null,
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true, withinBudget: true },
+      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: 3.5, predicted: true, downloaded: false, withinBudget: false },
       fingerprint: "abc123",
       benchmarkedAt: "2026-05-12T00:00:00.000Z"
     };
@@ -224,7 +224,13 @@ describe("desktop screen render contracts", () => {
       onCompanionAvatarChange: vi.fn(),
       onModelAction: vi.fn(),
       onImportModel: vi.fn(),
-      onRefreshNative: vi.fn()
+      onRefreshNative: vi.fn(),
+      selectedTier: "medium" as const,
+      rerunStatus: "idle" as const,
+      rerunError: "",
+      onTierChange: vi.fn(),
+      onRerunBenchmark: vi.fn(),
+      onOpenWizard: vi.fn()
     };
 
     const engine = renderToStaticMarkup(<SettingsView {...sharedProps} initialSection="engine" />);

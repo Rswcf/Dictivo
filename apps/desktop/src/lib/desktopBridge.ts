@@ -54,12 +54,13 @@ export type TierAssignment = {
   realtimeFactor: number;
   predicted: boolean;
   downloaded: boolean;
+  withinBudget: boolean;
 };
 
 export type RunnableTiers = {
-  fast: TierAssignment | null;
-  medium: TierAssignment | null;
-  slow: TierAssignment | null;
+  fast: TierAssignment;
+  medium: TierAssignment;
+  slow: TierAssignment;
   fingerprint: string;
   benchmarkedAt: string;
 };
@@ -283,12 +284,13 @@ export async function detectGpu(): Promise<GpuInfo[]> {
 
 export async function getRunnableTiers(): Promise<RunnableTiers> {
   if (!isTauriRuntime()) {
-    // Web preview pretends all advertised tiers are downloaded so the UI can be
-    // exercised without driving the native download/calibration pipeline.
+    // Web preview pretends all three tiers exist — fast/medium downloaded and
+    // within budget; slow not downloaded and over budget so the UI can exercise
+    // the warning state too.
     return {
-      fast: { modelId: "base", realtimeFactor: 0.5, predicted: true, downloaded: true },
-      medium: { modelId: "small", realtimeFactor: 0.9, predicted: false, downloaded: true },
-      slow: null,
+      fast: { modelId: "base", realtimeFactor: 0.5, predicted: true, downloaded: true, withinBudget: true },
+      medium: { modelId: "small", realtimeFactor: 0.9, predicted: false, downloaded: true, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: 3.2, predicted: true, downloaded: false, withinBudget: false },
       fingerprint: "web-preview",
       benchmarkedAt: ""
     };
@@ -312,9 +314,9 @@ export async function finalizeCalibration(
 ): Promise<RunnableTiers> {
   if (!isTauriRuntime()) {
     return {
-      fast: { modelId: "base", realtimeFactor: (measuredMediumRtf * 0.4) / 0.7, predicted: true, downloaded: false },
-      medium: { modelId: mediumModelId, realtimeFactor: measuredMediumRtf, predicted: false, downloaded: true },
-      slow: null,
+      fast: { modelId: "base", realtimeFactor: (measuredMediumRtf * 0.4) / 0.7, predicted: true, downloaded: false, withinBudget: true },
+      medium: { modelId: mediumModelId, realtimeFactor: measuredMediumRtf, predicted: false, downloaded: true, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: measuredMediumRtf * 5.0, predicted: true, downloaded: false, withinBudget: false },
       fingerprint: "web-preview",
       benchmarkedAt: new Date().toISOString()
     };

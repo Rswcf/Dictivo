@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
-import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../lib/desktopBridge";
+import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
 import type { CompanionAvatar, HotkeySettings, LocalProcessingSettings } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
@@ -27,6 +27,12 @@ type SettingsViewProps = {
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
+  selectedTier: Tier;
+  rerunStatus: "idle" | "measuring" | "error";
+  rerunError: string;
+  onTierChange: (tier: Tier) => void;
+  onRerunBenchmark: () => void;
+  onOpenWizard: () => void;
   initialSection?: SettingsSection;
 };
 
@@ -89,6 +95,12 @@ export function SettingsView({
   onModelAction,
   onImportModel,
   onRefreshNative,
+  selectedTier,
+  rerunStatus,
+  rerunError,
+  onTierChange,
+  onRerunBenchmark,
+  onOpenWizard,
   initialSection = "engine"
 }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -118,9 +130,15 @@ export function SettingsView({
               hardwareProfile={hardwareProfile}
               runnableTiers={runnableTiers}
               operation={privateFastOperation}
+              selectedTier={selectedTier}
+              rerunStatus={rerunStatus}
+              rerunError={rerunError}
               onModelAction={onModelAction}
               onImportModel={onImportModel}
               onRefresh={onRefreshNative}
+              onTierChange={onTierChange}
+              onRerunBenchmark={onRerunBenchmark}
+              onOpenWizard={onOpenWizard}
             />
             <details className="advanced">
               <summary>Processing toggles</summary>

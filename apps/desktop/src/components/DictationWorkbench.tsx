@@ -13,6 +13,7 @@ import type {
   TierAssignment
 } from "../lib/desktopBridge";
 import type { CompanionAvatar } from "../lib/settingsStore";
+import { TIER_DISPLAY } from "../lib/tierDisplay";
 
 type DictationWorkbenchProps = {
   language: SupportedLanguage;
@@ -33,12 +34,6 @@ type DictationWorkbenchProps = {
   onModeChange: (mode: InputMode) => void;
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
-};
-
-const TIER_META: Record<Tier, { name: string }> = {
-  fast: { name: "Fast" },
-  medium: { name: "Medium" },
-  slow: { name: "Slow" }
 };
 
 export function DictationWorkbench({
@@ -66,8 +61,8 @@ export function DictationWorkbench({
   const modelLabel = selectedModel?.label ?? privateFastStatus.modelName;
 
   const availableTiers: Array<[Tier, TierAssignment]> = (["fast", "medium", "slow"] as const)
-    .map((id) => [id, runnableTiers[id]] as [Tier, TierAssignment | null])
-    .filter((pair): pair is [Tier, TierAssignment] => pair[1] !== null);
+    .map((id) => [id, runnableTiers[id]] as [Tier, TierAssignment])
+    .filter((pair) => pair[1].withinBudget);
 
   return (
     <section className="dictation-workbench" aria-label="Local dictation workbench">
@@ -127,7 +122,7 @@ export function DictationWorkbench({
                   className={`tier-button ${selectedTier === id ? "is-selected" : ""}`}
                   onClick={() => onTierChange(id)}
                 >
-                  <span className="name">{TIER_META[id].name}</span>
+                  <span className="name">{TIER_DISPLAY[id].name}</span>
                 </button>
               ))}
             </div>
