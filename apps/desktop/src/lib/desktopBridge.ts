@@ -47,6 +47,28 @@ export type PrivateFastModel = {
 
 export type PrivateFastProfile = "fast" | "balanced" | "quality";
 
+export type Tier = "fast" | "medium" | "slow";
+
+export type TierAssignment = {
+  modelId: string;
+  realtimeFactor: number;
+  predicted: boolean;
+  downloaded: boolean;
+};
+
+export type RunnableTiers = {
+  fast: TierAssignment | null;
+  medium: TierAssignment | null;
+  slow: TierAssignment | null;
+  fingerprint: string;
+  benchmarkedAt: string;
+};
+
+export type GpuInfo = {
+  name: string;
+  vramBytes: number | null;
+};
+
 export type HardwareProfile = {
   platform: "macos" | "windows" | "linux" | "web";
   arch: string;
@@ -241,6 +263,39 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
   }
 
   return invoke<HardwareProfile>("hardware_profile");
+}
+
+export async function detectGpu(): Promise<GpuInfo[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<GpuInfo[]>("detect_gpu");
+}
+
+export async function getRunnableTiers(): Promise<RunnableTiers> {
+  if (!isTauriRuntime()) {
+    return {
+      fast: { modelId: "base", realtimeFactor: 0.5, predicted: true, downloaded: false },
+      medium: { modelId: "small", realtimeFactor: 0.9, predicted: false, downloaded: false },
+      slow: null,
+      fingerprint: "web-preview",
+      benchmarkedAt: ""
+    };
+  }
+  return invoke<RunnableTiers>("runnable_tiers");
+}
+
+export async function writeRunnableTiers(tiers: RunnableTiers): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return invoke<void>("write_runnable_tiers", { tiers });
+}
+
+export async function benchmarkTier(modelId: string): Promise<number> {
+  if (!isTauriRuntime()) throw new Error("Benchmark requires the desktop app runtime.");
+  return invoke<number>("benchmark_tier", { modelId });
+}
+
+export async function rerunBenchmark(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return invoke<void>("rerun_benchmark");
 }
 
 export async function selectPrivateFastModel(modelId: string): Promise<PrivateFastStatus> {
