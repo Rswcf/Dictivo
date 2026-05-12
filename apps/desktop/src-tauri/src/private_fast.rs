@@ -167,6 +167,29 @@ fn default_model_for_tier(class: PerformanceClass, tier: Tier) -> &'static str {
     }
 }
 
+fn compute_performance_class(
+    cores: usize,
+    ram_bytes: Option<u64>,
+    gpu_vram_bytes: Option<u64>,
+) -> PerformanceClass {
+    let ram = match ram_bytes {
+        Some(v) => v,
+        None => return PerformanceClass::CpuWeak,
+    };
+    let high_ram = ram >= 16 * 1024 * 1024 * 1024;
+    let qualifying_gpu = gpu_vram_bytes
+        .map(|v| v >= 8 * 1024 * 1024 * 1024)
+        .unwrap_or(false);
+
+    if qualifying_gpu && high_ram {
+        PerformanceClass::GpuHigh
+    } else if cores >= 8 && high_ram {
+        PerformanceClass::CpuStrong
+    } else {
+        PerformanceClass::CpuWeak
+    }
+}
+
 #[tauri::command]
 pub fn hardware_profile() -> HardwareProfile {
     build_hardware_profile()
@@ -1033,6 +1056,39 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn performance_class_classification() {
+        let cases: &[(usize, u64, Option<u64>, PerformanceClass)] = &[
+            (10, 16, Some(8),  PerformanceClass::GpuHigh),
+            (12, 32, Some(12), PerformanceClass::GpuHigh),
+            (8,  16, Some(4),  PerformanceClass::CpuStrong),
+            (8,  16, None,     PerformanceClass::CpuStrong),
+            (16, 32, None,     PerformanceClass::CpuStrong),
+            (4,  8,  None,     PerformanceClass::CpuWeak),
+            (4,  16, None,     PerformanceClass::CpuWeak),
+            (8,  4,  None,     PerformanceClass::CpuWeak),
+        ];
+
+        for &(cores, ram_gb, gpu_vram_gb, expected) in cases {
+            let ram_bytes = ram_gb * 1024 * 1024 * 1024;
+            let gpu_vram_bytes = gpu_vram_gb.map(|gb| gb * 1024 * 1024 * 1024);
+            assert_eq!(
+                compute_performance_class(cores, Some(ram_bytes), gpu_vram_bytes),
+                expected,
+                "cores={} ram_gb={} gpu_vram_gb={:?} expected {:?}",
+                cores, ram_gb, gpu_vram_gb, expected
+            );
+        }
+    }
+
+    #[test]
+    fn performance_class_missing_ram_falls_to_cpu_weak() {
+        assert_eq!(
+            compute_performance_class(8, None, None),
+            PerformanceClass::CpuWeak
+        );
     }
 }
 
