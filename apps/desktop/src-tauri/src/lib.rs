@@ -192,6 +192,9 @@ pub fn run() {
             private_fast::transcribe_private_fast,
             private_fast::detect_gpu,
             private_fast::benchmark_tier,
+            private_fast::runnable_tiers,
+            private_fast::write_runnable_tiers,
+            private_fast::rerun_benchmark,
             storage::save_session,
             storage::list_sessions,
             storage::clear_sessions

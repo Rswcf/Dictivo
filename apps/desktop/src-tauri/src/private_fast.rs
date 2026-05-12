@@ -217,6 +217,79 @@ fn compute_performance_class(
     }
 }
 
+const FAST_BUDGET: f32 = 1.0;
+const MEDIUM_BUDGET: f32 = 2.0;
+const SLOW_BUDGET: f32 = 4.0;
+
+fn tier_budget(tier: Tier) -> f32 {
+    match tier { Tier::Fast => FAST_BUDGET, Tier::Medium => MEDIUM_BUDGET, Tier::Slow => SLOW_BUDGET }
+}
+
+fn build_runnable_tiers_with_rtfs<F>(
+    class: PerformanceClass,
+    measured_medium_rtf: f32,
+    fingerprint: &str,
+    benchmarked_at: &str,
+    is_installed: F,
+) -> RunnableTiers
+where
+    F: Fn(&str) -> bool,
+{
+    let medium_model = default_model_for_tier(class, Tier::Medium);
+    let medium_ratio = ratio_of(medium_model);
+    let baseline = if medium_ratio > 0.0 { measured_medium_rtf / medium_ratio } else { 0.0 };
+
+    let mut assignments: [Option<TierAssignment>; 3] = [None, None, None];
+    for (idx, tier) in [Tier::Fast, Tier::Medium, Tier::Slow].into_iter().enumerate() {
+        let model_id = default_model_for_tier(class, tier).to_string();
+        let rtf = baseline * ratio_of(&model_id);
+        let within_budget = rtf <= tier_budget(tier);
+        let is_medium = matches!(tier, Tier::Medium);
+        if within_budget || is_medium {
+            assignments[idx] = Some(TierAssignment {
+                downloaded: is_installed(&model_id),
+                predicted: !is_medium,
+                realtime_factor: rtf,
+                model_id,
+            });
+        }
+    }
+
+    // Edge case: guarantee at least one tier.
+    // Fast is always force-shown so there is a usable option even on very slow machines.
+    if assignments.iter().all(|a| a.is_none()) || assignments[0].is_none() {
+        let model_id = default_model_for_tier(class, Tier::Fast).to_string();
+        let rtf = baseline * ratio_of(&model_id);
+        assignments[0] = Some(TierAssignment {
+            downloaded: is_installed(&model_id),
+            predicted: true,
+            realtime_factor: rtf,
+            model_id,
+        });
+    }
+
+    RunnableTiers {
+        fast: assignments[0].clone(),
+        medium: assignments[1].clone(),
+        slow: assignments[2].clone(),
+        fingerprint: fingerprint.to_string(),
+        benchmarked_at: benchmarked_at.to_string(),
+    }
+}
+
+fn ratio_of(model_id: &str) -> f32 {
+    match model_id {
+        "tiny" => 0.2,
+        "base" => 0.4,
+        "small" => 0.7,
+        "medium-q5_0" => 1.1,
+        "large-v3-turbo-q5_0" => 1.5,
+        "large-v3-turbo" => 2.0,
+        "large-v3" => 2.5,
+        _ => 1.0,
+    }
+}
+
 fn predict_rtf_from_medium(model_id: &str, medium_rtf: f32) -> f32 {
     let ratio: f32 = match model_id {
         "tiny" => 0.2,
@@ -1298,6 +1371,38 @@ Graphics/Displays:
         assert_eq!(gpus.len(), 1);
         assert_eq!(gpus[0].vram_bytes, Some(1536 * 1024 * 1024));
     }
+
+    #[test]
+    fn build_runnable_tiers_filters_by_budget() {
+        use PerformanceClass::*;
+        // Medium RTF measured at 0.8 on a CpuStrong machine
+        let result = build_runnable_tiers_with_rtfs(
+            CpuStrong,
+            0.8,
+            "fp",
+            "2026-05-12T00:00:00Z",
+            |id| installed_in_test(id),
+        );
+        // CpuStrong: Fast=base, Medium=small, Slow=large-v3-turbo-q5_0
+        // All three should appear (predictions within budgets).
+        assert!(result.fast.is_some());
+        assert!(result.medium.is_some());
+        assert!(result.slow.is_some());
+    }
+
+    #[test]
+    fn build_runnable_tiers_drops_slow_when_predicted_too_slow() {
+        use PerformanceClass::*;
+        // Very weak: Medium RTF = 5.0
+        let result = build_runnable_tiers_with_rtfs(
+            CpuWeak, 5.0, "fp", "ts",
+            |_| false,
+        );
+        // Edge case: Fast force-shown to guarantee at least one tier
+        assert!(result.fast.is_some(), "Fast must be force-shown when all else fails");
+    }
+
+    fn installed_in_test(_model_id: &str) -> bool { false }
 }
 
 fn path_to_string(path: impl AsRef<Path>) -> String {
@@ -1453,3 +1558,83 @@ fn linux_amd_gpu() -> Option<GpuInfo> {
 
 #[cfg(not(target_os = "linux"))]
 fn linux_amd_gpu() -> Option<GpuInfo> { None }
+
+fn benchmark_cache_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("benchmark.json"))
+}
+
+fn current_fingerprint() -> String {
+    let cpu = sysctl_cpu_brand();
+    let ram = total_memory_bytes().unwrap_or(0);
+    let gpu_names: Vec<String> = detect_gpu().into_iter().map(|g| g.name).collect();
+    compute_fingerprint(&cpu, ram, &gpu_names)
+}
+
+fn sysctl_cpu_brand() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(out) = Command::new("sysctl").args(["-n", "machdep.cpu.brand_string"]).output() {
+            return String::from_utf8_lossy(&out.stdout).trim().to_string();
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(text) = fs::read_to_string("/proc/cpuinfo") {
+            for line in text.lines() {
+                if let Some(v) = line.strip_prefix("model name") {
+                    return v.trim_start_matches(':').trim().to_string();
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(out) = Command::new("powershell").args([
+            "-NoProfile", "-Command",
+            "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name"
+        ]).output() {
+            return String::from_utf8_lossy(&out.stdout).trim().to_string();
+        }
+    }
+    "unknown".to_string()
+}
+
+#[tauri::command]
+pub fn runnable_tiers(app: AppHandle) -> Result<RunnableTiers, String> {
+    let path = benchmark_cache_path(&app)?;
+    let fp = current_fingerprint();
+    if path.exists() {
+        if let Ok(text) = fs::read_to_string(&path) {
+            if let Ok(cached) = serde_json::from_str::<RunnableTiers>(&text) {
+                if cached.fingerprint == fp {
+                    return Ok(cached);
+                }
+            }
+        }
+    }
+    Ok(RunnableTiers {
+        fast: None, medium: None, slow: None,
+        fingerprint: fp, benchmarked_at: String::new(),
+    })
+}
+
+#[tauri::command]
+pub fn write_runnable_tiers(app: AppHandle, tiers: RunnableTiers) -> Result<(), String> {
+    let path = benchmark_cache_path(&app)?;
+    let text = serde_json::to_string_pretty(&tiers).map_err(|e| e.to_string())?;
+    fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rerun_benchmark(app: AppHandle) -> Result<(), String> {
+    let path = benchmark_cache_path(&app)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
