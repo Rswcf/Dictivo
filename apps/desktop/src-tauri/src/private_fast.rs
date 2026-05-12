@@ -1303,3 +1303,109 @@ Graphics/Displays:
 fn path_to_string(path: impl AsRef<Path>) -> String {
     path.as_ref().to_string_lossy().to_string()
 }
+
+#[tauri::command]
+pub fn detect_gpu() -> Vec<GpuInfo> {
+    let mut gpus: Vec<GpuInfo> = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        if env::consts::ARCH == "aarch64" {
+            // Apple Silicon: integrated Metal GPU. Use a synthetic entry with shared
+            // RAM proxy so downstream classification can treat it as a qualifying GPU.
+            let ram = total_memory_bytes().unwrap_or(0);
+            gpus.push(GpuInfo {
+                name: "Apple Silicon GPU (Metal)".to_string(),
+                vram_bytes: Some(ram.saturating_div(2).max(8 * 1024 * 1024 * 1024)),
+            });
+        } else {
+            if let Ok(out) = Command::new("system_profiler")
+                .arg("SPDisplaysDataType")
+                .output()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                gpus.extend(parse_macos_displays(&text).into_iter().filter(|g| {
+                    let n = g.name.to_ascii_lowercase();
+                    n.contains("amd") || n.contains("radeon") || n.contains("vega") || n.contains("nvidia") || n.contains("geforce") || n.contains("rtx") || n.contains("quadro")
+                }));
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(info) = windows_primary_gpu() {
+            gpus.push(info);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(info) = linux_nvidia_gpu() {
+            gpus.push(info);
+        }
+        if let Some(info) = linux_amd_gpu() {
+            gpus.push(info);
+        }
+    }
+
+    gpus
+}
+
+#[cfg(target_os = "windows")]
+fn windows_primary_gpu() -> Option<GpuInfo> {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
+    let first = if parsed.is_array() { parsed.get(0)?.clone() } else { parsed };
+    let name = first.get("Name")?.as_str()?.to_string();
+    let vram = first.get("AdapterRAM").and_then(|v| v.as_u64());
+    Some(GpuInfo { name, vram_bytes: vram })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_primary_gpu() -> Option<GpuInfo> { None }
+
+#[cfg(target_os = "linux")]
+fn linux_nvidia_gpu() -> Option<GpuInfo> {
+    let output = Command::new("nvidia-smi")
+        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let first = text.lines().next()?;
+    let parts: Vec<&str> = first.split(',').map(str::trim).collect();
+    if parts.len() < 2 { return None; }
+    let name = parts[0].to_string();
+    let mib: u64 = parts[1].parse().ok()?;
+    Some(GpuInfo { name, vram_bytes: Some(mib * 1024 * 1024) })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_nvidia_gpu() -> Option<GpuInfo> { None }
+
+#[cfg(target_os = "linux")]
+fn linux_amd_gpu() -> Option<GpuInfo> {
+    let output = Command::new("rocm-smi")
+        .args(["--showmeminfo", "vram", "--csv"])
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text.lines().nth(1)?;
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 2 { return None; }
+    let vram: u64 = parts[1].trim().parse().ok()?;
+    Some(GpuInfo { name: "AMD GPU (ROCm)".to_string(), vram_bytes: Some(vram) })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_amd_gpu() -> Option<GpuInfo> { None }
