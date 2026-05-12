@@ -105,18 +105,18 @@ export function DictationWorkbench({
             <Mic />
           </button>
 
-          {liveText ? (
-            <textarea
-              value={liveText}
-              onChange={(event) => onLiveTextChange(event.target.value)}
-              placeholder="Press your dictation hotkey, or tap the mic."
-              aria-label="Live dictation text"
-            />
-          ) : (
+          {!liveText && (
             <div className="capture-hint">
               Tap the mic, or press <kbd>⌥</kbd><kbd>Space</kbd>.
             </div>
           )}
+          <textarea
+            value={liveText}
+            onChange={(event) => onLiveTextChange(event.target.value)}
+            placeholder="Your transcript will appear here."
+            aria-label="Live dictation text"
+          />
+
 
           {availableTiers.length > 0 && (
             <div className="tier-selector" role="radiogroup" aria-label="Engine tier">
