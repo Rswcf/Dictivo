@@ -27,12 +27,14 @@ jobs:
             os: macos-latest
             rust_targets: x86_64-apple-darwin aarch64-apple-darwin
             tauri_target: universal-apple-darwin
+            tauri_bundles: app
             artifact_name: Dictivo-macOS-universal
             bundle_path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
           - label: Windows x64
             os: windows-latest
             rust_targets: x86_64-pc-windows-msvc
             tauri_target: x86_64-pc-windows-msvc
+            tauri_bundles: msi
             artifact_name: Dictivo-Windows-x64
             bundle_path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle
 
@@ -71,7 +73,7 @@ jobs:
         run: node scripts/prepare-private-fast-engine.mjs
 
       - name: Build Tauri bundle
-        run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }}
+        run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }} --bundles ${{ matrix.tauri_bundles }}
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
