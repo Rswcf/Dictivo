@@ -18,9 +18,9 @@ vi.mock("../src/lib/desktopBridge", () => ({
   downloadPrivateFastModel: vi.fn().mockResolvedValue({ ready: true, modelId: "large-v3-turbo-q5_0", modelName: "Large v3 Turbo Q5", message: "ok", setupHint: "" }),
   benchmarkTier: vi.fn().mockResolvedValue(0.85),
   finalizeCalibration: vi.fn().mockResolvedValue({
-    fast: { modelId: "small", realtimeFactor: 0.4, predicted: true, downloaded: false },
-    medium: { modelId: "large-v3-turbo-q5_0", realtimeFactor: 0.85, predicted: false, downloaded: true },
-    slow: { modelId: "large-v3", realtimeFactor: 1.5, predicted: true, downloaded: false },
+    fast: { modelId: "small", realtimeFactor: 0.4, predicted: true, downloaded: false, withinBudget: true },
+    medium: { modelId: "large-v3-turbo-q5_0", realtimeFactor: 0.85, predicted: false, downloaded: true, withinBudget: true },
+    slow: { modelId: "large-v3", realtimeFactor: 1.5, predicted: true, downloaded: false, withinBudget: true },
     fingerprint: "fp-test",
     benchmarkedAt: "2026-05-12T00:00:00Z"
   }),
@@ -46,8 +46,7 @@ describe("OnboardingWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: /download/i }));
 
     await waitFor(() => expect(screen.getByText(/Ready/i)).toBeTruthy(), { timeout: 5000 });
-    // Branching copy fired: Fast + Slow are also available.
-    expect(screen.getByText(/Fast and Slow are also available/i)).toBeTruthy();
+    expect(screen.getByText(/Fast and Quality are also available/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /start dictating/i }));
 
     expect(onComplete).toHaveBeenCalled();

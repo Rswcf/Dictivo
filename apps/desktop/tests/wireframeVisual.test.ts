@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const css = readFileSync("src/styles/app.css", "utf8");
+const html = readFileSync("index.html", "utf8");
 
 describe("wireframe visual system", () => {
   it("uses Stitch design tokens", () => {
@@ -13,10 +14,14 @@ describe("wireframe visual system", () => {
     expect(css).toContain("-webkit-font-smoothing: antialiased");
   });
 
-  it("loads Google Sans + JetBrains Mono families", () => {
-    expect(css).toContain('"Google Sans"');
-    expect(css).toContain('"Google Sans Text"');
-    expect(css).toContain('"JetBrains Mono"');
+  it("uses local system font stacks without remote font dependencies", () => {
+    expect(css).toContain("--font-display: ui-sans-serif");
+    expect(css).toContain("--font-body: ui-sans-serif");
+    expect(css).toContain("--font-mono: ui-monospace");
+    expect(css).not.toContain("Google Sans");
+    expect(css).not.toContain("JetBrains Mono");
+    expect(html).not.toContain("fonts.googleapis.com");
+    expect(html).not.toContain("fonts.gstatic.com");
   });
 
   it("keeps the hand-drawn notebook theme from returning", () => {

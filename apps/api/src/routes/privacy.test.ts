@@ -22,7 +22,7 @@ describe("privacy guard", () => {
     expect(response.json()).toMatchObject({ error: "content_fields_not_allowed" });
   });
 
-  it("accepts local-only dictation metadata", async () => {
+  it("accepts Vietnamese local-only dictation metadata", async () => {
     const app = buildServer();
     const response = await app.inject({
       method: "POST",
@@ -31,7 +31,7 @@ describe("privacy guard", () => {
         clientSessionId: "local-abc",
         provider: "local-whisper",
         privacyMode: "local-only",
-        language: "en",
+        language: "vi",
         source: "microphone",
         mode: "message",
         platform: "macos"

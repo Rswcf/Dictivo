@@ -9,8 +9,10 @@ import {
   type GpuInfo,
   type HardwareProfile,
   type PrivateFastModel,
-  type RunnableTiers
+  type RunnableTiers,
+  type Tier
 } from "../lib/desktopBridge";
+import { TIER_DISPLAY } from "../lib/tierDisplay";
 
 type Step = "scan" | "pick" | "calibrate" | "done";
 
@@ -129,13 +131,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         {step === "done" && tiers && (
           <section>
             <h2>Ready</h2>
-            {tiers.fast && tiers.slow ? (
-              <p>Your computer can run <strong>Medium</strong> smoothly. Fast and Slow are also available.</p>
-            ) : tiers.fast ? (
-              <p>Your computer can run <strong>Medium</strong> smoothly. Fast is also available.</p>
-            ) : (
-              <p>Only <strong>Medium</strong> is available on this hardware.</p>
-            )}
+            <SetupSummary tiers={tiers} />
             <div className="wizard-actions">
               <button type="button" className="primary" onClick={onComplete}>Start dictating →</button>
             </div>
@@ -144,4 +140,30 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       </div>
     </div>
   );
+}
+
+function SetupSummary({ tiers }: { tiers: RunnableTiers }) {
+  const otherTiers = (["fast", "slow"] as const).filter((tier) => tiers[tier].withinBudget);
+  const otherNames = formatTierNames(otherTiers);
+  const mediumCopy = tiers.medium.withinBudget ? (
+    <>Your computer can run <strong>{TIER_DISPLAY.medium.name}</strong> smoothly.</>
+  ) : (
+    <>Your recommended <strong>{TIER_DISPLAY.medium.name}</strong> tier is ready, but it may run slowly.</>
+  );
+
+  return (
+    <p>
+      {mediumCopy}
+      {otherNames
+        ? ` ${otherNames} ${otherTiers.length === 1 ? "is" : "are"} also available.`
+        : " Other tiers may run slowly on this hardware."}
+      {!tiers.slow.withinBudget ? ` ${TIER_DISPLAY.slow.name} may run slowly on this hardware.` : ""}
+    </p>
+  );
+}
+
+function formatTierNames(tiers: Tier[]) {
+  const names = tiers.map((tier) => TIER_DISPLAY[tier].name);
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }

@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { SUPPORTED_LANGUAGES } from "@dictivo/shared";
 import { z } from "zod";
 import { query } from "../lib/db.js";
 import { rejectForbiddenContentFields } from "../lib/privacyGuard.js";
@@ -7,7 +8,7 @@ const sessionSchema = z.object({
   clientSessionId: z.string().min(1).max(120),
   provider: z.literal("local-whisper"),
   privacyMode: z.literal("local-only"),
-  language: z.enum(["en", "zh", "es", "ja", "fr", "de"]),
+  language: z.enum(SUPPORTED_LANGUAGES),
   source: z.literal("microphone"),
   mode: z.enum(["dictation", "email", "message", "raw", "prompt"]),
   platform: z.enum(["macos", "windows", "linux", "web"]).optional(),
