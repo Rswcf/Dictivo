@@ -151,6 +151,22 @@ pub enum PerformanceClass {
     CpuWeak,
 }
 
+fn default_model_for_tier(class: PerformanceClass, tier: Tier) -> &'static str {
+    use PerformanceClass::*;
+    use Tier::*;
+    match (class, tier) {
+        (GpuHigh,   Fast)   => "small",
+        (GpuHigh,   Medium) => "large-v3-turbo-q5_0",
+        (GpuHigh,   Slow)   => "large-v3",
+        (CpuStrong, Fast)   => "base",
+        (CpuStrong, Medium) => "small",
+        (CpuStrong, Slow)   => "large-v3-turbo-q5_0",
+        (CpuWeak,   Fast)   => "tiny",
+        (CpuWeak,   Medium) => "base",
+        (CpuWeak,   Slow)   => "small",
+    }
+}
+
 #[tauri::command]
 pub fn hardware_profile() -> HardwareProfile {
     build_hardware_profile()
@@ -988,6 +1004,35 @@ mod tests {
         assert_eq!(serde_json::to_string(&PerformanceClass::GpuHigh).unwrap(), "\"gpuHigh\"");
         assert_eq!(serde_json::to_string(&PerformanceClass::CpuStrong).unwrap(), "\"cpuStrong\"");
         assert_eq!(serde_json::to_string(&PerformanceClass::CpuWeak).unwrap(), "\"cpuWeak\"");
+    }
+
+    #[test]
+    fn default_model_for_tier_matrix() {
+        use PerformanceClass::*;
+        use Tier::*;
+
+        let cases: &[(PerformanceClass, Tier, &str)] = &[
+            (GpuHigh,   Fast,   "small"),
+            (GpuHigh,   Medium, "large-v3-turbo-q5_0"),
+            (GpuHigh,   Slow,   "large-v3"),
+            (CpuStrong, Fast,   "base"),
+            (CpuStrong, Medium, "small"),
+            (CpuStrong, Slow,   "large-v3-turbo-q5_0"),
+            (CpuWeak,   Fast,   "tiny"),
+            (CpuWeak,   Medium, "base"),
+            (CpuWeak,   Slow,   "small"),
+        ];
+
+        for &(class, tier, expected) in cases {
+            assert_eq!(
+                default_model_for_tier(class, tier),
+                expected,
+                "({:?}, {:?}) should map to {}",
+                class,
+                tier,
+                expected
+            );
+        }
     }
 }
 
