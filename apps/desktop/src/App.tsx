@@ -16,7 +16,9 @@ import { createId } from "./lib/id";
 import { startAudioRecording, type RecordingController } from "./lib/mediaCapture";
 import { runLocalDictation } from "./lib/localDictationEngine";
 import {
+  benchmarkTier,
   clearLocalSessions,
+  finalizeCalibration,
   getClipboardMarker,
   getHardwareProfile,
   getPrivateFastModels,
@@ -223,18 +225,51 @@ export function App({ windowLabel = "main" }: AppProps) {
     void getRunnableTiers().then(setRunnableTiers).catch(() => {});
   }, [onboardingCompleted]);
 
-  useEffect(() => {
-    const assignment = runnableTiers[selectedTier];
-    if (!assignment?.downloaded) return;
-    if (assignment.modelId === selectedModel?.id) return;
-    void selectPrivateFastModel(assignment.modelId)
-      .then((status) => {
-        setPrivateFastStatus(status);
-        return getPrivateFastModels();
-      })
-      .then(setPrivateFastModels)
-      .catch(() => {});
-  }, [runnableTiers, selectedModel?.id, selectedTier]);
+  const handleTierChange = useCallback(
+    async (next: Tier) => {
+      const previous = selectedTier;
+      setSelectedTier(next);
+      const assignment = runnableTiers[next];
+      if (!assignment) return;
+
+      if (!assignment.downloaded) {
+        if (!window.confirm(`Switching to ${next} will download ${assignment.modelId}. Continue?`)) {
+          setSelectedTier(previous);
+          return;
+        }
+        setPrivateFastOperation(`download:${assignment.modelId}`);
+        try {
+          const downloadStatus = await downloadPrivateFastModel(assignment.modelId);
+          setPrivateFastStatus(downloadStatus);
+          setPrivateFastModels(await getPrivateFastModels());
+          const rtf = await benchmarkTier(assignment.modelId);
+          const refreshed = await finalizeCalibration(
+            rtf,
+            runnableTiers.medium?.modelId ?? assignment.modelId
+          );
+          setRunnableTiers(refreshed);
+        } catch (error) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to switch tier.");
+          setSelectedTier(previous);
+          return;
+        } finally {
+          setPrivateFastOperation("");
+        }
+      }
+
+      const final = runnableTiers[next];
+      if (final?.modelId && final.modelId !== selectedModel?.id) {
+        try {
+          const status = await selectPrivateFastModel(final.modelId);
+          setPrivateFastStatus(status);
+          setPrivateFastModels(await getPrivateFastModels());
+        } catch (error) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to activate tier.");
+        }
+      }
+    },
+    [runnableTiers, selectedTier, selectedModel?.id]
+  );
 
   const saveSession = useCallback(async (partial: Omit<LocalSession, "id" | "createdAt">) => {
     const session: LocalSession = {
@@ -584,7 +619,6 @@ export function App({ windowLabel = "main" }: AppProps) {
           </div>
           <div>
             <strong>Dictivo</strong>
-            <span>Local AI dictation</span>
           </div>
         </div>
 
@@ -594,11 +628,6 @@ export function App({ windowLabel = "main" }: AppProps) {
           <NavButton active={view === "dictionary"} label="Dictionary" icon={<BookOpenText size={18} />} onClick={() => setView("dictionary")} />
           <NavButton active={view === "settings"} label="Settings" icon={<Settings size={18} />} onClick={() => setView("settings")} />
         </nav>
-
-        <div className="privacy-chip">
-          <span className="status-dot" />
-          <span>Local-only</span>
-        </div>
       </aside>
 
       <section className="workspace">
@@ -634,7 +663,6 @@ export function App({ windowLabel = "main" }: AppProps) {
             modeTemplates={modeTemplates}
             isDictating={isDictating}
             liveText={liveText}
-            rawText={rawText}
             hotkeyStatus={hotkeyStatus}
             pasteStatus={pasteStatus}
             privateFastStatus={privateFastStatus}
@@ -642,11 +670,10 @@ export function App({ windowLabel = "main" }: AppProps) {
             selectedModel={selectedModel}
             runnableTiers={runnableTiers}
             selectedTier={selectedTier}
-            onTierChange={setSelectedTier}
+            onTierChange={(tier) => void handleTierChange(tier)}
             onModeChange={setSelectedMode}
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
-            onCopyRaw={() => void navigator.clipboard.writeText(rawText)}
           />
         )}
 

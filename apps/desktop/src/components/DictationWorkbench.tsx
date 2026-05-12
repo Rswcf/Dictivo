@@ -10,7 +10,6 @@ type DictationWorkbenchProps = {
   modeTemplates: ProcessingMode[];
   isDictating: boolean;
   liveText: string;
-  rawText: string;
   hotkeyStatus: string;
   pasteStatus: string;
   privateFastStatus: PrivateFastStatus;
@@ -22,7 +21,6 @@ type DictationWorkbenchProps = {
   onModeChange: (mode: InputMode) => void;
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
-  onCopyRaw: () => void;
 };
 
 export function DictationWorkbench({

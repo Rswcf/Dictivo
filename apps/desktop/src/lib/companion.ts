@@ -3,6 +3,7 @@ import type { CompanionAvatar } from "./settingsStore";
 
 export type CompanionPhase = "idle" | "recording" | "processing" | "complete" | "blocked" | "error";
 
+// fields kept for snapshot contract stability; bubble currently renders title + detail only.
 export type CompanionSnapshot = {
   enabled: boolean;
   avatar: CompanionAvatar;

@@ -8,7 +8,8 @@ test("tier selector reflects selection in footer", async ({ page }) => {
     );
   });
   await page.goto("/");
-  // Web-preview RunnableTiers fallback returns fast + medium (no slow).
+  // Web-preview RunnableTiers fallback returns fast + medium (both flagged as
+  // downloaded), so switching does not trigger the native download dialog.
   await page.getByRole("radio", { name: /Fast/i }).click();
   await expect(page.locator(".workbench-footer")).toContainText(/Fast/);
 });
