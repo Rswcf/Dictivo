@@ -78,6 +78,13 @@ pub struct RunnableTiers {
     pub benchmarked_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    pub name: String,
+    pub vram_bytes: Option<u64>,
+}
+
 #[derive(Clone, Copy)]
 struct ModelSpec {
     id: &'static str,
@@ -244,6 +251,47 @@ fn hex_encode(bytes: &[u8]) -> String {
         let _ = write!(s, "{:02x}", byte);
     }
     s
+}
+
+fn parse_macos_displays(output: &str) -> Vec<GpuInfo> {
+    let mut gpus = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_vram: Option<u64> = None;
+
+    let push_current = |name: &mut Option<String>, vram: &mut Option<u64>, gpus: &mut Vec<GpuInfo>| {
+        if let Some(n) = name.take() {
+            gpus.push(GpuInfo { name: n, vram_bytes: vram.take() });
+        }
+    };
+
+    for line in output.lines() {
+        let trimmed = line.trim_end();
+        let leading_spaces = trimmed.len() - trimmed.trim_start().len();
+        let body = trimmed.trim_start();
+
+        if body.ends_with(':') && leading_spaces <= 4 && !body.contains("Graphics/Displays") {
+            // New GPU section header (≤4-space indented, ends with colon)
+            push_current(&mut current_name, &mut current_vram, &mut gpus);
+            current_name = Some(body.trim_end_matches(':').to_string());
+            continue;
+        }
+        if let Some(value) = body.strip_prefix("VRAM (Total):").or_else(|| body.strip_prefix("VRAM (Dynamic, Max):")) {
+            current_vram = parse_vram(value.trim());
+        }
+    }
+    push_current(&mut current_name, &mut current_vram, &mut gpus);
+    gpus
+}
+
+fn parse_vram(s: &str) -> Option<u64> {
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() != 2 { return None; }
+    let value: u64 = parts[0].parse().ok()?;
+    match parts[1] {
+        "GB" => Some(value * 1024 * 1024 * 1024),
+        "MB" => Some(value * 1024 * 1024),
+        _ => None,
+    }
 }
 
 #[tauri::command]
@@ -1220,6 +1268,35 @@ mod tests {
 
         let e = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &[]);
         assert_ne!(a, e, "different GPU list must hash different");
+    }
+
+    #[test]
+    fn parse_macos_displays_finds_amd_radeon() {
+        let sample = r#"
+Graphics/Displays:
+    AMD Radeon Pro 5500M:
+      Chipset Model: AMD Radeon Pro 5500M
+      Vendor: AMD (0x1002)
+      Device ID: 0x7340
+      VRAM (Total): 8 GB
+    "#;
+        let gpus = parse_macos_displays(sample);
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].name, "AMD Radeon Pro 5500M");
+        assert_eq!(gpus[0].vram_bytes, Some(8 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_macos_displays_handles_no_gpu() {
+        assert!(parse_macos_displays("").is_empty());
+    }
+
+    #[test]
+    fn parse_macos_displays_handles_mb_vram() {
+        let sample = "Intel UHD Graphics 630:\n  Chipset Model: Intel UHD Graphics 630\n  VRAM (Dynamic, Max): 1536 MB";
+        let gpus = parse_macos_displays(sample);
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].vram_bytes, Some(1536 * 1024 * 1024));
     }
 }
 
