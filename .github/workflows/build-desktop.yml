@@ -17,9 +17,6 @@ on:
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     name: ${{ matrix.label }}
@@ -37,7 +34,7 @@ jobs:
             artifact_name: Dictivo-macOS-universal
             bundle_path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
           - label: Windows x64
-            os: windows-latest
+            os: windows-2025-vs2026
             rust_targets: x86_64-pc-windows-msvc
             tauri_target: x86_64-pc-windows-msvc
             tauri_bundles: msi
@@ -46,12 +43,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Setup Rust
@@ -104,7 +101,7 @@ jobs:
         run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }} --bundles ${{ matrix.tauri_bundles }}
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.bundle_path }}/**

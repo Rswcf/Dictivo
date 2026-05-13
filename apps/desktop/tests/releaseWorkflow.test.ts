@@ -18,6 +18,16 @@ describe("desktop release workflow", () => {
     expect(workflow).not.toContain("id-token: write");
   });
 
+  it("uses current Node 24-compatible GitHub Actions and runner labels", () => {
+    expect(workflow).toContain("actions/checkout@v6");
+    expect(workflow).toContain("actions/setup-node@v6");
+    expect(workflow).toContain("actions/upload-artifact@v7");
+    expect(workflow).toContain("node-version: 24");
+    expect(workflow).not.toContain("node-version: 20");
+    expect(workflow).not.toContain("FORCE_JAVASCRIPT_ACTIONS_TO_NODE24");
+    expect(workflow).not.toContain("windows-latest");
+  });
+
   it("keeps the macOS universal app release target in the desktop build matrix", () => {
     const macosMatrix = workflow.slice(
       workflow.indexOf("- label: macOS universal"),
@@ -38,7 +48,7 @@ describe("desktop release workflow", () => {
       workflow.indexOf("steps:")
     );
 
-    expect(windowsMatrix).toContain("os: windows-latest");
+    expect(windowsMatrix).toContain("os: windows-2025-vs2026");
     expect(windowsMatrix).toContain("rust_targets: x86_64-pc-windows-msvc");
     expect(windowsMatrix).toContain("tauri_target: x86_64-pc-windows-msvc");
     expect(windowsMatrix).toContain("tauri_bundles: msi");
