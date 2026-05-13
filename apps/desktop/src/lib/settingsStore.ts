@@ -4,10 +4,18 @@ const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
 const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
 const SELECTABLE_TIERS = ["fast", "medium", "slow"] as const satisfies readonly Settings["selectedTier"][];
-const COMPANION_AVATARS = ["dog", "cat", "trump", "bikini", "muscle"] as const satisfies readonly CompanionAvatar[];
+const COMPANION_AVATARS = ["dog", "cat", "trump", "bikini", "muscle", "custom"] as const satisfies readonly CompanionAvatar[];
 const LEGACY_CREATED_AT = "1970-01-01T00:00:00.000Z";
+export const CUSTOM_COMPANION_AVATAR_MAX_BYTES = 1_500_000;
+const CUSTOM_COMPANION_AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 
-export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini" | "muscle";
+export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini" | "muscle" | "custom";
+
+export type CustomCompanionAvatar = {
+  dataUrl: string;
+  name: string;
+  updatedAt: string;
+};
 
 export type HotkeySettings = {
   dictation: string;
@@ -42,6 +50,7 @@ export type Settings = {
   onboardingCompleted: boolean;
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
+  customCompanionAvatar: CustomCompanionAvatar | null;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   dictionary: DictionaryTerm[];
@@ -55,6 +64,7 @@ const DEFAULTS: Settings = {
   onboardingCompleted: false,
   companionEnabled: true,
   companionAvatar: "dog",
+  customCompanionAvatar: null,
   hotkeys: DEFAULT_HOTKEYS,
   localProcessing: DEFAULT_LOCAL_PROCESSING,
   dictionary: [],
@@ -126,6 +136,10 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     : legacy
       ? profileToTier(parsed.privateFastProfile)
       : DEFAULTS.selectedTier;
+  const customCompanionAvatar = normalizeCustomCompanionAvatar(parsed.customCompanionAvatar);
+  const companionAvatar = isOneOf(parsed.companionAvatar, COMPANION_AVATARS)
+    ? parsed.companionAvatar
+    : DEFAULTS.companionAvatar;
 
   return {
     ...DEFAULTS,
@@ -134,7 +148,8 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     selectedTier,
     onboardingCompleted: booleanOrDefault(parsed.onboardingCompleted, DEFAULTS.onboardingCompleted),
     companionEnabled: booleanOrDefault(parsed.companionEnabled, DEFAULTS.companionEnabled),
-    companionAvatar: isOneOf(parsed.companionAvatar, COMPANION_AVATARS) ? parsed.companionAvatar : DEFAULTS.companionAvatar,
+    companionAvatar: companionAvatar === "custom" && !customCompanionAvatar ? DEFAULTS.companionAvatar : companionAvatar,
+    customCompanionAvatar,
     hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
     localProcessing: normalizeLocalProcessing(
       parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
@@ -142,6 +157,64 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     dictionary: normalizeDictionaryTerms(parsed.dictionary, language),
     snippets: normalizeSnippets(parsed.snippets, language)
   };
+}
+
+export async function readCustomCompanionAvatar(file: File): Promise<CustomCompanionAvatar> {
+  validateCustomCompanionAvatarFile(file);
+  const dataUrl = await readFileAsDataUrl(file);
+  const normalized = normalizeCustomCompanionAvatar({
+    dataUrl,
+    name: file.name,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!normalized) throw new Error("Choose a PNG, JPG, WebP, or GIF image under 1.5 MB.");
+  return normalized;
+}
+
+export function validateCustomCompanionAvatarFile(file: Pick<File, "size" | "type">) {
+  if (file.size > CUSTOM_COMPANION_AVATAR_MAX_BYTES) {
+    throw new Error("Choose an image under 1.5 MB.");
+  }
+  if (!CUSTOM_COMPANION_AVATAR_TYPES.includes(file.type as (typeof CUSTOM_COMPANION_AVATAR_TYPES)[number])) {
+    throw new Error("Choose a PNG, JPG, WebP, or GIF image.");
+  }
+}
+
+function normalizeCustomCompanionAvatar(value: unknown): CustomCompanionAvatar | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Record<string, unknown>;
+  const dataUrl = typeof parsed.dataUrl === "string" ? parsed.dataUrl.trim() : "";
+  if (!isSupportedAvatarDataUrl(dataUrl) || dataUrl.length > dataUrlLengthLimit()) return null;
+
+  return {
+    dataUrl,
+    name: nonEmptyStringOr(parsed.name, "Custom avatar"),
+    updatedAt: nonEmptyStringOr(parsed.updatedAt, LEGACY_CREATED_AT)
+  };
+}
+
+function isSupportedAvatarDataUrl(value: string) {
+  return /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(value);
+}
+
+function dataUrlLengthLimit() {
+  return Math.ceil(CUSTOM_COMPANION_AVATAR_MAX_BYTES * 1.4) + 64;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Unable to read avatar image."));
+      }
+    });
+    reader.addEventListener("error", () => reject(new Error("Unable to read avatar image.")));
+    reader.readAsDataURL(file);
+  });
 }
 
 function booleanOrDefault(value: unknown, fallback: boolean) {

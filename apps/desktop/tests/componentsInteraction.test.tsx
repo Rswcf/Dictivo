@@ -103,6 +103,7 @@ describe("DictationWorkbench interactions", () => {
         hotkeys={{ dictation: "CommandOrControl+Shift+Space", pasteLast: "CommandOrControl+Shift+V", activationMode: "toggle" }}
         companionAvatar="dog"
         companionEnabled
+        customCompanionAvatar={null}
         onTierChange={onTierChange}
         onToggleDictation={onToggleDictation}
         onLiveTextChange={onLiveTextChange}

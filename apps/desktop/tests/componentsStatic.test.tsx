@@ -83,6 +83,7 @@ describe("desktop screen render contracts", () => {
         hotkeys={{ dictation: "Alt+Space", pasteLast: "Alt+Shift+V", activationMode: "hold" }}
         companionAvatar="dog"
         companionEnabled={false}
+        customCompanionAvatar={null}
         onTierChange={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
@@ -97,6 +98,47 @@ describe("desktop screen render contracts", () => {
     expect(markup).toContain("Start dictation");
     expect(markup).toContain("CommandOrControl+Shift+Space ready");
     expect(markup).toContain("Copied to clipboard");
+  });
+
+  it("renders a custom companion avatar in the dictation preview", () => {
+    const runnableTiers: RunnableTiers = {
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true, withinBudget: true },
+      medium: { modelId: "small", realtimeFactor: 0.8, predicted: false, downloaded: true, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: 3.5, predicted: true, downloaded: false, withinBudget: false },
+      fingerprint: "custom-avatar",
+      benchmarkedAt: "2026-05-13T00:00:00.000Z"
+    };
+
+    const markup = renderToStaticMarkup(
+      <DictationWorkbench
+        language="en"
+        isDictating={false}
+        liveText=""
+        hotkeyStatus="Registered"
+        pasteStatus=""
+        privateFastStatus={installedStatus}
+        hardwareProfile={hardware}
+        selectedModel={models[0]}
+        runnableTiers={runnableTiers}
+        selectedTier="medium"
+        hotkeys={{ dictation: "CommandOrControl+Shift+Space", pasteLast: "CommandOrControl+Shift+V", activationMode: "toggle" }}
+        companionAvatar="custom"
+        companionEnabled
+        customCompanionAvatar={{
+          dataUrl: "data:image/png;base64,YXZhdGFy",
+          name: "avatar.png",
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }}
+        onTierChange={vi.fn()}
+        onToggleDictation={vi.fn()}
+        onLiveTextChange={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onDisableCompanion={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain("Custom companion avatar");
+    expect(markup).toContain("data:image/png;base64,YXZhdGFy");
   });
 
 	  it("renders history empty state and dense session actions", () => {
@@ -250,11 +292,13 @@ describe("desktop screen render contracts", () => {
       runnableTiers,
       companionEnabled: true,
       companionAvatar: "cat" as const,
+      customCompanionAvatar: null,
       hardwareProfile: hardware,
       onHotkeyChange: vi.fn(),
       onProcessingChange: vi.fn(),
       onCompanionEnabledChange: vi.fn(),
       onCompanionAvatarChange: vi.fn(),
+      onCustomCompanionAvatarChange: vi.fn(),
       onModelAction: vi.fn(),
       onImportModel: vi.fn(),
       onRefreshNative: vi.fn(),

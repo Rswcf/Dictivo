@@ -58,6 +58,7 @@ describe("settingsStore v4 migration", () => {
       onboardingCompleted: true,
       companionEnabled: true,
       companionAvatar: "cat",
+      customCompanionAvatar: null,
       hotkeys: { dictation: "CommandOrControl+Shift+Space", pasteLast: "", activationMode: "toggle" },
       localProcessing: { autoPolish: true, spokenPunctuation: true, fillerWords: true, smartCapitalization: true },
       dictionary: [],
@@ -65,6 +66,52 @@ describe("settingsStore v4 migration", () => {
     });
     expect(loadSettings().selectedTier).toBe("fast");
     expect(loadSettings().onboardingCompleted).toBe(true);
+  });
+
+  it("round-trips a local custom companion avatar", () => {
+    const customCompanionAvatar = {
+      dataUrl: "data:image/png;base64,YXZhdGFy",
+      name: "avatar.png",
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    };
+
+    saveSettings({
+      language: "en",
+      selectedMode: "message",
+      selectedTier: "medium",
+      onboardingCompleted: true,
+      companionEnabled: true,
+      companionAvatar: "custom",
+      customCompanionAvatar,
+      hotkeys: { dictation: "CommandOrControl+Shift+Space", pasteLast: "CommandOrControl+Shift+V", activationMode: "toggle" },
+      localProcessing: { autoPolish: true, spokenPunctuation: true, fillerWords: true, smartCapitalization: true },
+      dictionary: [],
+      snippets: []
+    });
+
+    expect(loadSettings()).toMatchObject({
+      companionAvatar: "custom",
+      customCompanionAvatar
+    });
+  });
+
+  it("falls back to the default avatar when a stored custom avatar is invalid", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({
+        companionAvatar: "custom",
+        customCompanionAvatar: {
+          dataUrl: "https://example.com/avatar.png",
+          name: "remote.png",
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+    );
+
+    expect(loadSettings()).toMatchObject({
+      companionAvatar: "dog",
+      customCompanionAvatar: null
+    });
   });
 
   it("normalizes corrupted v4 settings instead of loading invalid UI state", () => {

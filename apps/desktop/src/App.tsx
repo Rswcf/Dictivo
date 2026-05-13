@@ -54,7 +54,8 @@ import {
   saveSettings,
   type HotkeySettings,
   type LocalProcessingSettings,
-  type CompanionAvatar
+  type CompanionAvatar,
+  type CustomCompanionAvatar
 } from "./lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase } from "./lib/companion";
 import { companionWindowPosition } from "./lib/companionWindowPosition";
@@ -95,6 +96,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [rerunError, setRerunError] = useState("");
   const [companionEnabled, setCompanionEnabled] = useState(initialSettings.companionEnabled);
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>(initialSettings.companionAvatar);
+  const [customCompanionAvatar, setCustomCompanionAvatar] = useState<CustomCompanionAvatar | null>(initialSettings.customCompanionAvatar);
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(normalizeHotkeys(initialSettings.hotkeys));
   const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(normalizeLocalProcessing(initialSettings.localProcessing));
   const [privateFastStatus, setPrivateFastStatus] = useState<PrivateFastStatus>({
@@ -201,12 +203,13 @@ export function App({ windowLabel = "main" }: AppProps) {
       onboardingCompleted,
       companionEnabled,
       companionAvatar,
+      customCompanionAvatar,
       hotkeys,
       localProcessing,
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
+  }, [companionAvatar, companionEnabled, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,6 +635,8 @@ export function App({ windowLabel = "main" }: AppProps) {
       buildCompanionSnapshot({
         enabled: companionEnabled,
         avatar: companionAvatar,
+        customAvatarDataUrl: customCompanionAvatar?.dataUrl,
+        customAvatarName: customCompanionAvatar?.name,
         phase: dictationPhase,
         hotkey: formatShortcutForDisplay(hotkeys.dictation, hardwareProfile?.platform),
         liveText,
@@ -640,7 +645,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         recordingStartedAt,
         language
       }),
-    [companionAvatar, companionEnabled, dictationPhase, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
+    [companionAvatar, companionEnabled, customCompanionAvatar?.dataUrl, customCompanionAvatar?.name, dictationPhase, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
   );
 
   const showCompanionWindow = useCallback(async () => {
@@ -819,6 +824,14 @@ export function App({ windowLabel = "main" }: AppProps) {
     }));
   }, []);
 
+  const updateCustomCompanionAvatar = useCallback((avatar: CustomCompanionAvatar | null) => {
+    setCustomCompanionAvatar(avatar);
+    setCompanionAvatar((current) => {
+      if (avatar) return "custom";
+      return current === "custom" ? "dog" : current;
+    });
+  }, []);
+
   if (!onboardingCompleted) {
     return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
@@ -895,6 +908,7 @@ export function App({ windowLabel = "main" }: AppProps) {
             hotkeys={hotkeys}
             companionAvatar={companionAvatar}
             companionEnabled={companionEnabled}
+            customCompanionAvatar={customCompanionAvatar}
             onTierChange={(tier) => void handleTierChange(tier)}
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
@@ -941,12 +955,14 @@ export function App({ windowLabel = "main" }: AppProps) {
             privateFastOperation={privateFastOperation}
             companionEnabled={companionEnabled}
             companionAvatar={companionAvatar}
+            customCompanionAvatar={customCompanionAvatar}
             hardwareProfile={hardwareProfile}
             runnableTiers={runnableTiers}
             onHotkeyChange={updateHotkey}
             onProcessingChange={updateProcessingSetting}
             onCompanionEnabledChange={setCompanionEnabled}
             onCompanionAvatarChange={setCompanionAvatar}
+            onCustomCompanionAvatarChange={updateCustomCompanionAvatar}
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
             onImportModel={(modelId, sourcePath) => void runImportModel(modelId, sourcePath)}
             onRefreshNative={() => void refreshNativeState()}

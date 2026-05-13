@@ -1,11 +1,11 @@
-import { Bot, ClipboardCheck, Cat, Dog, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, Sparkles, UserRound, WifiOff } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from "lucide-react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
 import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
 import { shortcutMatches } from "../lib/hotkeys";
-import type { CompanionAvatar, HotkeySettings, LocalProcessingSettings } from "../lib/settingsStore";
+import { readCustomCompanionAvatar, type CompanionAvatar, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
 type SettingsSection = "engine" | "hotkeys" | "companion" | "privacy";
@@ -21,11 +21,13 @@ type SettingsViewProps = {
   runnableTiers: RunnableTiers;
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
+  customCompanionAvatar: CustomCompanionAvatar | null;
   hardwareProfile: HardwareProfile | null;
   onHotkeyChange: (key: keyof HotkeySettings, value: string) => void;
   onProcessingChange: (key: keyof LocalProcessingSettings, value: boolean) => void;
   onCompanionEnabledChange: (enabled: boolean) => void;
   onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
+  onCustomCompanionAvatarChange: (avatar: CustomCompanionAvatar | null) => void;
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
@@ -96,11 +98,13 @@ export function SettingsView({
   runnableTiers,
   companionEnabled,
   companionAvatar,
+  customCompanionAvatar,
   hardwareProfile,
   onHotkeyChange,
   onProcessingChange,
   onCompanionEnabledChange,
   onCompanionAvatarChange,
+  onCustomCompanionAvatarChange,
   onModelAction,
   onImportModel,
   onRefreshNative,
@@ -114,6 +118,21 @@ export function SettingsView({
   initialSection = "engine"
 }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [avatarUploadError, setAvatarUploadError] = useState("");
+
+  const handleCustomAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+
+    try {
+      const avatar = await readCustomCompanionAvatar(file);
+      setAvatarUploadError("");
+      onCustomCompanionAvatarChange(avatar);
+    } catch (error) {
+      setAvatarUploadError(error instanceof Error ? error.message : "Unable to use that avatar image.");
+    }
+  };
 
   return (
     <section className="settings-layout">
@@ -211,7 +230,40 @@ export function SettingsView({
                   <strong>{avatar.label}</strong>
                 </button>
               ))}
+              {customCompanionAvatar && (
+                <button
+                  type="button"
+                  className={companionAvatar === "custom" ? "is-selected" : ""}
+                  onClick={() => onCompanionAvatarChange("custom")}
+                >
+                  <span className="avatar-chip avatar-chip--custom">
+                    <img src={customCompanionAvatar.dataUrl} alt="" draggable={false} />
+                  </span>
+                  <strong>Custom</strong>
+                </button>
+              )}
             </div>
+            <div className="custom-avatar-row">
+              <label className="text-button avatar-upload-control">
+                <ImagePlus size={13} />
+                Upload cartoon avatar
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  aria-label="Upload custom companion avatar"
+                  onChange={(event) => void handleCustomAvatarUpload(event)}
+                />
+              </label>
+              {customCompanionAvatar && (
+                <button type="button" className="text-button" onClick={() => onCustomCompanionAvatarChange(null)}>
+                  <Trash2 size={13} />
+                  Remove custom
+                </button>
+              )}
+            </div>
+            {avatarUploadError && (
+              <div className="settings-inline-error" role="alert">{avatarUploadError}</div>
+            )}
           </div>
         )}
 

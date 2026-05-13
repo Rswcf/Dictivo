@@ -75,7 +75,12 @@ export function CompanionWindow() {
       aria-label="Dictivo floating recording status"
     >
       <div className="companion-avatar-wrap">
-        <CartoonAvatar avatar={snapshot.avatar} phase={snapshot.phase} />
+        <CartoonAvatar
+          avatar={snapshot.avatar}
+          customAvatarDataUrl={snapshot.customAvatarDataUrl}
+          customAvatarName={snapshot.customAvatarName}
+          phase={snapshot.phase}
+        />
         {emoteFor(snapshot.phase)}
       </div>
 
@@ -101,7 +106,27 @@ export function CompanionWindow() {
   );
 }
 
-function CartoonAvatar({ avatar, phase }: { avatar: CompanionAvatar; phase: CompanionPhase }) {
+function CartoonAvatar({
+  avatar,
+  customAvatarDataUrl,
+  customAvatarName,
+  phase
+}: {
+  avatar: CompanionAvatar;
+  customAvatarDataUrl?: string;
+  customAvatarName?: string;
+  phase: CompanionPhase;
+}) {
+  if (avatar === "custom" && customAvatarDataUrl) {
+    return (
+      <img
+        className={`companion-avatar companion-avatar--custom is-${phase}`}
+        src={customAvatarDataUrl}
+        alt={customAvatarName ? `Custom companion avatar: ${customAvatarName}` : "Custom companion avatar"}
+        draggable={false}
+      />
+    );
+  }
   if (avatar === "cat") return <CatAvatar phase={phase} />;
   if (avatar === "trump") {
     return (

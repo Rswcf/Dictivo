@@ -12,7 +12,7 @@ import type {
   Tier,
   TierAssignment
 } from "../lib/desktopBridge";
-import type { CompanionAvatar, HotkeySettings } from "../lib/settingsStore";
+import type { CompanionAvatar, CustomCompanionAvatar, HotkeySettings } from "../lib/settingsStore";
 import { formatShortcutForDisplay } from "../lib/hotkeys";
 import { TIER_DISPLAY } from "../lib/tierDisplay";
 
@@ -30,6 +30,7 @@ type DictationWorkbenchProps = {
   hotkeys: HotkeySettings;
   companionAvatar: CompanionAvatar;
   companionEnabled: boolean;
+  customCompanionAvatar: CustomCompanionAvatar | null;
   onTierChange: (tier: Tier) => void;
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
@@ -51,6 +52,7 @@ export function DictationWorkbench({
   hotkeys,
   companionAvatar,
   companionEnabled,
+  customCompanionAvatar,
   onTierChange,
   onToggleDictation,
   onLiveTextChange,
@@ -136,17 +138,35 @@ export function DictationWorkbench({
       </div>
 
       {companionEnabled && (
-        <CompanionPreview avatar={companionAvatar} isDictating={isDictating} hotkey={dictationShortcut} onDisable={onDisableCompanion} />
+        <CompanionPreview
+          avatar={companionAvatar}
+          customAvatar={customCompanionAvatar}
+          isDictating={isDictating}
+          hotkey={dictationShortcut}
+          onDisable={onDisableCompanion}
+        />
       )}
     </section>
   );
 }
 
-function CompanionPreview({ avatar, isDictating, hotkey, onDisable }: { avatar: CompanionAvatar; isDictating: boolean; hotkey: string; onDisable: () => void }) {
+function CompanionPreview({
+  avatar,
+  customAvatar,
+  isDictating,
+  hotkey,
+  onDisable
+}: {
+  avatar: CompanionAvatar;
+  customAvatar: CustomCompanionAvatar | null;
+  isDictating: boolean;
+  hotkey: string;
+  onDisable: () => void;
+}) {
   return (
     <div className="companion-preview" aria-label="Floating companion preview">
       <div className="avatar">
-        <AvatarGlyph avatar={avatar} />
+        <AvatarGlyph avatar={avatar} customAvatar={customAvatar} />
       </div>
       <div>
         <div className="label">{isDictating ? "Recording" : "Standing by"}</div>
@@ -165,7 +185,10 @@ function CompanionPreview({ avatar, isDictating, hotkey, onDisable }: { avatar: 
   );
 }
 
-function AvatarGlyph({ avatar }: { avatar: CompanionAvatar }) {
+function AvatarGlyph({ avatar, customAvatar }: { avatar: CompanionAvatar; customAvatar: CustomCompanionAvatar | null }) {
+  if (avatar === "custom" && customAvatar) {
+    return <img src={customAvatar.dataUrl} alt="Custom companion avatar" draggable={false} />;
+  }
   if (avatar === "cat") {
     return (
       <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon cat">

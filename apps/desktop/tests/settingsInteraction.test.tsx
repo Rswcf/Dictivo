@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SettingsView } from "../src/components/SettingsView";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../src/lib/desktopBridge";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const status: PrivateFastStatus = {
   ready: true,
@@ -73,11 +76,13 @@ function props() {
     runnableTiers,
     companionEnabled: true,
     companionAvatar: "dog" as const,
+    customCompanionAvatar: null,
     hardwareProfile: hardware,
     onHotkeyChange: vi.fn(),
     onProcessingChange: vi.fn(),
     onCompanionEnabledChange: vi.fn(),
     onCompanionAvatarChange: vi.fn(),
+    onCustomCompanionAvatarChange: vi.fn(),
     onModelAction: vi.fn(),
     onImportModel: vi.fn(),
     onRefreshNative: vi.fn(),
@@ -164,5 +169,48 @@ describe("SettingsView interactions", () => {
     expect(privacyProps.onOpenPermissionSettings).toHaveBeenCalledWith("accessibility");
     fireEvent.click(screen.getByRole("button", { name: "Refresh local status" }));
     expect(privacyProps.onRefreshNative).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads a custom companion avatar and selects it through settings", async () => {
+    class MockFileReader {
+      result: string | ArrayBuffer | null = null;
+      private listeners = new Map<string, Array<() => void>>();
+
+      addEventListener(eventName: string, listener: () => void) {
+        this.listeners.set(eventName, [...(this.listeners.get(eventName) ?? []), listener]);
+      }
+
+      readAsDataURL() {
+        this.result = "data:image/png;base64,YXZhdGFy";
+        this.listeners.get("load")?.forEach((listener) => listener());
+      }
+    }
+
+    vi.stubGlobal("FileReader", MockFileReader);
+    const viewProps = props();
+    render(<SettingsView {...viewProps} initialSection="companion" />);
+
+    fireEvent.change(screen.getByLabelText("Upload custom companion avatar"), {
+      target: { files: [new File(["avatar"], "avatar.png", { type: "image/png" })] }
+    });
+
+    await waitFor(() => {
+      expect(viewProps.onCustomCompanionAvatarChange).toHaveBeenCalledWith(expect.objectContaining({
+        dataUrl: "data:image/png;base64,YXZhdGFy",
+        name: "avatar.png"
+      }));
+    });
+  });
+
+  it("shows an inline error for unsupported custom avatar files", async () => {
+    const viewProps = props();
+    render(<SettingsView {...viewProps} initialSection="companion" />);
+
+    fireEvent.change(screen.getByLabelText("Upload custom companion avatar"), {
+      target: { files: [new File(["not image"], "avatar.txt", { type: "text/plain" })] }
+    });
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("PNG, JPG, WebP, or GIF"));
+    expect(viewProps.onCustomCompanionAvatarChange).not.toHaveBeenCalled();
   });
 });

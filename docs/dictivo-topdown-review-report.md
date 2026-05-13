@@ -498,6 +498,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - Medium - 已修复：全局 hotkey `register()` 是异步 native 调用。旧实现会在 React effect cleanup 时调用一次 `unregister(shortcuts)`，但如果旧的 `register()` 在 cleanup 之后才 resolve，旧快捷键仍可能被 native 层注册并残留。该场景会影响用户快速修改快捷键、窗口卸载或 React effect 重跑时的跨应用快捷键可靠性。
 - Medium - 已修复：如果 native hotkey `register()` 成功返回后 `isRegistered()` 发现部分快捷键不可用，或 `register()` 本身 reject，旧实现只显示错误但没有主动 unregister 已经部分注册的 shortcuts。用户修改快捷键或遇到系统占用快捷键时，可能留下不可见的旧快捷键监听。
 - Low - 已修复：快捷键 chip 的展示把 `CommandOrControl` 固定渲染为 macOS 的 `⌘`。在 Windows 版本中实际触发键是 Ctrl，但用户会看到 `⌘⇧Space` 这类 macOS 符号，特别是在公司 Windows 电脑上会造成操作误导。
+- Low - 已加防回归：此前按钮语义 gap 已通过人工核对修复，但缺少自动门禁。新增静态 TSX 语义测试，要求所有原生 `<button>` 显式声明 `type=`，防止未来把默认 submit 行为重新带进设置页、历史页或 inline confirmation。
 
 修复与证据：
 
@@ -505,9 +506,31 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 改进 [hotkeys.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/hotkeys.ts:36)、[DictationWorkbench.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/DictationWorkbench.tsx:63)、[App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:630) 和 [CompanionWindow.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/CompanionWindow.tsx:11)：快捷键展示改成 platform-aware；macOS 继续显示 `⌘⇧Space`，Windows/Linux 显示 `Ctrl+Shift+Space`，floating companion 也使用同一展示值。
 - 扩展 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:983)：覆盖 App unmount 后 native hotkey registration 才 resolve 的竞态、availability check 部分失败、native registration reject 三条路径，断言 cleanup 时会 unregister，且用户看到明确错误信息。
 - 扩展 [hotkeys.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/hotkeys.test.ts:32) 和 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:309)：覆盖 macOS compact glyph、Windows/Linux `Ctrl+...` label，以及 Windows hardware profile 下主 workbench 的 Dictation / Paste Last chips 不再显示 macOS `⌘`。
+- 新增 [uiSemantics.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/uiSemantics.test.ts:1)：用 TypeScript 编译器解析 `src/**/*.tsx`，扫描原生 `<button>` JSX opening tags，断言每个按钮都有显式 `type` 属性。
 - `npm run test -w @dictivo/desktop -- hotkeys.test.ts appStartup.test.tsx companionWindow.test.tsx`：通过；desktop Vitest 增至 182 tests。
-- `npm run test:coverage`：通过；shared 5、desktop 182、API 16 个测试通过。当前 desktop coverage 为 statements 90.53%、branches 79.22%、functions 95.54%、lines 95.16%。
+- `npm run test -w @dictivo/desktop -- uiSemantics.test.ts`：通过；desktop Vitest 增至 183 tests，覆盖按钮 `type` 防回归。
+- `npm run test:coverage`：通过；shared 5、desktop 190、API 16 个测试通过。当前 desktop coverage 为 statements 90.14%、branches 78.87%、functions 94.45%、lines 94.77%。
 - GitHub Actions `Build desktop apps` run `25797354930` 在提交 `8c1a4c4` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
 - 已下载并核对 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
 
 剩余无法仅凭当前本机自动化完全关闭的验证项不变：真实麦克风权限、真实 whisper.cpp 模型下载/导入/执行、跨应用全局热键行为、OS 权限弹窗、packaged native 键盘巡航、真实 tray 点击、Windows 安装包与真实 Windows 热键/粘贴行为。
+
+## 11. 2026-05-13 自定义浮窗头像 Feature
+
+新增用户能力：
+
+- 用户可以在 Settings → Companion 上传本地 PNG/JPG/WebP/GIF 卡通头像，上传后自动切换为 `Custom`，主界面 companion preview 和独立 floating companion window 都会使用这张图。
+- 头像只保存在本地 settings，不上传到 API；文件限制为 1.5 MB 内，避免把过大的 base64 data URL 写入 localStorage 或发送到 companion window state。
+- 用户可以删除自定义头像；如果当前正在使用 custom，会回退到 dog；如果用户已经切到其他内置头像，删除 custom 不会改掉当前选择。
+- 启动时会校验旧 settings：如果 `companionAvatar` 是 `custom` 但图片数据缺失、远程 URL、格式不对或过大，会自动回退到 dog，避免空白浮窗。
+
+实现与证据：
+
+- 改进 [settingsStore.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/settingsStore.ts:8)：新增 `custom` avatar 类型、`customCompanionAvatar` 本地字段、上传文件读取和 settings normalization。
+- 改进 [SettingsView.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/SettingsView.tsx:230)、[DictationWorkbench.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/DictationWorkbench.tsx:138)、[CompanionWindow.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/CompanionWindow.tsx:75) 和 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:824)：设置页上传/删除、主窗口预览、snapshot、浮窗渲染全链路打通。
+- 扩展 `settingsStore.test.ts`、`settingsInteraction.test.tsx`、`componentsStatic.test.tsx`、`companion.test.ts`、`companionWindow.test.tsx`：覆盖本地保存、非法图片回退、上传回调、主界面预览和浮窗 custom image 渲染。
+- `npm run typecheck -w @dictivo/desktop`：通过。
+- `npm run test -w @dictivo/desktop -- settingsStore.test.ts settingsInteraction.test.tsx companion.test.ts companionWindow.test.tsx componentsStatic.test.tsx componentsInteraction.test.tsx uiSemantics.test.ts`：通过；desktop Vitest 当前 190 tests。
+- `npm run test`：通过；shared 5、desktop 190、API 16 个测试通过。
+- `npm run e2e`：通过；9 条 chromium-desktop Playwright 场景通过。
+- `npm run test:coverage`：通过；desktop coverage 为 statements 90.14%、branches 78.87%、functions 94.45%、lines 94.77%。

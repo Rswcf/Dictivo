@@ -141,6 +141,38 @@ describe("floating companion state", () => {
     expect(snapshot.transcriptPreview.endsWith("...")).toBe(true);
   });
 
+  it("carries custom companion image data only for the custom avatar", () => {
+    const customSnapshot = buildCompanionSnapshot({
+      enabled: true,
+      avatar: "custom",
+      customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
+      customAvatarName: "avatar.png",
+      phase: "idle",
+      hotkey: "CommandOrControl+Shift+Space",
+      liveText: "",
+      statusMessage: "",
+      pasteStatus: "",
+      language: "en"
+    });
+    const builtInSnapshot = buildCompanionSnapshot({
+      enabled: true,
+      avatar: "dog",
+      customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
+      customAvatarName: "avatar.png",
+      phase: "idle",
+      hotkey: "CommandOrControl+Shift+Space",
+      liveText: "",
+      statusMessage: "",
+      pasteStatus: "",
+      language: "en"
+    });
+
+    expect(customSnapshot.customAvatarDataUrl).toBe("data:image/png;base64,YXZhdGFy");
+    expect(customSnapshot.customAvatarName).toBe("avatar.png");
+    expect(builtInSnapshot.customAvatarDataUrl).toBeUndefined();
+    expect(builtInSnapshot.customAvatarName).toBeUndefined();
+  });
+
   it("ships the generated Trump companion avatar as a project asset", () => {
     const asset = statSync("src/assets/avatars/trump-companion.png");
     const header = readFileSync("src/assets/avatars/trump-companion.png").subarray(0, 8);

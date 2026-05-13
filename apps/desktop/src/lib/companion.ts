@@ -7,6 +7,8 @@ export type CompanionPhase = "idle" | "recording" | "processing" | "complete" | 
 export type CompanionSnapshot = {
   enabled: boolean;
   avatar: CompanionAvatar;
+  customAvatarDataUrl?: string;
+  customAvatarName?: string;
   phase: CompanionPhase;
   hotkey: string;
   title: string;
@@ -21,6 +23,8 @@ export type CompanionSnapshot = {
 type CompanionSnapshotInput = {
   enabled: boolean;
   avatar: CompanionAvatar;
+  customAvatarDataUrl?: string;
+  customAvatarName?: string;
   phase: CompanionPhase;
   hotkey: string;
   liveText: string;
@@ -40,6 +44,8 @@ export function buildCompanionSnapshot(input: CompanionSnapshotInput): Companion
   return {
     enabled: input.enabled,
     avatar: input.avatar,
+    customAvatarDataUrl: input.avatar === "custom" ? input.customAvatarDataUrl : undefined,
+    customAvatarName: input.avatar === "custom" ? input.customAvatarName : undefined,
     phase: input.phase,
     hotkey: input.hotkey,
     title,

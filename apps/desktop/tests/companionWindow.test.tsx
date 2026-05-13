@@ -139,6 +139,24 @@ describe("CompanionWindow", () => {
     expect(screen.getByText("Open Local Engine settings")).toBeTruthy();
     expect(screen.getByText("!").className).toContain("companion-emote--err");
   });
+
+  it("renders a custom avatar image from companion state", async () => {
+    render(<CompanionWindow />);
+    await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
+
+    await emitCompanionState({
+      avatar: "custom",
+      customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
+      customAvatarName: "avatar.png",
+      phase: "idle",
+      title: "Standing by",
+      detail: "CommandOrControl+Shift+Space to record"
+    });
+
+    const image = screen.getByRole("img", { name: "Custom companion avatar: avatar.png" }) as HTMLImageElement;
+    expect(image.getAttribute("src")).toBe("data:image/png;base64,YXZhdGFy");
+    expect(image.className).toContain("companion-avatar--custom");
+  });
 });
 
 async function emitCompanionState(overrides: Partial<CompanionSnapshot>) {
