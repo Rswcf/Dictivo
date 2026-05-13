@@ -530,10 +530,10 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 
 - 改进 [settingsStore.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/settingsStore.ts:8)：新增 `custom` avatar 类型、`customCompanionAvatar` 本地字段、上传文件读取和 settings normalization。
 - 改进 [SettingsView.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/SettingsView.tsx:230)、[DictationWorkbench.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/DictationWorkbench.tsx:138)、[CompanionWindow.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/CompanionWindow.tsx:75) 和 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:824)：设置页上传/删除、主窗口预览、snapshot、浮窗渲染全链路打通。
-- 扩展 `settingsStore.test.ts`、`settingsInteraction.test.tsx`、`componentsStatic.test.tsx`、`companion.test.ts`、`companionWindow.test.tsx`：覆盖本地保存、非法图片回退、上传回调、主界面预览和浮窗 custom image 渲染。
+- 扩展 `settingsStore.test.ts`、`settingsInteraction.test.tsx`、`componentsStatic.test.tsx`、`companion.test.ts`、`companionWindow.test.tsx`、`appStartup.test.tsx`：覆盖本地保存、非法图片回退、上传回调、主界面预览、sidebar launcher、native `companion-state` payload 和浮窗 custom image 渲染。
 - 扩展 [app.spec.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/e2e/app.spec.ts:173)：浏览器 E2E 真实上传 custom PNG，断言上传入口有可见键盘焦点、`Custom` 被选中、settings 写入本地、Dictation preview 和 sidebar launcher 使用 data URL，删除 custom 后回退到 dog。
 - `npm run typecheck -w @dictivo/desktop`：通过。
-- `npm run test -w @dictivo/desktop -- settingsStore.test.ts settingsInteraction.test.tsx companion.test.ts companionWindow.test.tsx componentsStatic.test.tsx componentsInteraction.test.tsx uiSemantics.test.ts`：通过；desktop Vitest 当前 190 tests。
-- `npm run test`：通过；shared 5、desktop 190、API 16 个测试通过。
+- `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：通过；desktop Vitest 当前 191 tests。
+- `npm run test`：通过；shared 5、desktop 191、API 16 个测试通过。
 - `npm run e2e`：通过；10 条 chromium-desktop Playwright 场景通过。
-- `npm run test:coverage`：通过；desktop coverage 为 statements 90.09%、branches 78.78%、functions 94.45%、lines 94.70%。
+- `npm run test:coverage`：通过；desktop coverage 为 statements 90.51%、branches 78.94%、functions 94.45%、lines 94.77%。

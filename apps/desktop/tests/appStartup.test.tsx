@@ -932,6 +932,46 @@ describe("App startup recovery", () => {
     );
   });
 
+  it("sends custom companion avatar data when opening the native companion window", async () => {
+    const customAvatar = {
+      dataUrl: "data:image/png;base64,YXZhdGFy",
+      name: "avatar.png",
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    };
+    seedCompletedSettings({
+      companionAvatar: "custom",
+      customCompanionAvatar: customAvatar
+    });
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriWindow.getByLabel.mockResolvedValue(tauriWindow.companion);
+    tauriWindow.primaryMonitor.mockResolvedValue({
+      workArea: {
+        position: { x: 0, y: 0 },
+        size: { width: 1440, height: 900 }
+      }
+    });
+
+    render(<App />);
+
+    const launcher = await screen.findByRole("button", { name: "Show floating companion" });
+    expect(launcher.querySelector("img")?.getAttribute("src")).toBe(customAvatar.dataUrl);
+
+    fireEvent.click(launcher);
+
+    await waitFor(() => expect(tauriWindow.companion.show).toHaveBeenCalled());
+    expect(tauriEvents.emitTo).toHaveBeenCalledWith(
+      "companion",
+      "companion-state",
+      expect.objectContaining({
+        enabled: true,
+        avatar: "custom",
+        customAvatarDataUrl: customAvatar.dataUrl,
+        customAvatarName: customAvatar.name
+      })
+    );
+  });
+
   it("shows a readable status when the native companion window is unavailable", async () => {
     bridge.isTauriRuntime.mockReturnValue(true);
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
