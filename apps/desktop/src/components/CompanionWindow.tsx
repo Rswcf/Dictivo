@@ -27,10 +27,18 @@ export function CompanionWindow() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     void listen<CompanionSnapshot>("companion-state", (event) => setSnapshot(event.payload)).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+        return;
+      }
       unlisten = cleanup;
     });
-    return () => unlisten?.();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {

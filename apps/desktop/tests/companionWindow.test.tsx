@@ -62,6 +62,27 @@ describe("CompanionWindow", () => {
     expect(tauri.hide).toHaveBeenCalledTimes(1);
   });
 
+  it("unsubscribes if the window unmounts before the native listener finishes registering", async () => {
+    let resolveListen: ((cleanup: () => void) => void) | undefined;
+    const cleanupListener = vi.fn();
+    tauri.listen.mockImplementationOnce(() => {
+      return new Promise((resolve) => {
+        resolveListen = resolve;
+      });
+    });
+
+    const { unmount } = render(<CompanionWindow />);
+
+    await waitFor(() => expect(resolveListen).toBeTruthy());
+    unmount();
+
+    await act(async () => {
+      resolveListen?.(cleanupListener);
+    });
+
+    expect(cleanupListener).toHaveBeenCalledTimes(1);
+  });
+
   it("updates from companion-state events and shows the recording timer", async () => {
     render(<CompanionWindow />);
     await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));

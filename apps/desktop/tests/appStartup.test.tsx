@@ -944,6 +944,29 @@ describe("App startup recovery", () => {
     await waitFor(() => expect(tauriWindow.companion.hide).toHaveBeenCalled());
   });
 
+  it("unsubscribes companion hide requests if the app unmounts before the native listener resolves", async () => {
+    let resolveListen: ((cleanup: () => void) => void) | undefined;
+    const cleanupListener = vi.fn();
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriEvents.listen.mockImplementationOnce(() => {
+      return new Promise((resolve) => {
+        resolveListen = resolve;
+      });
+    });
+
+    const { unmount } = render(<App />);
+
+    await waitFor(() => expect(resolveListen).toBeTruthy());
+    unmount();
+
+    await act(async () => {
+      resolveListen?.(cleanupListener);
+    });
+
+    expect(cleanupListener).toHaveBeenCalledTimes(1);
+  });
+
   it("does not start duplicate recordings when hold hotkey repeats before release", async () => {
     let hotkeyHandler: ((event: { shortcut: string; state: "Pressed" | "Released" }) => void) | undefined;
     const stopRecording = vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" }));

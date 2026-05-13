@@ -645,14 +645,22 @@ export function App({ windowLabel = "main" }: AppProps) {
     if (!isTauriRuntime()) return;
 
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     void listen("companion-hide-requested", () => {
       setCompanionEnabled(false);
       setStatusMessage("Floating companion hidden. Re-enable it in Settings -> Companion.");
     }).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+        return;
+      }
       unlisten = cleanup;
     });
 
-    return () => unlisten?.();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
