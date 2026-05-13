@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../src/App";
 import { DEFAULT_LOCAL_PROCESSING } from "../src/lib/settingsStore";
@@ -264,23 +265,35 @@ describe("App startup recovery", () => {
     await waitFor(() => expect(screen.getByText("History database unreadable")).toBeTruthy());
   });
 
-	  it("shows a readable status when startup native refresh fails", async () => {
-	    bridge.getPrivateFastStatus.mockRejectedValueOnce(new Error("Native status unavailable"));
-	
-	    render(<App />);
-	
-	    await waitFor(() => expect(screen.getByText("Native status unavailable")).toBeTruthy());
-	  });
+  it("shows a readable status when startup native refresh fails", async () => {
+    bridge.getPrivateFastStatus.mockRejectedValueOnce(new Error("Native status unavailable"));
 
-	  it("shows a readable status when runnable tier cache fails to load", async () => {
-	    bridge.getRunnableTiers.mockRejectedValueOnce(new Error("Tier cache unreadable"));
+    render(<App />);
 
-	    render(<App />);
+    await waitFor(() => expect(screen.getByText("Native status unavailable")).toBeTruthy());
+  });
 
-	    await waitFor(() => expect(screen.getByText("Tier cache unreadable")).toBeTruthy());
-	  });
-	
-	  it("continues startup if legacy settings cleanup is blocked", async () => {
+  it("keeps startup native refresh active under React StrictMode remount checks", async () => {
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+
+    await waitFor(() => expect(screen.getByText("Private Fast requires setup.")).toBeTruthy());
+  });
+
+  it("shows a readable status when runnable tier cache fails to load", async () => {
+    bridge.getRunnableTiers.mockRejectedValueOnce(new Error("Tier cache unreadable"));
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Tier cache unreadable")).toBeTruthy());
+  });
+
+  it("continues startup if legacy settings cleanup is blocked", async () => {
     const originalRemoveItem = localStorage.removeItem;
     localStorage.removeItem = vi.fn((key: string) => {
       if (key === "dictivo-settings-v2") throw new Error("Storage cleanup blocked");

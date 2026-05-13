@@ -127,6 +127,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   const pasteLastTranscriptRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
