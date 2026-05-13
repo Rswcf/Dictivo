@@ -491,4 +491,19 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Privacy / Local Engine failure-feedback 覆盖补强后通过，desktop tests 增至 160，覆盖系统设置入口失败时用户可见错误、模型导入失败时错误横幅和 operation lock 释放。
 - `npm run test -w @dictivo/desktop -- desktopBridge.test.ts`：clipboard marker bridge 覆盖补强后通过，desktop tests 增至 161，覆盖 Tauri `clipboard_marker`、`paste_text` 带 expected marker、`copy_text` 的精确 invoke 参数。
 
+## 10. 2026-05-13 后续 CI 与 Hotkey 生命周期审计
+
+本轮新增发现：
+
+- Medium - 已修复：全局 hotkey `register()` 是异步 native 调用。旧实现会在 React effect cleanup 时调用一次 `unregister(shortcuts)`，但如果旧的 `register()` 在 cleanup 之后才 resolve，旧快捷键仍可能被 native 层注册并残留。该场景会影响用户快速修改快捷键、窗口卸载或 React effect 重跑时的跨应用快捷键可靠性。
+
+修复与证据：
+
+- 改进 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:583)：抽出 `cleanupShortcuts()`，并在 `register()` resolve 后发现 effect 已 disposed 时再次调用 `unregister(shortcuts)`；如果 disposed 发生在 `isRegistered()` 检查期间，也会再次 cleanup。
+- 扩展 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:983)：覆盖 App unmount 后 native hotkey registration 才 resolve 的竞态，断言 cleanup 时会 unregister 一次，late register resolve 后会再次 unregister。
+- `npm run test -w @dictivo/desktop -- appStartup.test.tsx hotkeys.test.ts`：通过；desktop Vitest 增至 178 tests。
+- `npm run test:coverage`：通过；shared 5、desktop 178、API 16 个测试通过。当前 desktop coverage 为 statements 90.47%、branches 79.25%、functions 95.27%、lines 95.05%。
+- GitHub Actions `Build desktop apps` run `25796497151` 在提交 `1c67b38` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
+- 已下载并核对 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
+
 剩余无法仅凭当前本机自动化完全关闭的验证项不变：真实麦克风权限、真实 whisper.cpp 模型下载/导入/执行、跨应用全局热键行为、OS 权限弹窗、packaged native 键盘巡航、真实 tray 点击、Windows 安装包与真实 Windows 热键/粘贴行为。

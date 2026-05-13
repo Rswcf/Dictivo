@@ -581,6 +581,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     }
 
     let disposed = false;
+    const cleanupShortcuts = () => void unregister(shortcuts).catch(() => undefined);
     setHotkeyStatus("Registering hotkeys...");
     register(shortcuts, (event) => {
       const intent = resolveHotkeyIntent(event, hotkeys, isDictatingRef.current);
@@ -589,12 +590,20 @@ export function App({ windowLabel = "main" }: AppProps) {
       if (intent === "paste-last") void pasteLastTranscriptRef.current?.();
     })
       .then(async () => {
+        if (disposed) {
+          cleanupShortcuts();
+          return;
+        }
+
         const unavailable = [];
         for (const shortcut of shortcuts) {
           if (!(await isRegistered(shortcut))) unavailable.push(shortcut);
         }
 
-        if (disposed) return;
+        if (disposed) {
+          cleanupShortcuts();
+          return;
+        }
         if (unavailable.length > 0) {
           setHotkeyStatus("Hotkey unavailable");
           setStatusMessage(`Unable to reserve global hotkey: ${unavailable.join(", ")}`);
@@ -612,7 +621,7 @@ export function App({ windowLabel = "main" }: AppProps) {
 
     return () => {
       disposed = true;
-      void unregister(shortcuts).catch(() => undefined);
+      cleanupShortcuts();
     };
   }, [hotkeys.activationMode, hotkeys.dictation, hotkeys.pasteLast]);
 

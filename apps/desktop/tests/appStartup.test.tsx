@@ -980,6 +980,30 @@ describe("App startup recovery", () => {
     expect(cleanupListener).toHaveBeenCalledTimes(1);
   });
 
+  it("unregisters hotkeys again if native registration resolves after cleanup", async () => {
+    let resolveRegister: (() => void) | undefined;
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    shortcut.isRegistered.mockResolvedValue(true);
+    shortcut.register.mockImplementationOnce(() => {
+      return new Promise<void>((resolve) => {
+        resolveRegister = resolve;
+      });
+    });
+
+    const { unmount } = render(<App />);
+
+    await waitFor(() => expect(resolveRegister).toBeTruthy());
+    unmount();
+    expect(shortcut.unregister).toHaveBeenCalledWith(["CommandOrControl+Shift+Space", "CommandOrControl+Shift+V"]);
+
+    await act(async () => {
+      resolveRegister?.();
+    });
+
+    await waitFor(() => expect(shortcut.unregister).toHaveBeenCalledTimes(2));
+  });
+
   it("does not start duplicate recordings when hold hotkey repeats before release", async () => {
     let hotkeyHandler: ((event: { shortcut: string; state: "Pressed" | "Released" }) => void) | undefined;
     const stopRecording = vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" }));
