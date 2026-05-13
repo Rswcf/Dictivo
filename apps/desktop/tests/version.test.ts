@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 type PackageJson = {
@@ -17,8 +17,12 @@ type PrivateFastManifest = {
   builtAt: string;
 };
 
+function readText(path: string): string {
+  return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+}
+
 function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, "utf8")) as T;
+  return JSON.parse(readText(path)) as T;
 }
 
 describe("release version metadata", () => {
@@ -48,9 +52,9 @@ describe("release version metadata", () => {
   it("keeps Tauri, Cargo, and frontend build metadata aligned", () => {
     const rootPackage = readJson<PackageJson>("../../package.json");
     const tauriConfig = readJson<{ version: string }>("src-tauri/tauri.conf.json");
-    const cargoToml = readFileSync("src-tauri/Cargo.toml", "utf8");
-    const cargoLock = readFileSync("src-tauri/Cargo.lock", "utf8");
-    const viteConfig = readFileSync("vite.config.ts", "utf8");
+    const cargoToml = readText("src-tauri/Cargo.toml");
+    const cargoLock = readText("src-tauri/Cargo.lock");
+    const viteConfig = readText("vite.config.ts");
 
     const cargoVersion = cargoToml.match(/^version = "([^"]+)"/m)?.[1];
     const cargoLockVersion = cargoLock.match(/\[\[package\]\]\nname = "dictivo"\nversion = "([^"]+)"/)?.[1];
@@ -141,16 +145,17 @@ describe("release version metadata", () => {
   });
 
   it("ships Private Fast resources in the format expected by the native bundle", () => {
-    const manifest = readJson<PrivateFastManifest>("src-tauri/resources/private-fast/bin/manifest.json");
-    const binaryStat = statSync(`src-tauri/resources/private-fast/bin/${manifest.binary}`);
+    const binGitignore = readText("src-tauri/resources/private-fast/bin/.gitignore");
+    const prepareScript = readText("../../scripts/prepare-private-fast-engine.mjs");
     const wav = readFileSync("src-tauri/resources/benchmark-5s.wav");
     const fmt = readWavFormat(wav);
 
-    expect(manifest.whisperCppRef).toMatch(/^v\d+\.\d+\.\d+$/);
-    expect(["whisper-cli", "whisper-cli.exe"]).toContain(manifest.binary);
-    expect(Number.isNaN(Date.parse(manifest.builtAt))).toBe(false);
-    expect(binaryStat.isFile()).toBe(true);
-    expect(binaryStat.size).toBeGreaterThan(1024 * 1024);
+    expect(binGitignore).toContain("*");
+    expect(binGitignore).toContain("!.gitignore");
+    expect(binGitignore).toContain("!.gitkeep");
+    expect(prepareScript).toContain('join(outputDir, "manifest.json")');
+    expect(prepareScript).toContain("whisperCppRef: whisperRef");
+    expect(prepareScript).toContain('process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"');
     expect(fmt).toEqual({
       audioFormat: 1,
       channels: 1,
@@ -158,6 +163,17 @@ describe("release version metadata", () => {
       bitsPerSample: 16,
       hasDataChunk: true
     });
+
+    if (existsSync("src-tauri/resources/private-fast/bin/manifest.json")) {
+      const manifest = readJson<PrivateFastManifest>("src-tauri/resources/private-fast/bin/manifest.json");
+      const binaryStat = statSync(`src-tauri/resources/private-fast/bin/${manifest.binary}`);
+
+      expect(manifest.whisperCppRef).toMatch(/^v\d+\.\d+\.\d+$/);
+      expect(["whisper-cli", "whisper-cli.exe"]).toContain(manifest.binary);
+      expect(Number.isNaN(Date.parse(manifest.builtAt))).toBe(false);
+      expect(binaryStat.isFile()).toBe(true);
+      expect(binaryStat.size).toBeGreaterThan(1024 * 1024);
+    }
   });
 });
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { cleanGeneratedOutput } from "../../../scripts/prepare-private-fast-engine.mjs";
 import { firstModelInDir, validateInstalledAppMetadata, validateSmokeTranscript } from "../../../scripts/smoke-private-fast.mjs";
 
-const workflow = readFileSync("../../.github/workflows/build-desktop.yml", "utf8");
+const workflow = readFileSync("../../.github/workflows/build-desktop.yml", "utf8").replace(/\r\n/g, "\n");
 const privateFastPrepareScript = readFileSync("../../scripts/prepare-private-fast-engine.mjs", "utf8");
 const tauriLib = readFileSync("src-tauri/src/lib.rs", "utf8");
 const privateFastNative = readFileSync("src-tauri/src/private_fast.rs", "utf8");
