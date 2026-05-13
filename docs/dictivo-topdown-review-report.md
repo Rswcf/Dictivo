@@ -115,7 +115,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run lint`：通过；shared/API/desktop 三个 workspace 都执行 `tsc --noEmit`。
 - `npm run build`：通过；shared、API、desktop build 全部成功。
 - `npm run typecheck`：通过；shared/API/desktop 均执行源码级 TypeScript 检查，API/desktop 不依赖 `packages/shared/dist`。
-- `npm run test`：通过；shared 5、desktop 171、API 16 个 Vitest tests 全部通过。
+- `npm run test`：通过；shared 5、desktop 172、API 16 个 Vitest tests 全部通过。
 - `npm run e2e`：通过；9 个 Chromium desktop Playwright 用例全部通过。
 - `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`：通过，Rust 源码格式化归一。
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`：通过；40 个 Rust 单测通过，`global_hotkey_probe` 1 个交互式 probe 按设计 ignored。
@@ -171,7 +171,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 | 审查 10 个功能区 | 本报告第 2 节逐项覆盖 Onboarding、Dictation、Model/tier、Hotkeys、History、Dictionary/Snippets、Companion、Settings/Privacy/UX、API/privacy、Build/packaging | 已覆盖 |
 | 修复发现的 Critical/High/Medium/有意义 UX 问题 | 本报告第 3、4、9 节；涉及 API `vi` schema、Onboarding tier 文案、CSP/remote fonts、macOS transparent window、文档 drift、History 删除/粘贴、Settings validation、权限入口、模型磁盘预检、inline confirm 等 | 已覆盖 |
 | 为变更补测试 | 新增/扩展 `docsConsistency.test.ts`、`componentsInteraction.test.tsx`、`settingsInteraction.test.tsx`、`modelManagerInteraction.test.tsx`、`onboardingWizard.test.tsx`、`privacySettings.test.ts`、Rust private_fast/lib/storage tests | 已覆盖 |
-| Required gates | 2026-05-13 最新复跑：`npm run lint`、`npm run build`、`npm run typecheck`、`npm run test`、`npm run e2e`、`cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`、`npm audit --audit-level=moderate`、`git diff --check` 全部通过；Vitest 为 shared 5、desktop 171、API 16，Rust 为 40 passed + 1 ignored probe，E2E 为 9 passed | 已覆盖 |
+| Required gates | 2026-05-13 最新复跑：`npm run lint`、`npm run build`、`npm run typecheck`、`npm run test`、`npm run e2e`、`cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`、`npm audit --audit-level=moderate`、`git diff --check` 全部通过；Vitest 为 shared 5、desktop 172、API 16，Rust 为 40 passed + 1 ignored probe，E2E 为 9 passed | 已覆盖 |
 | Native/package validation | 2026-05-13 最新复跑 `npm run tauri:build -w @dictivo/desktop -- --bundles app`；`/Applications/Dictivo.app` 已覆盖安装为 `0.2.0`；启动/退出 smoke 通过；系统常见安装位置只发现这一份 Dictivo 安装副本，旧 bundle-id 运行残留 `~/Library/Caches/dictivo` 和 `~/Library/WebKit/dictivo` 已删除；`npm run smoke:private-fast` 现在验证安装包版本和 macOS Microphone/AppleEvents usage descriptions；[NATIVE-001](/Users/mayijie/Projects/Code/033_Dictivo/docs/native-manual-test-plan.md:69) 已记录为 Pass；[NATIVE-002/003/004/005/006/007/008/009/010/011/012/013/014/016/017/018](/Users/mayijie/Projects/Code/033_Dictivo/docs/native-manual-test-plan.md:70) 更新为 Partial automated | 本机 macOS 冒烟已覆盖 |
 | Native whisper.cpp smoke | `npm run smoke:private-fast` 固化安装包内置 binary + 本地模型 + benchmark 音频的真实转写验证，覆盖模型路径、输出文件、样本文本和 `/dev/null.txt` 回归 | 本机 macOS 冒烟已覆盖 |
 | 隐私承诺不回归 | API forbidden-content guard、shared privacy tests、CSP/remote font 清理、非 Tauri microphone 状态修正、Tauri runtime browser microphone permission merge、metadata-only API 测试均通过 | 已覆盖 |
@@ -222,6 +222,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - UX hotkey gap：Settings 允许把 Dictation 和 Paste Last 设置成同一个快捷键；注册层会去重只注册一次，而事件解析优先 Dictation，导致 Paste Last 快捷键实际不可达。
 - Hotkey display regression gap：用户曾指出 Settings 修改 hotkey 后主界面 `Hold and speak` / 快捷键展示没有同步；此前只有 Settings 子组件和纯函数测试，没有 App 级断言 Settings 改动会回流到 Dictation Workbench 的 quick tips 与 capture hint。
 - Hold-hotkey repeat gap：Hold 模式依赖 `isDictatingRef` 判断 repeated keydown；但 `startDictation()` 此前只更新 React state，快速重复 Pressed 事件可能在 ref 同步前重复启动录音。
+- Recording setup race gap：`startAudioRecording()` 是异步初始化；如果用户或全局热键在 microphone controller 创建前立即触发 Stop，旧逻辑会报 `No active recording was found.`，而稍后 resolve 的 controller 可能悬挂后台录音。
 - Paste-last app-wiring gap：Paste Last 热键此前有 mapping 和失败反馈覆盖，但缺少 App 级成功路径断言，不能证明热键会从最新历史记录取 final transcript 并调用本地 paste bridge。
 - Microphone denial UX gap：录音启动失败时旧逻辑已经把 editor 改成 `Recording locally...`，catch 只显示错误，不恢复启动前文本；用户可能误以为麦克风仍在录音。
 - Clipboard race app-wiring gap：本地 paste bridge 已支持 `clipboard-changed-copied`，但此前缺少 App 级证据证明听写完成时会带着录音前 marker 调用 paste、保留 transcript、保存 history，并给用户解释为何跳过自动粘贴。
@@ -341,6 +342,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 改进 [index.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/api/src/index.ts:23) 和 [billing.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/api/src/routes/billing.ts:1)：API JSON parser 现在保存 raw body；配置 `STRIPE_WEBHOOK_SECRET` 时 webhook 必须通过 `stripe-signature` HMAC 校验，缺失、错误或过期签名返回 `invalid_stripe_signature`。
 - 改进 [SettingsView.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/SettingsView.tsx:163)：hotkey recorder 会用平台归一化匹配检查另一个已配置 shortcut，重复时显示 `This shortcut is already assigned.`，避免 Paste Last 被 Dictation 抢占。
 - 改进 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:292)：`startDictation()` 现在先同步检查并设置 `isDictatingRef`，录音启动失败或 stop 时同步复位，避免 Hold 模式重复 keydown 在 React state 更新前重复启动录音。
+- 改进 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:120)：新增 recording setup pending / stop-after-setup refs；如果 Stop 发生在 microphone controller 创建前，App 会排队停止请求，在 controller resolve 后立即 stop/transcribe，不再留下后台录音或错误显示 `No active recording was found.`。
 - 扩展 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:1)：覆盖 Hold 模式重复 Pressed 事件只启动一次 recording，Released 后只 stop/transcribe 一次。
 - 扩展 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:1)：覆盖 Paste Last 热键成功路径，确认它从最新 history session 取 `final transcript` 并调用 `pasteText()`，同时显示用户可见成功横幅；失败路径仍显示可读错误。
 - 改进 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:292)：录音启动失败时恢复启动前 editor 文本，避免麦克风拒绝/设备错误后残留 `Recording locally...` 假状态；App 测试覆盖失败后不调用 local transcription 或 history save。
@@ -401,7 +403,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run lint`：通过；shared/API/desktop 三个 workspace 都执行 `tsc --noEmit`。
 - `npm run build`：通过；shared、API、desktop build 全部成功。
 - `npm run typecheck`：通过；shared/API/desktop 均执行源码级 TypeScript 检查，API/desktop 不依赖 `packages/shared/dist`。
-- `npm run test`：通过；shared 5、desktop 171、API 16 个 Vitest tests 全部通过。
+- `npm run test`：通过；shared 5、desktop 172、API 16 个 Vitest tests 全部通过。
 - `npm run e2e`：通过；9 个 Chromium desktop Playwright 用例全部通过，输出无 `NO_COLOR`/`FORCE_COLOR` warning。
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`：通过；40 个 Rust 单测通过，`global_hotkey_probe` 1 个交互式 probe 按设计 ignored。
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml permission_settings -- --nocapture`：通过；覆盖当前平台权限入口和 macOS / Windows / Linux 三套 release platform 权限设置命令映射。
@@ -441,7 +443,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- settingsInteraction.test.tsx settingsStore.test.ts hotkeys.test.ts componentsInteraction.test.tsx`：unsafe/duplicate stored hotkey normalization 改动后通过，desktop tests 增至 94。
 - `npm run test -w @dictivo/desktop -- onboardingWizard.test.tsx modelManagerInteraction.test.tsx componentsInteraction.test.tsx settingsStore.test.ts`：Onboarding calibration retry 和 model operation lock 改动后通过，desktop tests 增至 95。
 - `npm run test -w @dictivo/desktop -- companionWindow.test.tsx companion.test.ts`：浮窗渲染覆盖补强后通过，desktop tests 增至 116，覆盖 Tauri `companion-state` 事件、timer、hide/drag 和 avatar/phase DOM。
-- `npm run test:coverage -w @dictivo/desktop`：通过；20 个 desktop test files / 171 tests 全部通过。`CompanionWindow.tsx` statements 覆盖为 94.33%，`desktopBridge.ts` statements 覆盖为 84.91%，App statements 覆盖为 87.90%，HistoryView lines 覆盖为 90%，OnboardingWizard branch 覆盖为 72.72%，ModelManager branch 覆盖为 89.36%，`mediaCapture.ts` lines 覆盖为 100%，`export.ts` lines 覆盖为 100%，整体 desktop coverage 为 statements 90.41%、branches 79.01%、functions 95.18%、lines 95.00%。
+- `npm run test:coverage -w @dictivo/desktop`：通过；20 个 desktop test files / 172 tests 全部通过。`CompanionWindow.tsx` statements 覆盖为 94.33%，`desktopBridge.ts` statements 覆盖为 84.91%，App statements 覆盖为 88.31%，HistoryView lines 覆盖为 90%，OnboardingWizard branch 覆盖为 72.72%，ModelManager branch 覆盖为 89.36%，`mediaCapture.ts` lines 覆盖为 100%，`export.ts` lines 覆盖为 100%，整体 desktop coverage 为 statements 90.51%、branches 79.17%、functions 95.18%、lines 95.06%。
 - `npm run test -w @dictivo/desktop -- desktopBridge.test.ts`：Private Fast bridge 覆盖补强后通过，desktop tests 增至 121，覆盖硬件/GPU/tier/benchmark/calibration/model operation native invoke 参数、calibration web-preview fallback、非 WAV 阻断和 WAV -> native transcription invoke 参数。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：sidebar mascot -> native companion window 入口覆盖补强后通过，desktop tests 增至 122，覆盖 companion window 获取、定位、show 和 state emit。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：companion hide-request sync 覆盖补强后通过，desktop tests 增至 123，覆盖 companion window hide request 回写主窗口状态和原生 hide。
@@ -476,6 +478,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- mediaCapture.test.ts`：WAV setup cleanup 补强后通过，desktop tests 增至 151，覆盖 audio node 初始化失败时关闭 `AudioContext` 并释放 microphone tracks。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Paste Last 成功路径补强后通过，desktop tests 增至 152，覆盖热键从最新 history session 取 final transcript 并调用 `pasteText()`，成功后显示用户可见状态。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Hold hotkey repeat 补强后通过，desktop tests 增至 153，覆盖重复 Pressed 事件不会重复启动 recording，Released 后只 stop/transcribe 一次。
+- `npm run test -w @dictivo/desktop -- tests/appStartup.test.tsx`：recording setup race 补强后通过，desktop tests 增至 172，覆盖用户在 microphone setup promise resolve 前点击 Stop 时，App 会显示正在停止、controller resolve 后调用 `stop()` 并继续本地转写，不再出现 `No active recording was found.`。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Microphone denial / clipboard race 补强后通过，desktop tests 增至 155，覆盖录音启动失败恢复 editor、不保存空历史，以及 clipboard marker race 时保留 transcript、保存 history、提示跳过自动粘贴。
 - `npm run test -w @dictivo/desktop -- releaseWorkflow.test.ts`：release workflow / Private Fast prepare hygiene / smoke script / Windows quiet child-process contract / Node 24 Actions hygiene 补强后通过，desktop tests 增至 171，覆盖 macOS universal app matrix、Windows x64 MSI matrix、发布 gate 顺序、dependency audit、Rust format check、whitespace check、当前 Node 24-compatible GitHub Actions、`windows-2025-vs2026` runner label、交互式 global hotkey probe 只能手动 opt-in、生成目录中 stale manifest / macOS binary / Windows binary / DLL 的清理约束、smoke transcript / metadata / model-scan 纯逻辑，以及 paste/settings/Private Fast 子进程都继续通过 `CREATE_NO_WINDOW` helper 运行；临时目录行为测试证明清理会删除生成 artifact 且保留 README、benchmark WAV 和普通 notes 文件。
 - `npm run test -w @dictivo/desktop -- version.test.ts`：Tauri native config contract 补强后通过，desktop tests 增至 158，覆盖 app identity、打包资源、主窗口尺寸、capability window scope，以及 companion 原生窗口 transparent / borderless / always-on-top / hidden-start / no-taskbar / no-focus / no-shadow 配置。

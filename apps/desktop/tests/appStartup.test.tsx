@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../src/App";
 import { DEFAULT_LOCAL_PROCESSING } from "../src/lib/settingsStore";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../src/lib/desktopBridge";
@@ -412,6 +412,39 @@ describe("App startup recovery", () => {
     expect(screen.getByLabelText("Live dictation text")).toHaveProperty("value", "");
     expect(localDictation.runLocalDictation).not.toHaveBeenCalled();
     expect(bridge.saveLocalSession).not.toHaveBeenCalled();
+  });
+
+  it("queues stop when microphone setup finishes after the user stops dictation", async () => {
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    const stopRecording = vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" }));
+    let resolveRecording: ((controller: { startedAt: number; format: "wav"; source: "microphone"; stop: () => Promise<Blob> }) => void) | undefined;
+    media.startAudioRecording.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRecording = resolve;
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    expect(screen.getByText("Stopping recording as soon as the microphone is ready...")).toBeTruthy();
+
+    await act(async () => {
+      resolveRecording?.({
+        startedAt: Date.now() - 1500,
+        format: "wav",
+        source: "microphone",
+        stop: stopRecording
+      });
+    });
+
+    await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(localDictation.runLocalDictation).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("No active recording was found.")).toBeNull();
   });
 
   it("keeps transcript and history when clipboard changes before auto paste", async () => {

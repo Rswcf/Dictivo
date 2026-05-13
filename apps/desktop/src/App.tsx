@@ -117,6 +117,8 @@ export function App({ windowLabel = "main" }: AppProps) {
 
   const dictationRecordingRef = useRef<RecordingController | null>(null);
   const isDictatingRef = useRef(false);
+  const recordingSetupPendingRef = useRef(false);
+  const stopAfterRecordingSetupRef = useRef(false);
   const companionPositionedRef = useRef(false);
   const lastFinalTextRef = useRef("");
   const startDictationRef = useRef<(() => Promise<void>) | null>(null);
@@ -290,7 +292,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   }, []);
 
   const startDictation = useCallback(async () => {
-    if (isDictatingRef.current) {
+    if (isDictatingRef.current || recordingSetupPendingRef.current) {
       return;
     }
 
@@ -303,6 +305,8 @@ export function App({ windowLabel = "main" }: AppProps) {
 
     const previousLiveText = liveText;
     isDictatingRef.current = true;
+    recordingSetupPendingRef.current = true;
+    stopAfterRecordingSetupRef.current = false;
     setIsDictating(true);
     setDictationPhase("recording");
     setRecordingStartedAt(Date.now());
@@ -311,8 +315,16 @@ export function App({ windowLabel = "main" }: AppProps) {
     setPasteStatus("");
 
     try {
-      dictationRecordingRef.current = await startAudioRecording("microphone", "wav");
+      const recording = await startAudioRecording("microphone", "wav");
+      recordingSetupPendingRef.current = false;
+      dictationRecordingRef.current = recording;
+      if (stopAfterRecordingSetupRef.current) {
+        stopAfterRecordingSetupRef.current = false;
+        void stopDictationRef.current?.();
+      }
     } catch (error) {
+      recordingSetupPendingRef.current = false;
+      stopAfterRecordingSetupRef.current = false;
       isDictatingRef.current = false;
       setIsDictating(false);
       setDictationPhase("error");
@@ -323,6 +335,14 @@ export function App({ windowLabel = "main" }: AppProps) {
   }, [liveText, privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint]);
 
   const stopDictation = useCallback(async () => {
+    if (recordingSetupPendingRef.current && !dictationRecordingRef.current) {
+      stopAfterRecordingSetupRef.current = true;
+      setDictationPhase("processing");
+      setRecordingStartedAt(undefined);
+      setStatusMessage("Stopping recording as soon as the microphone is ready...");
+      return;
+    }
+
     isDictatingRef.current = false;
     setIsDictating(false);
     setDictationPhase("processing");
