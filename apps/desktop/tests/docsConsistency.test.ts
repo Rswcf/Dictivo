@@ -35,10 +35,31 @@ describe("user-facing documentation", () => {
     expect(readme).toContain("Processing toggles");
   });
 
-  it("documents both Windows installer tracks", () => {
-    const readme = readFileSync("../../README.md", "utf8");
-    expect(readme).toContain(".exe current-user installer");
-    expect(readme).toContain(".msi");
-    expect(readme).toContain("managed deployment");
+  it("documents both Windows installer tracks in user-facing docs", () => {
+    const expectations = [
+      {
+        path: "../../README.md",
+        snippets: [".exe current-user installer", ".msi", "managed deployment"]
+      },
+      {
+        path: "../../docs/README.zh-CN.md",
+        snippets: ["`.exe` 当前用户安装包", "`.msi`", "公司统一部署"]
+      },
+      {
+        path: "../../docs/README.ja.md",
+        snippets: ["`.exe` の現在ユーザー向けインストーラー", "`.msi`", "管理配布"]
+      },
+      {
+        path: "../../docs/README.es.md",
+        snippets: ["`.exe` para el usuario actual", "`.msi`", "despliegues administrados"]
+      }
+    ];
+
+    for (const { path, snippets } of expectations) {
+      const content = readFileSync(path, "utf8");
+      for (const snippet of snippets) {
+        expect(content, `${path} should document ${snippet}`).toContain(snippet);
+      }
+    }
   });
 });

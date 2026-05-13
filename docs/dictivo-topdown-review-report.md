@@ -510,8 +510,8 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- hotkeys.test.ts appStartup.test.tsx companionWindow.test.tsx`：通过；desktop Vitest 增至 182 tests。
 - `npm run test -w @dictivo/desktop -- uiSemantics.test.ts`：通过；desktop Vitest 增至 183 tests，覆盖按钮 `type` 防回归。
 - `npm run test:coverage`：通过；shared 5、desktop 190、API 16 个测试通过。当前 desktop coverage 为 statements 90.09%、branches 78.78%、functions 94.45%、lines 94.70%。
-- GitHub Actions `Build desktop apps` run `25797354930` 在提交 `8c1a4c4` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
-- 已下载并核对 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
+- GitHub Actions `Build desktop apps` run `25806072729` 在提交 `2e2fd9c` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
+- 已下载并核对最新 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。GitHub UI 里看见的“一个 Windows artifact”只是 artifact 容器名，不代表只剩一个安装器；公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
 
 剩余无法仅凭当前本机自动化完全关闭的验证项不变：真实麦克风权限、真实 whisper.cpp 模型下载/导入/执行、跨应用全局热键行为、OS 权限弹窗、packaged native 键盘巡航、真实 tray 点击、Windows 安装包与真实 Windows 热键/粘贴行为。
 
