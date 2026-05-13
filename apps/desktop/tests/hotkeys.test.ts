@@ -60,4 +60,14 @@ describe("global hotkey helpers", () => {
     expect(capability.permissions).toContain("global-shortcut:allow-unregister");
     expect(capability.permissions).toContain("global-shortcut:allow-is-registered");
   });
+
+  it("does not ship the unused opener plugin or permission", () => {
+    const capability = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf8")) as { permissions: string[] };
+    const cargoToml = readFileSync("src-tauri/Cargo.toml", "utf8");
+    const libRs = readFileSync("src-tauri/src/lib.rs", "utf8");
+
+    expect(capability.permissions.some((permission) => permission.startsWith("opener:"))).toBe(false);
+    expect(cargoToml).not.toContain("tauri-plugin-opener");
+    expect(libRs).not.toContain("tauri_plugin_opener");
+  });
 });

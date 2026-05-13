@@ -2,7 +2,7 @@
 
 [English](../README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | Español
 
-> ⚠️ Esta traducción al español está desactualizada respecto al README en inglés (faltan la UI estilo Stitch, las tarjetas de tier clicables, los nombres Fast/Medium/Quality, los cinco avatares mascota, el soporte de vietnamita, etc.). Consulta el [README en inglés](../README.md) para el contenido actualizado. PRs de traducción bienvenidos.
+> ⚠️ Esta traducción al español es una versión resumida del README en inglés. Consulta el [README en inglés](../README.md) para la explicación completa. PRs de traducción bienvenidos.
 
 Dictivo es una app de dictado local-first para macOS y Windows. Convierte voz en texto con un motor `whisper.cpp` ejecutado en el dispositivo, pensada para personas que quieren dictado rápido, privacidad real, snippets reutilizables, historial local y pegado directo en la app activa.
 
@@ -12,9 +12,9 @@ Dictivo es una app de dictado local-first para macOS y Windows. Convierte voz en
 | --- | --- |
 | Dictar rápido | Usa el atajo global, habla, detén la grabación y pega el texto. |
 | Mantener privacidad | Audio, transcripciones, diccionario, snippets e historial permanecen en tu dispositivo. |
-| Escribir con el formato correcto | Elige Message, Email, Raw o Prompt. |
+| Obtener texto listo para pegar | Dictivo genera un mensaje normal por defecto; ajusta puntuación, muletillas y mayúsculas en `Settings -> Local Engine -> Processing toggles`. |
 | Reutilizar texto frecuente | Guarda términos locales, nombres, enlaces y frases repetidas. |
-| Adaptarse al hardware | Selecciona perfiles Fast, Balanced o Quality según tu equipo. |
+| Adaptarse al hardware | Selecciona Fast, Medium o Quality según tu equipo. |
 
 ## Inicio rápido
 
@@ -108,6 +108,7 @@ La app actualmente incluye ajustes de dictado local para:
 - 日本語
 - Français
 - Deutsch
+- Tiếng Việt
 
 La documentación de GitHub está disponible en English, 简体中文, 日本語 y Español. Aceptamos traducciones de la comunidad.
 

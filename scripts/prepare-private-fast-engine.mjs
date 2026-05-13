@@ -10,62 +10,69 @@ const sourceDir = join(repoRoot, ".private-fast-build", "whisper.cpp");
 const buildDir = join(sourceDir, "build");
 const outputDir = join(repoRoot, "apps", "desktop", "src-tauri", "resources", "private-fast", "bin");
 
-run("git", ["--version"]);
-run("cmake", ["--version"]);
-
-rmSync(sourceDir, { recursive: true, force: true });
-mkdirSync(dirname(sourceDir), { recursive: true });
-mkdirSync(outputDir, { recursive: true });
-
-const cloneArgs = ["clone", "--depth", "1", "--branch", whisperRef, "https://github.com/ggml-org/whisper.cpp.git", sourceDir];
-runWithRetry("git", cloneArgs, {
-  attempts: 4,
-  beforeRetry: () => rmSync(sourceDir, { recursive: true, force: true })
-});
-
-const cmakeArgs = [
-  "-S",
-  sourceDir,
-  "-B",
-  buildDir,
-  "-DWHISPER_BUILD_TESTS=OFF",
-  "-DWHISPER_BUILD_EXAMPLES=ON",
-  "-DGGML_NATIVE=OFF",
-  "-DBUILD_SHARED_LIBS=OFF"
-];
-
-if (process.platform === "darwin") {
-  cmakeArgs.push("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64");
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  preparePrivateFastEngine();
 }
 
-run("cmake", cmakeArgs);
-run("cmake", ["--build", buildDir, "--config", "Release", "--target", "whisper-cli"]);
+export function preparePrivateFastEngine() {
+  run("git", ["--version"]);
+  run("cmake", ["--version"]);
 
-const binaryName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
-const binaryPath = findFile(buildDir, binaryName);
-if (!binaryPath) {
-  throw new Error(`Built ${binaryName} was not found under ${buildDir}`);
-}
+  rmSync(sourceDir, { recursive: true, force: true });
+  mkdirSync(dirname(sourceDir), { recursive: true });
+  mkdirSync(outputDir, { recursive: true });
+  cleanGeneratedOutput(outputDir);
 
-const outputBinary = join(outputDir, binaryName);
-copyFileSync(binaryPath, outputBinary);
+  const cloneArgs = ["clone", "--depth", "1", "--branch", whisperRef, "https://github.com/ggml-org/whisper.cpp.git", sourceDir];
+  runWithRetry("git", cloneArgs, {
+    attempts: 4,
+    beforeRetry: () => rmSync(sourceDir, { recursive: true, force: true })
+  });
 
-if (process.platform === "win32") {
-  for (const file of readdirSync(dirname(binaryPath))) {
-    if (file.toLowerCase().endsWith(".dll")) {
-      copyFileSync(join(dirname(binaryPath), file), join(outputDir, file));
-    }
+  const cmakeArgs = [
+    "-S",
+    sourceDir,
+    "-B",
+    buildDir,
+    "-DWHISPER_BUILD_TESTS=OFF",
+    "-DWHISPER_BUILD_EXAMPLES=ON",
+    "-DGGML_NATIVE=OFF",
+    "-DBUILD_SHARED_LIBS=OFF"
+  ];
+
+  if (process.platform === "darwin") {
+    cmakeArgs.push("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64");
   }
-} else {
-  run("chmod", ["755", outputBinary]);
+
+  run("cmake", cmakeArgs);
+  run("cmake", ["--build", buildDir, "--config", "Release", "--target", "whisper-cli"]);
+
+  const binaryName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
+  const binaryPath = findFile(buildDir, binaryName);
+  if (!binaryPath) {
+    throw new Error(`Built ${binaryName} was not found under ${buildDir}`);
+  }
+
+  const outputBinary = join(outputDir, binaryName);
+  copyFileSync(binaryPath, outputBinary);
+
+  if (process.platform === "win32") {
+    for (const file of readdirSync(dirname(binaryPath))) {
+      if (file.toLowerCase().endsWith(".dll")) {
+        copyFileSync(join(dirname(binaryPath), file), join(outputDir, file));
+      }
+    }
+  } else {
+    run("chmod", ["755", outputBinary]);
+  }
+
+  writeFileSync(
+    join(outputDir, "manifest.json"),
+    `${JSON.stringify({ whisperCppRef: whisperRef, binary: binaryName, builtAt: new Date().toISOString() }, null, 2)}\n`
+  );
+
+  console.log(`Prepared ${outputBinary}`);
 }
-
-writeFileSync(
-  join(outputDir, "manifest.json"),
-  `${JSON.stringify({ whisperCppRef: whisperRef, binary: binaryName, builtAt: new Date().toISOString() }, null, 2)}\n`
-);
-
-console.log(`Prepared ${outputBinary}`);
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -101,6 +108,20 @@ function runWithRetry(command, args, { attempts, beforeRetry }) {
 
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function cleanGeneratedOutput(directory) {
+  for (const entry of readdirSync(directory)) {
+    const lowerEntry = entry.toLowerCase();
+    if (
+      entry === "manifest.json" ||
+      lowerEntry === "whisper-cli" ||
+      lowerEntry === "whisper-cli.exe" ||
+      lowerEntry.endsWith(".dll")
+    ) {
+      rmSync(join(directory, entry), { force: true });
+    }
+  }
 }
 
 function findFile(root, fileName) {

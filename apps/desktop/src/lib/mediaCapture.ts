@@ -55,7 +55,14 @@ async function startCompressedRecording(
           },
           { once: true }
         );
-        recorder.addEventListener("error", () => reject(new Error("Recording failed")), { once: true });
+        recorder.addEventListener(
+          "error",
+          async () => {
+            await capture.cleanup();
+            reject(new Error("Recording failed"));
+          },
+          { once: true }
+        );
         recorder.stop();
       })
   };
@@ -65,32 +72,44 @@ async function startWavRecording(
   source: RecordingController["source"],
   capture: CapturedStream
 ): Promise<RecordingController> {
-  const context = new AudioContext({ sampleRate: 16000 });
-  const sourceNode = context.createMediaStreamSource(capture.stream);
-  const processor = context.createScriptProcessor(4096, 1, 1);
-  const chunks: Float32Array[] = [];
+  let context: AudioContext | null = null;
 
-  processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
-    chunks.push(new Float32Array(input));
-    event.outputBuffer.getChannelData(0).fill(0);
-  };
+  try {
+    context = new AudioContext({ sampleRate: 16000 });
+    const activeContext = context;
+    const sourceNode = activeContext.createMediaStreamSource(capture.stream);
+    const processor = activeContext.createScriptProcessor(4096, 1, 1);
+    const chunks: Float32Array[] = [];
 
-  sourceNode.connect(processor);
-  processor.connect(context.destination);
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      chunks.push(new Float32Array(input));
+      event.outputBuffer.getChannelData(0).fill(0);
+    };
 
-  return {
-    startedAt: Date.now(),
-    format: "wav",
-    source,
-    stop: async () => {
-      processor.disconnect();
-      sourceNode.disconnect();
-      await context.close();
-      await capture.cleanup();
-      return encodeWav(chunks, context.sampleRate, 16000);
-    }
-  };
+    sourceNode.connect(processor);
+    processor.connect(activeContext.destination);
+
+    return {
+      startedAt: Date.now(),
+      format: "wav",
+      source,
+      stop: async () => {
+        try {
+          processor.disconnect();
+          sourceNode.disconnect();
+          await activeContext.close();
+        } finally {
+          await capture.cleanup();
+        }
+        return encodeWav(chunks, activeContext.sampleRate, 16000);
+      }
+    };
+  } catch (error) {
+    if (context) await context.close().catch(() => undefined);
+    await capture.cleanup();
+    throw error;
+  }
 }
 
 async function createMicrophoneStream(): Promise<CapturedStream> {
@@ -110,7 +129,7 @@ async function createMicrophoneStream(): Promise<CapturedStream> {
   };
 }
 
-function encodeWav(chunks: Float32Array[], inputSampleRate: number, outputSampleRate: number) {
+export function encodeWav(chunks: Float32Array[], inputSampleRate: number, outputSampleRate: number) {
   const samples = normalizeSamples(resample(flattenChunks(chunks), inputSampleRate, outputSampleRate));
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);

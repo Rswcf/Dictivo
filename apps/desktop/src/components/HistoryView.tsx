@@ -1,7 +1,7 @@
 import type { LocalSession } from "@dictivo/shared";
 import { useEffect, useState } from "react";
-import { Check, Download, FileText, Search, Trash2 } from "lucide-react";
-import { downloadText, sessionToMarkdown } from "../lib/export";
+import { Check, ClipboardPaste, Download, FileText, Search, Trash2 } from "lucide-react";
+import { downloadText, markdownFilenameForSession, sessionToMarkdown } from "../lib/export";
 import { IconButton } from "./IconButton";
 
 type HistoryViewProps = {
@@ -10,8 +10,12 @@ type HistoryViewProps = {
   onQueryChange: (value: string) => void;
   onClear: () => void;
   onDeleteSession: (sessionId: string) => void;
+  onCopyText: (session: LocalSession, kind: "raw" | "final") => void;
+  onPasteSession: (session: LocalSession) => void;
   isClearing?: boolean;
+  copyingSessionId?: string;
   deletingSessionId?: string;
+  pastingSessionId?: string;
 };
 
 export function HistoryView({
@@ -20,26 +24,35 @@ export function HistoryView({
   onQueryChange,
   onClear,
   onDeleteSession,
+  onCopyText,
+  onPasteSession,
   isClearing = false,
-  deletingSessionId
+  copyingSessionId,
+  deletingSessionId,
+  pastingSessionId
 }: HistoryViewProps) {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const normalized = query.trim().toLowerCase();
   const filteredSessions = normalized
     ? sessions.filter((session) => `${session.title} ${session.mode} ${session.language} ${session.text}`.toLowerCase().includes(normalized))
     : sessions;
-  const isBusy = isClearing || Boolean(deletingSessionId);
-
   useEffect(() => {
     if (sessions.length === 0) setConfirmingClear(false);
   }, [sessions.length]);
+
+  const operationInProgress = isClearing || Boolean(copyingSessionId) || Boolean(deletingSessionId) || Boolean(pastingSessionId);
 
   return (
     <section className="history-view">
       <div className="search-row">
         <Search size={18} />
-        <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search local history" />
-        <IconButton label="Clear local history" tone="danger" disabled={sessions.length === 0 || isBusy} onClick={() => setConfirmingClear(true)}>
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search local history"
+          aria-label="Search local history"
+        />
+        <IconButton label="Clear local history" tone="danger" disabled={sessions.length === 0 || operationInProgress} onClick={() => setConfirmingClear(true)}>
           <Trash2 size={18} />
         </IconButton>
       </div>
@@ -69,7 +82,7 @@ export function HistoryView({
 
       <div className="session-list">
         {filteredSessions.length === 0 ? (
-          <div className="empty-panel">No local dictations match this search.</div>
+          <div className="empty-panel">{normalized ? "No local dictations match this search." : "No local dictations yet."}</div>
         ) : (
           filteredSessions.map((session) => (
             <article className="session-item" key={session.id}>
@@ -77,26 +90,42 @@ export function HistoryView({
                 <h2>{session.title}</h2>
                 <p>{session.text}</p>
                 <span>
-                  {session.mode} · {session.language} · {session.wordCount} words · local-only
+                  {session.mode} · {session.language} · {session.wordCount} {countLabel(session.language)} · local-only
                   {session.rawText ? " · raw saved" : ""}
                 </span>
               </div>
               <div className="item-actions">
                 {session.rawText && (
-                  <IconButton label="Copy raw transcript" onClick={() => void navigator.clipboard.writeText(session.rawText ?? "")}>
+                  <IconButton
+                    label="Copy raw transcript"
+                    disabled={operationInProgress || copyingSessionId === `${session.id}:raw`}
+                    onClick={() => onCopyText(session, "raw")}
+                  >
                     <FileText size={18} />
                   </IconButton>
                 )}
-                <IconButton label="Copy final text" onClick={() => void navigator.clipboard.writeText(session.text)}>
+                <IconButton
+                  label="Copy final text"
+                  disabled={operationInProgress || copyingSessionId === `${session.id}:final`}
+                  onClick={() => onCopyText(session, "final")}
+                >
                   <Check size={18} />
                 </IconButton>
-                <IconButton label="Export markdown" onClick={() => downloadText(`${session.id}.md`, sessionToMarkdown(session))}>
+                <IconButton label="Export markdown" onClick={() => downloadText(markdownFilenameForSession(session), sessionToMarkdown(session))}>
                   <Download size={18} />
+                </IconButton>
+                <IconButton
+                  label="Paste final text"
+                  tone="primary"
+                  disabled={operationInProgress}
+                  onClick={() => onPasteSession(session)}
+                >
+                  <ClipboardPaste size={18} />
                 </IconButton>
                 <IconButton
                   label="Delete message"
                   tone="danger"
-                  disabled={isClearing || deletingSessionId === session.id}
+                  disabled={operationInProgress || deletingSessionId === session.id}
                   onClick={() => onDeleteSession(session.id)}
                 >
                   <Trash2 size={18} />
@@ -108,4 +137,8 @@ export function HistoryView({
       </div>
     </section>
   );
+}
+
+function countLabel(language: LocalSession["language"]) {
+  return language === "zh" || language === "ja" ? "characters" : "words";
 }

@@ -71,6 +71,42 @@ describe("metadata API routes", () => {
     expect(rejected.json()).toMatchObject({ error: "invalid_usage_event" });
   });
 
+  it("rejects unknown metadata fields instead of silently stripping them", async () => {
+    const app = buildServer();
+    const session = await app.inject({
+      method: "POST",
+      url: "/v1/transcription/session",
+      payload: {
+        clientSessionId: "unknown-session-field",
+        provider: "local-whisper",
+        privacyMode: "local-only",
+        language: "en",
+        source: "microphone",
+        mode: "message",
+        utterance: "should not be accepted as metadata"
+      }
+    });
+    const usage = await app.inject({
+      method: "POST",
+      url: "/v1/usage/events",
+      payload: {
+        clientSessionId: "unknown-usage-field",
+        event: "dictation_completed",
+        durationSeconds: 12,
+        wordCount: 123,
+        provider: "local-whisper",
+        privacyMode: "local-only",
+        note: "unexpected"
+      }
+    });
+    await app.close();
+
+    expect(session.statusCode).toBe(400);
+    expect(session.json()).toMatchObject({ error: "invalid_session_metadata" });
+    expect(usage.statusCode).toBe(400);
+    expect(usage.json()).toMatchObject({ error: "invalid_usage_event" });
+  });
+
   it("uses mock checkout when Stripe is not configured and validates email input", async () => {
     const app = buildServer();
     const accepted = await app.inject({
@@ -98,6 +134,23 @@ describe("metadata API routes", () => {
     });
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json()).toMatchObject({ error: "invalid_checkout_request" });
+  });
+
+  it("rejects unknown checkout fields instead of silently stripping them", async () => {
+    const app = buildServer();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/billing/checkout",
+      payload: {
+        email: "person@example.com",
+        plan: "pro-monthly",
+        notes: "unexpected"
+      }
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: "invalid_checkout_request" });
   });
 
   it("records Stripe webhook metadata without storing billing payload content", async () => {

@@ -87,6 +87,7 @@ describe("desktop screen render contracts", () => {
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
         onOpenHistory={vi.fn()}
+        onDisableCompanion={vi.fn()}
       />
     );
 
@@ -98,11 +99,30 @@ describe("desktop screen render contracts", () => {
     expect(markup).toContain("Copied to clipboard");
   });
 
-  it("renders history empty state and dense session actions", () => {
-    const emptyMarkup = renderToStaticMarkup(
-      <HistoryView sessions={[]} query="!@#$" onQueryChange={vi.fn()} onClear={vi.fn()} onDeleteSession={vi.fn()} />
-    );
-    const session: LocalSession = {
+	  it("renders history empty state and dense session actions", () => {
+	    const emptyMarkup = renderToStaticMarkup(
+	      <HistoryView
+	        sessions={[]}
+	        query=""
+	        onQueryChange={vi.fn()}
+	        onClear={vi.fn()}
+	        onDeleteSession={vi.fn()}
+	        onCopyText={vi.fn()}
+	        onPasteSession={vi.fn()}
+	      />
+	    );
+	    const noResultsMarkup = renderToStaticMarkup(
+	      <HistoryView
+	        sessions={[]}
+	        query="!@#$"
+	        onQueryChange={vi.fn()}
+	        onClear={vi.fn()}
+	        onDeleteSession={vi.fn()}
+	        onCopyText={vi.fn()}
+	        onPasteSession={vi.fn()}
+	      />
+	    );
+	    const session: LocalSession = {
       id: "session_1",
       title: "Message 10:30",
       mode: "message",
@@ -116,18 +136,58 @@ describe("desktop screen render contracts", () => {
       text: "final text"
     };
     const filledMarkup = renderToStaticMarkup(
-      <HistoryView sessions={[session]} query="" onQueryChange={vi.fn()} onClear={vi.fn()} onDeleteSession={vi.fn()} />
+      <HistoryView
+        sessions={[session]}
+        query=""
+        onQueryChange={vi.fn()}
+        onClear={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onCopyText={vi.fn()}
+        onPasteSession={vi.fn()}
+      />
     );
 
-    expect(emptyMarkup).toContain("No local dictations match this search.");
-    expect(filledMarkup).toContain("Message 10:30");
-    expect(filledMarkup).toContain("Copy raw transcript");
-    expect(filledMarkup).toContain("Copy final text");
-    expect(filledMarkup).toContain("Export markdown");
-    expect(filledMarkup).toContain("Delete message");
-  });
+	    expect(emptyMarkup).toContain("No local dictations yet.");
+	    expect(noResultsMarkup).toContain("No local dictations match this search.");
+	    expect(filledMarkup).toContain("Message 10:30");
+	    expect(filledMarkup).toContain("Copy raw transcript");
+	    expect(filledMarkup).toContain("Copy final text");
+	    expect(filledMarkup).toContain("Export markdown");
+	    expect(filledMarkup).toContain("Paste final text");
+	    expect(filledMarkup).toContain("Delete message");
+	  });
 
-  it("renders dictionary and snippet empty states plus removal actions for populated data", () => {
+	  it("uses character labels for CJK history metadata", () => {
+	    const session: LocalSession = {
+	      id: "session_zh",
+	      title: "Message zh",
+	      mode: "message",
+	      language: "zh",
+	      privacyMode: "local-only",
+	      provider: "local-whisper",
+	      createdAt: "2026-05-13T00:00:00.000Z",
+	      durationSeconds: 4,
+	      wordCount: 4,
+	      text: "你好世界"
+	    };
+
+	    const markup = renderToStaticMarkup(
+	      <HistoryView
+	        sessions={[session]}
+	        query=""
+	        onQueryChange={vi.fn()}
+	        onClear={vi.fn()}
+	        onDeleteSession={vi.fn()}
+	        onCopyText={vi.fn()}
+	        onPasteSession={vi.fn()}
+	      />
+	    );
+
+	    expect(markup).toContain("4 characters");
+	    expect(markup).not.toContain("4 words");
+	  });
+
+	  it("renders dictionary and snippet empty states plus removal actions for populated data", () => {
     const emptyMarkup = renderToStaticMarkup(
       <DictionaryView dictionary={[]} snippets={[]} onAddTerm={vi.fn()} onAddSnippet={vi.fn()} onRemoveTerm={vi.fn()} onRemoveSnippet={vi.fn()} />
     );
@@ -198,6 +258,7 @@ describe("desktop screen render contracts", () => {
       onModelAction: vi.fn(),
       onImportModel: vi.fn(),
       onRefreshNative: vi.fn(),
+      onOpenPermissionSettings: vi.fn(),
       selectedTier: "medium" as const,
       rerunStatus: "idle" as const,
       rerunError: "",
@@ -225,6 +286,8 @@ describe("desktop screen render contracts", () => {
     expect(privacy).toContain("Local-only by design");
     expect(privacy).toContain("v0.2.0");
     expect(privacy).toContain("Needs permission");
+    expect(privacy).toContain("Enable this permission in system settings");
+    expect(privacy).toContain("Open settings");
     expect(privacy).toContain("Copy only");
   });
 });

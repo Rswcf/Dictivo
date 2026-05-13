@@ -26,6 +26,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [gpus, setGpus] = useState<GpuInfo[]>([]);
   const [models, setModels] = useState<PrivateFastModel[]>([]);
   const [error, setError] = useState<string>("");
+  const [catalogWarning, setCatalogWarning] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [progressLabel, setProgressLabel] = useState<string>("");
   const [tiers, setTiers] = useState<RunnableTiers | null>(null);
@@ -34,7 +35,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     let cancelled = false;
     (async () => {
       try {
-        const [hw, gpuList] = await Promise.all([getHardwareProfile(), detectGpu()]);
+        const hw = await getHardwareProfile();
+        const gpuList = await detectGpu().catch(() => []);
         if (cancelled) return;
         setHardware(hw);
         setGpus(gpuList);
@@ -46,7 +48,20 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   }, []);
 
   useEffect(() => {
-    void getPrivateFastModels().then(setModels).catch(() => {});
+    let cancelled = false;
+    (async () => {
+      try {
+        const catalog = await getPrivateFastModels();
+        if (cancelled) return;
+        setModels(catalog);
+        setCatalogWarning("");
+      } catch (e) {
+        if (cancelled) return;
+        const detail = e instanceof Error ? ` ${e.message}` : "";
+        setCatalogWarning(`Model details are unavailable.${detail} Setup can continue with the recommended model id.`);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const handleDownload = async () => {
@@ -55,8 +70,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     setError("");
     setProgressLabel("Downloading model...");
     try {
-      // TODO: pre-flight disk-free check before downloading (see spec §6).
-      // statvfs requires platform-specific bindings; deferred until a Rust helper exists.
       await downloadPrivateFastModel(hardware.recommendedModelId);
       setProgressLabel("Running quick calibration...");
       setStep("calibrate");
@@ -66,6 +79,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       setStep("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Setup failed");
+      setStep("pick");
     } finally {
       setBusy(false);
       setProgressLabel("");
@@ -73,6 +87,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   };
 
   const recommended = hardware ? models.find((model) => model.id === hardware.recommendedModelId) : undefined;
+  const setupButtonLabel = error ? "Try setup again" : "Download & set up";
 
   return (
     <div className="wizard-shell">
@@ -94,12 +109,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 <li>GPU · {gpus.length > 0 ? (gpus[0]?.name ?? "Unknown") : "Not detected"}</li>
               </ul>
             )}
-            {error && <p className="error">{error}</p>}
+            {error && <p className="error" role="alert">{error}</p>}
             <div className="wizard-actions">
-              <button type="button" className="primary" disabled={!hardware} onClick={() => setStep("pick")}>
-                Continue →
-              </button>
-              <button type="button" className="ghost" onClick={onComplete}>Skip setup</button>
+	              <button type="button" className="primary" disabled={!hardware} onClick={() => setStep("pick")}>
+	                Continue →
+	              </button>
+	              <button type="button" className="ghost" onClick={onComplete}>Skip setup</button>
             </div>
           </section>
         )}
@@ -111,12 +126,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               Recommended: <strong>{recommended?.label ?? hardware.recommendedModelId}</strong>
               {recommended?.sizeLabel ? ` · ${recommended.sizeLabel}` : ""} — best balance for your hardware.
             </p>
-            {error && <p className="error">{error}</p>}
+            {catalogWarning && <p className="muted" role="status">{catalogWarning}</p>}
+            {error && <p className="error" role="alert">{error}</p>}
             <div className="wizard-actions">
               <button type="button" className="primary" disabled={busy} onClick={() => void handleDownload()}>
-                {busy ? progressLabel || "Working..." : "Download & set up"}
+                {busy ? progressLabel || "Working..." : setupButtonLabel}
               </button>
-              <button type="button" className="ghost" onClick={onComplete}>Skip setup</button>
+	              <button type="button" className="ghost" disabled={busy} onClick={onComplete}>Skip setup</button>
             </div>
           </section>
         )}

@@ -110,6 +110,7 @@ pub fn save_session(session: LocalSession) -> Result<(), String> {
               language = excluded.language,
               privacy_mode = excluded.privacy_mode,
               provider = excluded.provider,
+              created_at = excluded.created_at,
               duration_seconds = excluded.duration_seconds,
               word_count = excluded.word_count,
               raw_text = excluded.raw_text,
@@ -153,8 +154,8 @@ pub fn list_sessions() -> Result<Vec<LocalSession>, String> {
     let rows = statement
         .query_map([], |row| {
             let summary_json: Option<String> = row.get(11)?;
-            let summary = summary_json
-                .and_then(|value| serde_json::from_str::<LegacySummary>(&value).ok());
+            let summary =
+                summary_json.and_then(|value| serde_json::from_str::<LegacySummary>(&value).ok());
 
             Ok(LocalSession {
                 id: row.get(0)?,
@@ -220,7 +221,10 @@ fn database_path() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_DB_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_session(id: &str, created_at: &str) -> LocalSession {
         LocalSession {
@@ -240,6 +244,9 @@ mod tests {
     }
 
     fn with_temp_database(test: impl FnOnce()) {
+        let _guard = TEST_DB_LOCK
+            .lock()
+            .expect("storage tests should not poison the database path lock");
         let previous_path = env::var_os("DICTIVO_DB_PATH");
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -289,6 +296,74 @@ mod tests {
 
             clear_sessions().unwrap();
             assert!(list_sessions().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn upserts_session_content_and_created_at() {
+        with_temp_database(|| {
+            save_session(make_session("session_same", "2026-05-11T10:00:00.000Z")).unwrap();
+
+            let mut updated = make_session("session_same", "2026-05-11T12:00:00.000Z");
+            updated.title = "Updated message".to_string();
+            updated.text = "updated final text".to_string();
+            updated.raw_text = None;
+            save_session(updated).unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].id, "session_same");
+            assert_eq!(sessions[0].created_at, "2026-05-11T12:00:00.000Z");
+            assert_eq!(sessions[0].title, "Updated message");
+            assert_eq!(sessions[0].text, "updated final text");
+            assert!(sessions[0].raw_text.is_none());
+        });
+    }
+
+    #[test]
+    fn lists_latest_100_sessions_and_preserves_local_content() {
+        with_temp_database(|| {
+            for index in 0..101 {
+                save_session(make_session(
+                    &format!("session_{index:03}"),
+                    &format!("2026-05-11T10:{index:02}:00.000Z"),
+                ))
+                .unwrap();
+            }
+
+            let mut local_content = make_session("session_200", "2026-05-11T12:00:00.000Z");
+            local_content.title = "Message \u{6d88}\u{606f} <> & \"".to_string();
+            local_content.language = "zh".to_string();
+            local_content.raw_text = Some("raw \u{5f20}\u{4f1f} <> & \"".to_string());
+            local_content.text = "final \u{4f60}\u{597d} <> & \"".to_string();
+            local_content.summary = Some(LegacySummary {
+                summary: "summary \u{7ed3}\u{8bba}".to_string(),
+                decisions: vec!["keep local".to_string()],
+                action_items: vec!["test <storage>".to_string()],
+                questions: vec!["works?".to_string()],
+            });
+            save_session(local_content).unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 100);
+            assert_eq!(sessions[0].id, "session_200");
+            assert_eq!(sessions[0].language, "zh");
+            assert_eq!(sessions[0].title, "Message \u{6d88}\u{606f} <> & \"");
+            assert_eq!(
+                sessions[0].raw_text.as_deref(),
+                Some("raw \u{5f20}\u{4f1f} <> & \"")
+            );
+            assert_eq!(sessions[0].text, "final \u{4f60}\u{597d} <> & \"");
+            assert_eq!(
+                sessions[0]
+                    .summary
+                    .as_ref()
+                    .map(|summary| summary.summary.as_str()),
+                Some("summary \u{7ed3}\u{8bba}")
+            );
+            assert_eq!(sessions[99].id, "session_002");
+            assert!(!sessions.iter().any(|session| session.id == "session_000"));
+            assert!(!sessions.iter().any(|session| session.id == "session_001"));
         });
     }
 }

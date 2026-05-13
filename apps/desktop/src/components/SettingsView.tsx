@@ -3,7 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
-import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
+import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
+import { shortcutMatches } from "../lib/hotkeys";
 import type { CompanionAvatar, HotkeySettings, LocalProcessingSettings } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
@@ -28,6 +29,7 @@ type SettingsViewProps = {
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
+  onOpenPermissionSettings: (target: PermissionSettingsTarget) => void;
   selectedTier: Tier;
   rerunStatus: "idle" | "measuring" | "error";
   rerunError: string;
@@ -67,6 +69,7 @@ export const privacyPermissionItems: Array<{
 export function describePermissionStatus(value?: string): { label: string; detail: string; tone: "ready" | "attention" | "neutral" } {
   switch (value) {
     case "granted": return { label: "Ready", detail: "The operating system reports this permission as available.", tone: "ready" };
+    case "not-required": return { label: "Not required", detail: "This platform does not require an extra permission for this workflow.", tone: "ready" };
     case "clipboard-only": return { label: "Copy only", detail: "Dictivo can copy locally, but direct paste automation is not available here.", tone: "neutral" };
     case "web-preview": return { label: "Preview only", detail: "This status is from the browser preview, not the installed desktop app.", tone: "neutral" };
     case "denied":
@@ -76,6 +79,10 @@ export function describePermissionStatus(value?: string): { label: string; detai
     case undefined: return { label: "Needs system check", detail: "Dictivo has not received a confirmed system permission state yet.", tone: "attention" };
     default: return { label: "Not verified", detail: "Refresh local status after granting permissions in system settings.", tone: "neutral" };
   }
+}
+
+export function canOpenPermissionSettings(value?: string) {
+  return ["denied", "blocked", "pending-native-prompt", "not-determined", "not-verified", undefined].includes(value);
 }
 
 export function SettingsView({
@@ -97,6 +104,7 @@ export function SettingsView({
   onModelAction,
   onImportModel,
   onRefreshNative,
+  onOpenPermissionSettings,
   selectedTier,
   rerunStatus,
   rerunError,
@@ -144,7 +152,7 @@ export function SettingsView({
             />
             <details className="advanced">
               <summary>Processing toggles</summary>
-              <div className="toggle-list" style={{ marginTop: 8 }}>
+              <div className="toggle-list toggle-list--spaced">
                 <ToggleRow label="Auto polish" checked={localProcessing.autoPolish} onChange={(v) => onProcessingChange("autoPolish", v)} />
                 <ToggleRow label="Spoken punctuation" checked={localProcessing.spokenPunctuation} onChange={(v) => onProcessingChange("spokenPunctuation", v)} />
                 <ToggleRow label="Remove fillers" checked={localProcessing.fillerWords} onChange={(v) => onProcessingChange("fillerWords", v)} />
@@ -158,8 +166,18 @@ export function SettingsView({
           <div className="side-panel">
             <div className="panel-title"><KeyRound size={16} /><h2>Hotkeys</h2></div>
             <div className="hotkey-grid">
-              <ShortcutRecorder label="Dictation" value={hotkeys.dictation} onChange={(value) => onHotkeyChange("dictation", value)} />
-              <ShortcutRecorder label="Paste Last" value={hotkeys.pasteLast} onChange={(value) => onHotkeyChange("pasteLast", value)} />
+              <ShortcutRecorder
+                label="Dictation"
+                value={hotkeys.dictation}
+                reservedShortcuts={[hotkeys.pasteLast]}
+                onChange={(value) => onHotkeyChange("dictation", value)}
+              />
+              <ShortcutRecorder
+                label="Paste Last"
+                value={hotkeys.pasteLast}
+                reservedShortcuts={[hotkeys.dictation]}
+                onChange={(value) => onHotkeyChange("pasteLast", value)}
+              />
             </div>
             <div className="toggle-list">
               <label className="toggle-row">
@@ -200,10 +218,10 @@ export function SettingsView({
         {section === "privacy" && (
           <div className="side-panel">
             <div className="panel-title"><Lock size={16} /><h2>Permissions & Privacy</h2></div>
-            <div className="privacy-pledge" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}><ShieldCheck size={16} />
+            <div className="privacy-pledge"><ShieldCheck size={16} />
               <div>
                 <strong>Local-only by design</strong>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>Audio, text, dictionary terms, snippets, and transcripts stay on this device.</p>
+                <p>Audio, text, dictionary terms, snippets, and transcripts stay on this device.</p>
               </div>
             </div>
             <div className="version-row" aria-label="App version">
@@ -214,15 +232,23 @@ export function SettingsView({
               {privacyPermissionItems.map((item) => {
                 const status = describePermissionStatus(permissions[item.key]);
                 return (
-                  <article key={item.key} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                  <article key={item.key} className="permission-item">
                     <span aria-hidden="true">{item.icon}</span>
                     <div>
-                      <strong style={{ fontSize: 12 }}>{item.label}</strong>
-                      <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>{item.description}</p>
+                      <strong className="permission-label">{item.label}</strong>
+                      <p className="permission-description">{item.description}</p>
+                      <p className="permission-detail">{status.detail}</p>
                     </div>
-                    <span style={{ fontSize: 11, color: status.tone === "ready" ? "var(--success)" : status.tone === "attention" ? "var(--warning)" : "var(--faint)" }}>
-                      {status.label}
-                    </span>
+                    <div className="permission-action">
+                      <span className={`permission-status permission-status--${status.tone}`}>
+                        {status.label}
+                      </span>
+                      {canOpenPermissionSettings(permissions[item.key]) && (
+                        <button type="button" className="text-button" onClick={() => onOpenPermissionSettings(item.key)}>
+                          Open settings
+                        </button>
+                      )}
+                    </div>
                   </article>
                 );
               })}
@@ -237,30 +263,51 @@ export function SettingsView({
   );
 }
 
-function ShortcutRecorder({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function ShortcutRecorder({
+  label,
+  value,
+  reservedShortcuts = [],
+  onChange
+}: {
+  label: string;
+  value: string;
+  reservedShortcuts?: string[];
+  onChange: (value: string) => void;
+}) {
   const [recording, setRecording] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
     if (!recording) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      if (event.key === "Escape") { setRecording(false); return; }
+      if (event.key === "Escape") { setRecording(false); setError(""); return; }
       const shortcut = eventToShortcut(event);
       if (!shortcut) return;
+      if (!hasShortcutModifier(shortcut)) {
+        setError("Use Command, Control, or Alt with another key.");
+        return;
+      }
+      if (reservedShortcuts.some((reserved) => shortcutsConflict(shortcut, reserved))) {
+        setError("This shortcut is already assigned.");
+        return;
+      }
       onChange(shortcut);
       setRecording(false);
+      setError("");
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onChange, recording]);
+  }, [onChange, recording, reservedShortcuts]);
 
   return (
     <div className="hotkey-row">
       <div>
         <strong>{label}</strong>
         <span>{value}</span>
+        {error && <span className="shortcut-error" aria-live="polite">{error}</span>}
       </div>
-      <button type="button" className={`text-button ${recording ? "is-recording-shortcut" : ""}`} onClick={() => setRecording(true)}>
+      <button type="button" className={`text-button ${recording ? "is-recording-shortcut" : ""}`} onClick={() => { setRecording(true); setError(""); }}>
         {recording ? "Press keys..." : "Change"}
       </button>
     </div>
@@ -284,6 +331,15 @@ function eventToShortcut(event: KeyboardEvent) {
   if (event.altKey) modifiers.push("Alt");
   if (event.shiftKey) modifiers.push("Shift");
   return [...modifiers, key].join("+");
+}
+
+function hasShortcutModifier(shortcut: string) {
+  return shortcut.split("+").some((part) => ["CommandOrControl", "Alt"].includes(part));
+}
+
+function shortcutsConflict(left: string, right: string) {
+  if (!left.trim() || !right.trim()) return false;
+  return shortcutMatches(left, right) || shortcutMatches(right, left);
 }
 
 function normalizedShortcutKey(key: string) {

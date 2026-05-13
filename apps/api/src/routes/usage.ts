@@ -10,7 +10,7 @@ const usageSchema = z.object({
   wordCount: z.number().int().nonnegative().max(1_000_000).default(0),
   provider: z.literal("local-whisper"),
   privacyMode: z.literal("local-only")
-});
+}).strict();
 
 export const usageRoutes: FastifyPluginAsync = async (app) => {
   app.post("/v1/usage/events", { preHandler: rejectForbiddenContentFields }, async (request, reply) => {

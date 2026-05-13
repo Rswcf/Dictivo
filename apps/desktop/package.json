@@ -27,10 +27,11 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "npm run build -w @dictivo/shared && tsc -p tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run tests",
     "test:coverage": "vitest run tests --coverage",
+    "lint": "tsc -p tsconfig.json --noEmit",
     "e2e": "playwright test",
     "preview": "vite preview --host 0.0.0.0",
     "tauri:dev": "tauri dev",

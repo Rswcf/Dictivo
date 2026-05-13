@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { expect, test, type Locator, type Page } from "./fixtures";
 
 const seededSessions = [
   {
@@ -69,6 +70,19 @@ test("navigates core screens and handles the blocked dictation path", async ({ p
   await expect(page.getByText("Seeded final transcript.")).toBeVisible();
 
   const seededItem = page.locator(".session-item", { hasText: "Seeded Local Dictation" });
+  const [markdownDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    seededItem.getByRole("button", { name: "Export markdown" }).click()
+  ]);
+  expect(markdownDownload.suggestedFilename()).toBe("session_seeded.md");
+  const markdownPath = await markdownDownload.path();
+  expect(markdownPath).not.toBeNull();
+  expect(readFileSync(markdownPath!, "utf8")).toContain("# Seeded Local Dictation\n");
+  expect(readFileSync(markdownPath!, "utf8")).toContain("Seeded final transcript.");
+
+  await seededItem.getByRole("button", { name: "Copy final text" }).click();
+  await expect(page.locator(".status-banner")).toContainText("Final text copied to clipboard.");
+
   await seededItem.getByRole("button", { name: "Delete message" }).click();
   await expect(page.locator(".status-banner")).toContainText("Message deleted.");
   await expect(page.getByText("Seeded Local Dictation")).toBeHidden();
@@ -82,7 +96,7 @@ test("navigates core screens and handles the blocked dictation path", async ({ p
   await page.getByRole("button", { name: "Delete all" }).click();
   await expect(page.locator(".status-banner")).toContainText("Local history cleared.");
   await expect(page.getByText("Second Local Dictation")).toBeHidden();
-  await expect(page.getByText("No local dictations match this search.")).toBeVisible();
+  await expect(page.getByText("No local dictations yet.")).toBeVisible();
   await expect.poll(() => page.evaluate(() => localStorage.getItem("dictivo-local-sessions"))).toBeNull();
 });
 
@@ -148,3 +162,78 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(2);
 });
+
+test("keeps keyboard focus visible across main workflows and inline confirmations", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Dictation language").focus();
+
+  await tabUntilFocused(page, page.getByRole("button", { name: "Dictation", exact: true }), { key: "Shift+Tab" });
+  await expectVisibleFocus(page);
+
+  await tabUntilFocused(page, page.getByRole("button", { name: "Start dictation", exact: true }));
+  await expectVisibleFocus(page);
+
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await tabUntilFocused(page, page.getByLabel("Search local history"));
+  await expectVisibleFocus(page);
+  await tabUntilFocused(page, page.locator(".session-item", { hasText: "Seeded Local Dictation" }).getByRole("button", { name: "Copy final text" }));
+  await expectVisibleFocus(page);
+  await page.getByRole("button", { name: "Clear local history" }).click();
+  await tabUntilFocused(page, page.getByRole("button", { name: "Cancel" }));
+  await expectVisibleFocus(page);
+
+  await page.getByRole("button", { name: "Dictionary" }).click();
+  await tabUntilFocused(page, page.getByLabel("Dictionary term"));
+  await expectVisibleFocus(page);
+  await page.keyboard.type("FocusTerm");
+  await tabUntilFocused(page, page.getByRole("button", { name: "Add term" }));
+  await expectVisibleFocus(page);
+  await tabUntilFocused(page, page.getByLabel("Snippet trigger"));
+  await expectVisibleFocus(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await tabUntilFocused(page, page.getByRole("button", { name: "Hotkeys" }));
+  await expectVisibleFocus(page);
+  await page.getByRole("button", { name: "Local Engine" }).click();
+  await tabUntilFocused(page, page.getByRole("button", { name: /Medium tier/i }));
+  await expectVisibleFocus(page);
+});
+
+async function tabUntilFocused(page: Page, locator: Locator, options: { key?: "Tab" | "Shift+Tab"; maxTabs?: number } = {}) {
+  const key = options.key ?? "Tab";
+  const maxTabs = options.maxTabs ?? 30;
+  const visited: string[] = [];
+
+  for (let index = 0; index < maxTabs; index += 1) {
+    await page.keyboard.press(key);
+    visited.push(await activeElementLabel(page));
+    if (await locator.evaluate((node) => node === document.activeElement).catch(() => false)) return;
+  }
+
+  throw new Error(`Unable to reach ${locator} with ${key}. Visited: ${visited.join(" -> ")}`);
+}
+
+async function activeElementLabel(page: Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) return "none";
+    const label = active.getAttribute("aria-label") || active.getAttribute("title") || active.textContent?.trim() || active.tagName;
+    return `${active.tagName.toLowerCase()}[${label}]`;
+  });
+}
+
+async function expectVisibleFocus(page: Page) {
+  const outline = await page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) return null;
+    const styles = getComputedStyle(active);
+    return {
+      outlineStyle: styles.outlineStyle,
+      outlineWidth: Number.parseFloat(styles.outlineWidth)
+    };
+  });
+
+  expect(outline).not.toBeNull();
+  expect(outline!.outlineStyle).not.toBe("none");
+  expect(outline!.outlineWidth).toBeGreaterThanOrEqual(2);
+}

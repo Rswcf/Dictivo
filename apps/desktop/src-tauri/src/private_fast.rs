@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
 
@@ -131,9 +131,21 @@ fn migrate_legacy_tiers(legacy: LegacyRunnableTiers) -> RunnableTiers {
             },
         }
     };
-    let fast_default = legacy.fast.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "base".to_string());
-    let medium_default = legacy.medium.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "small".to_string());
-    let slow_default = legacy.slow.as_ref().map(|a| a.model_id.clone()).unwrap_or_else(|| "large-v3".to_string());
+    let fast_default = legacy
+        .fast
+        .as_ref()
+        .map(|a| a.model_id.clone())
+        .unwrap_or_else(|| "base".to_string());
+    let medium_default = legacy
+        .medium
+        .as_ref()
+        .map(|a| a.model_id.clone())
+        .unwrap_or_else(|| "small".to_string());
+    let slow_default = legacy
+        .slow
+        .as_ref()
+        .map(|a| a.model_id.clone())
+        .unwrap_or_else(|| "large-v3".to_string());
     RunnableTiers {
         fast: synth(legacy.fast, &fast_default),
         medium: synth(legacy.medium, &medium_default),
@@ -158,8 +170,13 @@ struct ModelSpec {
     speed: &'static str,
     quality: &'static str,
     size_label: &'static str,
+    download_size_bytes: u64,
     notes: &'static str,
 }
+
+const MIB: u64 = 1024 * 1024;
+const GIB: u64 = 1024 * MIB;
+const DOWNLOAD_SPACE_HEADROOM_BYTES: u64 = 256 * MIB;
 
 const MODEL_CATALOG: &[ModelSpec] = &[
     ModelSpec {
@@ -169,6 +186,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Fastest",
         quality: "Low",
         size_label: "~75 MB",
+        download_size_bytes: 75 * MIB,
         notes: "Use only to test permissions and end-to-end flow.",
     },
     ModelSpec {
@@ -178,6 +196,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Very fast",
         quality: "Basic",
         size_label: "~142 MB",
+        download_size_bytes: 142 * MIB,
         notes: "Good for quick feasibility checks; weaker on names and mixed language.",
     },
     ModelSpec {
@@ -187,6 +206,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Fast",
         quality: "Good",
         size_label: "~469 MB",
+        download_size_bytes: 469 * MIB,
         notes: "Best first local model for resource-aware dictation testing.",
     },
     ModelSpec {
@@ -196,6 +216,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Moderate",
         quality: "Better",
         size_label: "~540 MB",
+        download_size_bytes: 540 * MIB,
         notes: "Quantized model for users who want better local dictation without a large memory footprint.",
     },
     ModelSpec {
@@ -205,6 +226,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Moderate",
         quality: "High",
         size_label: "~600 MB",
+        download_size_bytes: 600 * MIB,
         notes: "Best balance for strong local dictation on Apple Silicon and capable Windows machines.",
     },
     ModelSpec {
@@ -214,6 +236,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Slower",
         quality: "High",
         size_label: "~1.6 GB",
+        download_size_bytes: 1600 * MIB,
         notes: "Fast and strong, but pruned for speed; not the highest-accuracy Whisper option.",
     },
     ModelSpec {
@@ -223,6 +246,7 @@ const MODEL_CATALOG: &[ModelSpec] = &[
         speed: "Slowest",
         quality: "Highest",
         size_label: "~3.1 GB",
+        download_size_bytes: 3100 * MIB,
         notes: "Use when quality matters more than disk, memory, and latency.",
     },
 ];
@@ -247,15 +271,15 @@ fn default_model_for_tier(class: PerformanceClass, tier: Tier) -> &'static str {
     use PerformanceClass::*;
     use Tier::*;
     match (class, tier) {
-        (GpuHigh,   Fast)   => "small",
-        (GpuHigh,   Medium) => "large-v3-turbo-q5_0",
-        (GpuHigh,   Slow)   => "large-v3",
-        (CpuStrong, Fast)   => "base",
+        (GpuHigh, Fast) => "small",
+        (GpuHigh, Medium) => "large-v3-turbo-q5_0",
+        (GpuHigh, Slow) => "large-v3",
+        (CpuStrong, Fast) => "base",
         (CpuStrong, Medium) => "small",
-        (CpuStrong, Slow)   => "large-v3-turbo-q5_0",
-        (CpuWeak,   Fast)   => "tiny",
-        (CpuWeak,   Medium) => "base",
-        (CpuWeak,   Slow)   => "small",
+        (CpuStrong, Slow) => "large-v3-turbo-q5_0",
+        (CpuWeak, Fast) => "tiny",
+        (CpuWeak, Medium) => "base",
+        (CpuWeak, Slow) => "small",
     }
 }
 
@@ -287,7 +311,11 @@ const MEDIUM_BUDGET: f32 = 2.0;
 const SLOW_BUDGET: f32 = 4.0;
 
 fn tier_budget(tier: Tier) -> f32 {
-    match tier { Tier::Fast => FAST_BUDGET, Tier::Medium => MEDIUM_BUDGET, Tier::Slow => SLOW_BUDGET }
+    match tier {
+        Tier::Fast => FAST_BUDGET,
+        Tier::Medium => MEDIUM_BUDGET,
+        Tier::Slow => SLOW_BUDGET,
+    }
 }
 
 fn build_runnable_tiers_with_rtfs<F>(
@@ -344,18 +372,9 @@ fn ratio_of(model_id: &str) -> f32 {
     }
 }
 
+#[cfg(test)]
 fn predict_rtf_from_medium(model_id: &str, medium_rtf: f32) -> f32 {
-    let ratio: f32 = match model_id {
-        "tiny" => 0.2,
-        "base" => 0.4,
-        "small" => 0.7,
-        "medium-q5_0" => 1.1,
-        "large-v3-turbo-q5_0" => 1.5,
-        "large-v3-turbo" => 2.0,
-        "large-v3" => 2.5,
-        _ => return medium_rtf,
-    };
-    medium_rtf * ratio
+    medium_rtf * ratio_of(model_id)
 }
 
 fn compute_fingerprint(cpu_model: &str, ram_bytes: u64, gpu_names: &[String]) -> String {
@@ -385,11 +404,15 @@ fn parse_macos_displays(output: &str) -> Vec<GpuInfo> {
     let mut current_name: Option<String> = None;
     let mut current_vram: Option<u64> = None;
 
-    let push_current = |name: &mut Option<String>, vram: &mut Option<u64>, gpus: &mut Vec<GpuInfo>| {
-        if let Some(n) = name.take() {
-            gpus.push(GpuInfo { name: n, vram_bytes: vram.take() });
-        }
-    };
+    let push_current =
+        |name: &mut Option<String>, vram: &mut Option<u64>, gpus: &mut Vec<GpuInfo>| {
+            if let Some(n) = name.take() {
+                gpus.push(GpuInfo {
+                    name: n,
+                    vram_bytes: vram.take(),
+                });
+            }
+        };
 
     for line in output.lines() {
         let trimmed = line.trim_end();
@@ -402,7 +425,10 @@ fn parse_macos_displays(output: &str) -> Vec<GpuInfo> {
             current_name = Some(body.trim_end_matches(':').to_string());
             continue;
         }
-        if let Some(value) = body.strip_prefix("VRAM (Total):").or_else(|| body.strip_prefix("VRAM (Dynamic, Max):")) {
+        if let Some(value) = body
+            .strip_prefix("VRAM (Total):")
+            .or_else(|| body.strip_prefix("VRAM (Dynamic, Max):"))
+        {
             current_vram = parse_vram(value.trim());
         }
     }
@@ -412,7 +438,9 @@ fn parse_macos_displays(output: &str) -> Vec<GpuInfo> {
 
 fn parse_vram(s: &str) -> Option<u64> {
     let parts: Vec<&str> = s.split_whitespace().collect();
-    if parts.len() != 2 { return None; }
+    if parts.len() != 2 {
+        return None;
+    }
     let value: u64 = parts[0].parse().ok()?;
     match parts[1] {
         "GB" => Some(value * 1024 * 1024 * 1024),
@@ -508,10 +536,15 @@ pub fn import_private_fast_model(
     if source.extension().and_then(|value| value.to_str()) != Some("bin") {
         return Err("Private Fast models must be .bin whisper.cpp files.".to_string());
     }
+    let source_metadata = fs::metadata(&source).map_err(|error| error.to_string())?;
+    if !source_metadata.is_file() {
+        return Err("Private Fast model path must point to a .bin file.".to_string());
+    }
 
     let models_dir = private_fast_models_dir()?;
     fs::create_dir_all(&models_dir).map_err(|error| error.to_string())?;
     let output_path = models_dir.join(format!("ggml-{model_id}.bin"));
+    preflight_model_import_space(&model_id, source_metadata.len(), &models_dir)?;
     fs::copy(&source, output_path).map_err(|error| error.to_string())?;
     write_selected_model(&model_id)?;
     Ok(build_private_fast_status(Some(&app)))
@@ -564,7 +597,10 @@ pub fn transcribe_private_fast(
     let audio_bytes = base64::engine::general_purpose::STANDARD
         .decode(audio_base64)
         .map_err(|error| format!("Invalid audio payload: {error}"))?;
-    fs::write(&input_path, audio_bytes).map_err(|error| error.to_string())?;
+    if let Err(error) = fs::write(&input_path, audio_bytes) {
+        let _ = fs::remove_file(&input_path);
+        return Err(error.to_string());
+    }
 
     let language_arg = whisper_language(&language);
     let prompt = build_initial_prompt(&language, &mode, &source, &prompt_terms);
@@ -621,24 +657,24 @@ pub fn transcribe_private_fast(
         }
     }
 
-    let output = command
-        .output()
-        .map_err(|error| format!("Failed to run whisper.cpp: {error}"))?;
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(error) => {
+            cleanup_transcription_artifacts(&input_path, &output_txt);
+            return Err(format!("Failed to run whisper.cpp: {error}"));
+        }
+    };
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Private Fast transcription failed.\n{stderr}\n{stdout}"
-        ));
+        cleanup_transcription_artifacts(&input_path, &output_txt);
+        return Err(private_fast_transcription_failure_message(&output.status));
     }
 
     let mut text = fs::read_to_string(&output_txt)
         .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
     text = cleanup_whisper_output(&text);
 
-    let _ = fs::remove_file(input_path);
-    let _ = fs::remove_file(output_txt);
+    cleanup_transcription_artifacts(&input_path, &output_txt);
 
     Ok(PrivateFastTranscript {
         text,
@@ -646,6 +682,17 @@ pub fn transcribe_private_fast(
         binary_path: path_to_string(binary_path),
         model_path: path_to_string(model_path),
     })
+}
+
+fn cleanup_transcription_artifacts(input_path: &Path, output_txt: &Path) {
+    let _ = fs::remove_file(input_path);
+    let _ = fs::remove_file(output_txt);
+}
+
+fn private_fast_transcription_failure_message(status: &std::process::ExitStatus) -> String {
+    format!(
+        "Private Fast transcription failed ({status}). Check that the selected local model can run on this device, or switch to a smaller tier."
+    )
 }
 
 fn resolve_binary_path(app: Option<&AppHandle>) -> Option<PathBuf> {
@@ -1005,6 +1052,7 @@ fn download_model(model_id: &str) -> Result<(), String> {
     if output_path.exists() {
         return Ok(());
     }
+    preflight_model_download_space(model_id, &models_dir)?;
 
     let whisper_dir = private_fast_whisper_dir()?;
     let download_script = whisper_dir.join("models/download-ggml-model.sh");
@@ -1044,6 +1092,71 @@ fn download_model(model_id: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn preflight_model_download_space(model_id: &str, models_dir: &Path) -> Result<(), String> {
+    let model = model_spec(model_id)
+        .ok_or_else(|| format!("Unsupported Private Fast model: {model_id}"))?;
+    let available_bytes = fs2::available_space(models_dir)
+        .map_err(|error| format!("Unable to check free disk space for model download: {error}"))?;
+    validate_model_transfer_space(
+        "download",
+        model,
+        model.download_size_bytes,
+        format!("{} model", model.size_label),
+        available_bytes,
+        models_dir,
+    )
+}
+
+fn preflight_model_import_space(
+    model_id: &str,
+    source_size_bytes: u64,
+    models_dir: &Path,
+) -> Result<(), String> {
+    let model = model_spec(model_id)
+        .ok_or_else(|| format!("Unsupported Private Fast model: {model_id}"))?;
+    let available_bytes = fs2::available_space(models_dir)
+        .map_err(|error| format!("Unable to check free disk space for model import: {error}"))?;
+    validate_model_transfer_space(
+        "import",
+        model,
+        source_size_bytes,
+        format!("{} model file", format_bytes(source_size_bytes)),
+        available_bytes,
+        models_dir,
+    )
+}
+
+fn validate_model_transfer_space(
+    action: &str,
+    model: ModelSpec,
+    payload_bytes: u64,
+    payload_label: String,
+    available_bytes: u64,
+    models_dir: &Path,
+) -> Result<(), String> {
+    let required_bytes = payload_bytes.saturating_add(DOWNLOAD_SPACE_HEADROOM_BYTES);
+    if available_bytes >= required_bytes {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Not enough disk space to {action} {}. Need at least {} free ({} plus safety margin), but only {} is available in {}.",
+        model.label,
+        format_bytes(required_bytes),
+        payload_label,
+        format_bytes(available_bytes),
+        models_dir.display()
+    ))
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= GIB {
+        format!("{:.1} GB", bytes as f64 / GIB as f64)
+    } else {
+        format!("{} MB", bytes.saturating_add(MIB - 1) / MIB)
+    }
 }
 
 fn validate_model_id(model_id: &str) -> Result<(), String> {
@@ -1233,6 +1346,13 @@ mod tests {
     }
 
     #[test]
+    fn model_id_validation_rejects_unsupported_paths() {
+        assert!(validate_model_id("small").is_ok());
+        let error = validate_model_id("../small").unwrap_err();
+        assert!(error.contains("Unsupported Private Fast model"));
+    }
+
+    #[test]
     fn tier_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Tier::Fast).unwrap(), "\"fast\"");
         assert_eq!(serde_json::to_string(&Tier::Medium).unwrap(), "\"medium\"");
@@ -1241,9 +1361,18 @@ mod tests {
 
     #[test]
     fn performance_class_serializes_camel_case() {
-        assert_eq!(serde_json::to_string(&PerformanceClass::GpuHigh).unwrap(), "\"gpuHigh\"");
-        assert_eq!(serde_json::to_string(&PerformanceClass::CpuStrong).unwrap(), "\"cpuStrong\"");
-        assert_eq!(serde_json::to_string(&PerformanceClass::CpuWeak).unwrap(), "\"cpuWeak\"");
+        assert_eq!(
+            serde_json::to_string(&PerformanceClass::GpuHigh).unwrap(),
+            "\"gpuHigh\""
+        );
+        assert_eq!(
+            serde_json::to_string(&PerformanceClass::CpuStrong).unwrap(),
+            "\"cpuStrong\""
+        );
+        assert_eq!(
+            serde_json::to_string(&PerformanceClass::CpuWeak).unwrap(),
+            "\"cpuWeak\""
+        );
     }
 
     #[test]
@@ -1252,15 +1381,15 @@ mod tests {
         use Tier::*;
 
         let cases: &[(PerformanceClass, Tier, &str)] = &[
-            (GpuHigh,   Fast,   "small"),
-            (GpuHigh,   Medium, "large-v3-turbo-q5_0"),
-            (GpuHigh,   Slow,   "large-v3"),
-            (CpuStrong, Fast,   "base"),
+            (GpuHigh, Fast, "small"),
+            (GpuHigh, Medium, "large-v3-turbo-q5_0"),
+            (GpuHigh, Slow, "large-v3"),
+            (CpuStrong, Fast, "base"),
             (CpuStrong, Medium, "small"),
-            (CpuStrong, Slow,   "large-v3-turbo-q5_0"),
-            (CpuWeak,   Fast,   "tiny"),
-            (CpuWeak,   Medium, "base"),
-            (CpuWeak,   Slow,   "small"),
+            (CpuStrong, Slow, "large-v3-turbo-q5_0"),
+            (CpuWeak, Fast, "tiny"),
+            (CpuWeak, Medium, "base"),
+            (CpuWeak, Slow, "small"),
         ];
 
         for &(class, tier, expected) in cases {
@@ -1276,16 +1405,69 @@ mod tests {
     }
 
     #[test]
+    fn download_space_validation_allows_expected_model_size_plus_headroom() {
+        let model = model_spec("small").unwrap();
+        let available = model.download_size_bytes + DOWNLOAD_SPACE_HEADROOM_BYTES;
+
+        assert!(validate_model_transfer_space(
+            "download",
+            model,
+            model.download_size_bytes,
+            format!("{} model", model.size_label),
+            available,
+            Path::new("/models")
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn download_space_validation_reports_actionable_low_space_error() {
+        let model = model_spec("large-v3").unwrap();
+        let error = validate_model_transfer_space(
+            "download",
+            model,
+            model.download_size_bytes,
+            format!("{} model", model.size_label),
+            512 * MIB,
+            Path::new("/models"),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Not enough disk space to download Large v3"));
+        assert!(error.contains("~3.1 GB model plus safety margin"));
+        assert!(error.contains("512 MB"));
+        assert!(error.contains("/models"));
+    }
+
+    #[test]
+    fn import_space_validation_reports_source_file_size() {
+        let model = model_spec("small").unwrap();
+        let error = validate_model_transfer_space(
+            "import",
+            model,
+            900 * MIB,
+            format!("{} model file", format_bytes(900 * MIB)),
+            128 * MIB,
+            Path::new("/models"),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Not enough disk space to import Small"));
+        assert!(error.contains("900 MB model file plus safety margin"));
+        assert!(error.contains("128 MB"));
+    }
+
+    #[test]
     fn performance_class_classification() {
         let cases: &[(usize, u64, Option<u64>, PerformanceClass)] = &[
-            (10, 16, Some(8),  PerformanceClass::GpuHigh),
+            (10, 16, Some(8), PerformanceClass::GpuHigh),
             (12, 32, Some(12), PerformanceClass::GpuHigh),
-            (8,  16, Some(4),  PerformanceClass::CpuStrong),
-            (8,  16, None,     PerformanceClass::CpuStrong),
-            (16, 32, None,     PerformanceClass::CpuStrong),
-            (4,  8,  None,     PerformanceClass::CpuWeak),
-            (4,  16, None,     PerformanceClass::CpuWeak),
-            (8,  4,  None,     PerformanceClass::CpuWeak),
+            (8, 16, Some(4), PerformanceClass::CpuStrong),
+            (8, 16, None, PerformanceClass::CpuStrong),
+            (16, 32, None, PerformanceClass::CpuStrong),
+            (4, 8, None, PerformanceClass::CpuWeak),
+            (4, 16, None, PerformanceClass::CpuWeak),
+            (8, 4, None, PerformanceClass::CpuWeak),
         ];
 
         for &(cores, ram_gb, gpu_vram_gb, expected) in cases {
@@ -1295,7 +1477,10 @@ mod tests {
                 compute_performance_class(cores, Some(ram_bytes), gpu_vram_bytes),
                 expected,
                 "cores={} ram_gb={} gpu_vram_gb={:?} expected {:?}",
-                cores, ram_gb, gpu_vram_gb, expected
+                cores,
+                ram_gb,
+                gpu_vram_gb,
+                expected
             );
         }
     }
@@ -1312,20 +1497,22 @@ mod tests {
     fn predict_rtf_ratios() {
         let medium_rtf = 1.0f32;
         let expectations: &[(&str, f32)] = &[
-            ("tiny",                  1.0 * 0.2),
-            ("base",                  1.0 * 0.4),
-            ("small",                 1.0 * 0.7),
-            ("medium-q5_0",           1.0 * 1.1),
-            ("large-v3-turbo-q5_0",   1.0 * 1.5),
-            ("large-v3-turbo",        1.0 * 2.0),
-            ("large-v3",              1.0 * 2.5),
+            ("tiny", 1.0 * 0.2),
+            ("base", 1.0 * 0.4),
+            ("small", 1.0 * 0.7),
+            ("medium-q5_0", 1.0 * 1.1),
+            ("large-v3-turbo-q5_0", 1.0 * 1.5),
+            ("large-v3-turbo", 1.0 * 2.0),
+            ("large-v3", 1.0 * 2.5),
         ];
         for &(model_id, expected) in expectations {
             let got = predict_rtf_from_medium(model_id, medium_rtf);
             assert!(
                 (got - expected).abs() < 1e-4,
                 "{} predicted {} expected {}",
-                model_id, got, expected
+                model_id,
+                got,
+                expected
             );
         }
     }
@@ -1342,13 +1529,16 @@ mod tests {
 
     #[test]
     fn runnable_tiers_roundtrip_json() {
-        let make = |model_id: &str, rtf: f32, predicted: bool, downloaded: bool, within_budget: bool| TierAssignment {
-            model_id: model_id.into(),
-            realtime_factor: rtf,
-            predicted,
-            downloaded,
-            within_budget,
-        };
+        let make =
+            |model_id: &str, rtf: f32, predicted: bool, downloaded: bool, within_budget: bool| {
+                TierAssignment {
+                    model_id: model_id.into(),
+                    realtime_factor: rtf,
+                    predicted,
+                    downloaded,
+                    within_budget,
+                }
+            };
         let original = RunnableTiers {
             fast: make("small", 0.65, false, true, true),
             medium: make("large-v3-turbo-q5_0", 0.85, false, true, true),
@@ -1357,8 +1547,16 @@ mod tests {
             benchmarked_at: "2026-05-12T10:14:00Z".into(),
         };
         let json = serde_json::to_string(&original).unwrap();
-        assert!(json.contains("\"realtimeFactor\":0.65"), "uses camelCase: {}", json);
-        assert!(json.contains("\"withinBudget\":true"), "withinBudget serialized: {}", json);
+        assert!(
+            json.contains("\"realtimeFactor\":0.65"),
+            "uses camelCase: {}",
+            json
+        );
+        assert!(
+            json.contains("\"withinBudget\":true"),
+            "withinBudget serialized: {}",
+            json
+        );
         let back: RunnableTiers = serde_json::from_str(&json).unwrap();
         assert_eq!(back.fast.model_id, "small");
         assert!(!back.slow.within_budget, "slow is over budget");
@@ -1366,15 +1564,31 @@ mod tests {
 
     #[test]
     fn fingerprint_is_deterministic_and_sensitive() {
-        let a = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
-        let b = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
+        let a = compute_fingerprint(
+            "Apple M3 Pro",
+            18 * 1024 * 1024 * 1024,
+            &["Apple M3 Pro GPU".to_string()],
+        );
+        let b = compute_fingerprint(
+            "Apple M3 Pro",
+            18 * 1024 * 1024 * 1024,
+            &["Apple M3 Pro GPU".to_string()],
+        );
         assert_eq!(a, b, "same inputs must hash equal");
         assert_eq!(a.len(), 64, "sha256 hex digest is 64 chars");
 
-        let c = compute_fingerprint("Apple M2 Pro", 18 * 1024 * 1024 * 1024, &["Apple M2 Pro GPU".to_string()]);
+        let c = compute_fingerprint(
+            "Apple M2 Pro",
+            18 * 1024 * 1024 * 1024,
+            &["Apple M2 Pro GPU".to_string()],
+        );
         assert_ne!(a, c, "different CPU must hash different");
 
-        let d = compute_fingerprint("Apple M3 Pro", 16 * 1024 * 1024 * 1024, &["Apple M3 Pro GPU".to_string()]);
+        let d = compute_fingerprint(
+            "Apple M3 Pro",
+            16 * 1024 * 1024 * 1024,
+            &["Apple M3 Pro GPU".to_string()],
+        );
         assert_ne!(a, d, "different RAM must hash different");
 
         let e = compute_fingerprint("Apple M3 Pro", 18 * 1024 * 1024 * 1024, &[]);
@@ -1413,15 +1627,15 @@ Graphics/Displays:
     #[test]
     fn build_runnable_tiers_marks_in_budget_when_medium_is_fast() {
         use PerformanceClass::*;
-        let result = build_runnable_tiers_with_rtfs(
-            CpuStrong,
-            0.8,
-            "fp",
-            "2026-05-12T00:00:00Z",
-            |id| installed_in_test(id),
-        );
+        let result =
+            build_runnable_tiers_with_rtfs(CpuStrong, 0.8, "fp", "2026-05-12T00:00:00Z", |id| {
+                installed_in_test(id)
+            });
         assert!(result.fast.within_budget, "fast should be within budget");
-        assert!(result.medium.within_budget, "medium should be within budget");
+        assert!(
+            result.medium.within_budget,
+            "medium should be within budget"
+        );
         assert!(result.slow.within_budget, "slow should be within budget");
     }
 
@@ -1435,13 +1649,16 @@ Graphics/Displays:
     #[test]
     fn build_runnable_tiers_flags_slow_out_of_budget_on_weak_hardware() {
         use PerformanceClass::*;
-        let result = build_runnable_tiers_with_rtfs(
-            CpuWeak, 5.0, "fp", "ts",
-            |_| false,
-        );
+        let result = build_runnable_tiers_with_rtfs(CpuWeak, 5.0, "fp", "ts", |_| false);
         // Every tier still has an assignment now — slow is flagged out of budget.
-        assert!(!result.slow.within_budget, "slow should be flagged as out of budget");
-        assert!(!result.medium.within_budget, "medium too on this hypothetical weak machine");
+        assert!(
+            !result.slow.within_budget,
+            "slow should be flagged as out of budget"
+        );
+        assert!(
+            !result.medium.within_budget,
+            "medium too on this hypothetical weak machine"
+        );
     }
 
     #[test]
@@ -1456,12 +1673,14 @@ Graphics/Displays:
         let legacy: LegacyRunnableTiers = serde_json::from_str(legacy_json).expect("legacy parses");
         let migrated = migrate_legacy_tiers(legacy);
         assert_eq!(migrated.fast.model_id, "base");
-        assert!(migrated.fast.within_budget);  // synthesized as true for present slots
+        assert!(migrated.fast.within_budget); // synthesized as true for present slots
         assert_eq!(migrated.slow.model_id, "large-v3");
-        assert!(!migrated.slow.within_budget);  // synthesized as false for None slot
+        assert!(!migrated.slow.within_budget); // synthesized as false for None slot
     }
 
-    fn installed_in_test(_model_id: &str) -> bool { false }
+    fn installed_in_test(_model_id: &str) -> bool {
+        false
+    }
 
     #[test]
     fn vietnamese_language_maps_to_vi() {
@@ -1472,6 +1691,53 @@ Graphics/Displays:
     fn unknown_language_still_falls_to_english() {
         assert_eq!(whisper_language("xx"), "en");
         assert_eq!(whisper_language(""), "en");
+    }
+
+    #[test]
+    fn cleanup_transcription_artifacts_removes_input_and_output_files() {
+        let dir = env::temp_dir().join(format!(
+            "dictivo-transcription-cleanup-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let input = dir.join("input.wav");
+        let output = dir.join("output.txt");
+        fs::write(&input, b"wav").unwrap();
+        fs::write(&output, b"text").unwrap();
+
+        cleanup_transcription_artifacts(&input, &output);
+
+        assert!(!input.exists());
+        assert!(!output.exists());
+
+        cleanup_transcription_artifacts(&input, &output);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transcription_failure_message_does_not_echo_whisper_output() {
+        let status = failed_exit_status_for_test();
+        let message = private_fast_transcription_failure_message(&status);
+
+        assert!(message.contains("Private Fast transcription failed"));
+        assert!(message.contains("smaller tier"));
+        assert!(!message.contains("stdout"));
+        assert!(!message.contains("stderr"));
+        assert!(!message.contains("my private transcript"));
+    }
+
+    #[cfg(unix)]
+    fn failed_exit_status_for_test() -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(1 << 8)
+    }
+
+    #[cfg(windows)]
+    fn failed_exit_status_for_test() -> std::process::ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(1)
     }
 }
 
@@ -1501,7 +1767,13 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
                 let text = String::from_utf8_lossy(&out.stdout);
                 gpus.extend(parse_macos_displays(&text).into_iter().filter(|g| {
                     let n = g.name.to_ascii_lowercase();
-                    n.contains("amd") || n.contains("radeon") || n.contains("vega") || n.contains("nvidia") || n.contains("geforce") || n.contains("rtx") || n.contains("quadro")
+                    n.contains("amd")
+                        || n.contains("radeon")
+                        || n.contains("vega")
+                        || n.contains("nvidia")
+                        || n.contains("geforce")
+                        || n.contains("rtx")
+                        || n.contains("quadro")
                 }));
             }
         }
@@ -1534,10 +1806,10 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
     use std::thread;
     use std::time::Duration;
 
-    let binary_path = resolve_binary_path(Some(&app))
-        .ok_or_else(|| "whisper-cli binary missing".to_string())?;
-    let model_path = private_fast_models_dir()?
-        .join(format!("ggml-{model_id}.bin"));
+    validate_model_id(&model_id)?;
+    let binary_path =
+        resolve_binary_path(Some(&app)).ok_or_else(|| "whisper-cli binary missing".to_string())?;
+    let model_path = private_fast_models_dir()?.join(format!("ggml-{model_id}.bin"));
     if !model_path.exists() {
         return Err(format!("Model {model_id} is not installed"));
     }
@@ -1546,6 +1818,12 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
         .path()
         .resolve("benchmark-5s.wav", tauri::path::BaseDirectory::Resource)
         .map_err(|e| e.to_string())?;
+
+    let work_dir = private_fast_work_dir()?;
+    fs::create_dir_all(&work_dir).map_err(|error| error.to_string())?;
+    let timestamp = time::OffsetDateTime::now_utc().unix_timestamp_nanos();
+    let output_stem = work_dir.join(format!("benchmark-{model_id}-{timestamp}"));
+    let output_txt = output_stem.with_extension("txt");
 
     let start = std::time::Instant::now();
     let mut child = quiet_command(&binary_path)
@@ -1558,7 +1836,7 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
             "en",
             "-otxt",
             "-of",
-            "/dev/null",
+            output_stem.to_string_lossy().as_ref(),
             "--no-prints",
         ])
         .stdout(Stdio::null())
@@ -1576,14 +1854,17 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
                     if let Some(mut s) = child.stderr.take() {
                         let _ = s.read_to_string(&mut stderr);
                     }
+                    let _ = fs::remove_file(&output_txt);
                     return Err(format!("whisper-cli exited {}: {}", status, stderr));
                 }
+                let _ = fs::remove_file(&output_txt);
                 let audio_secs = 5.0_f32;
                 return Ok(elapsed / audio_secs);
             }
             None => {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
+                    let _ = fs::remove_file(&output_txt);
                     return Err("Benchmark timed out after 30 s".to_string());
                 }
                 thread::sleep(Duration::from_millis(200));
@@ -1604,33 +1885,44 @@ fn windows_primary_gpu() -> Option<GpuInfo> {
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
-    let first = if parsed.is_array() { parsed.get(0)?.clone() } else { parsed };
+    let first = if parsed.is_array() {
+        parsed.get(0)?.clone()
+    } else {
+        parsed
+    };
     let name = first.get("Name")?.as_str()?.to_string();
     let vram = first.get("AdapterRAM").and_then(|v| v.as_u64());
-    Some(GpuInfo { name, vram_bytes: vram })
+    Some(GpuInfo {
+        name,
+        vram_bytes: vram,
+    })
 }
-
-#[cfg(not(target_os = "windows"))]
-fn windows_primary_gpu() -> Option<GpuInfo> { None }
 
 #[cfg(target_os = "linux")]
 fn linux_nvidia_gpu() -> Option<GpuInfo> {
     let output = quiet_command("nvidia-smi")
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
         .ok()?;
-    if !output.status.success() { return None; }
+    if !output.status.success() {
+        return None;
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     let first = text.lines().next()?;
     let parts: Vec<&str> = first.split(',').map(str::trim).collect();
-    if parts.len() < 2 { return None; }
+    if parts.len() < 2 {
+        return None;
+    }
     let name = parts[0].to_string();
     let mib: u64 = parts[1].parse().ok()?;
-    Some(GpuInfo { name, vram_bytes: Some(mib * 1024 * 1024) })
+    Some(GpuInfo {
+        name,
+        vram_bytes: Some(mib * 1024 * 1024),
+    })
 }
-
-#[cfg(not(target_os = "linux"))]
-fn linux_nvidia_gpu() -> Option<GpuInfo> { None }
 
 #[cfg(target_os = "linux")]
 fn linux_amd_gpu() -> Option<GpuInfo> {
@@ -1638,23 +1930,24 @@ fn linux_amd_gpu() -> Option<GpuInfo> {
         .args(["--showmeminfo", "vram", "--csv"])
         .output()
         .ok()?;
-    if !output.status.success() { return None; }
+    if !output.status.success() {
+        return None;
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     let line = text.lines().nth(1)?;
     let parts: Vec<&str> = line.split(',').collect();
-    if parts.len() < 2 { return None; }
+    if parts.len() < 2 {
+        return None;
+    }
     let vram: u64 = parts[1].trim().parse().ok()?;
-    Some(GpuInfo { name: "AMD GPU (ROCm)".to_string(), vram_bytes: Some(vram) })
+    Some(GpuInfo {
+        name: "AMD GPU (ROCm)".to_string(),
+        vram_bytes: Some(vram),
+    })
 }
 
-#[cfg(not(target_os = "linux"))]
-fn linux_amd_gpu() -> Option<GpuInfo> { None }
-
 fn benchmark_cache_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
+    let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join("benchmark.json"))
 }
@@ -1669,7 +1962,10 @@ fn current_fingerprint() -> String {
 fn sysctl_cpu_brand() -> String {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(out) = quiet_command("sysctl").args(["-n", "machdep.cpu.brand_string"]).output() {
+        if let Ok(out) = quiet_command("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+        {
             return String::from_utf8_lossy(&out.stdout).trim().to_string();
         }
     }
@@ -1685,10 +1981,14 @@ fn sysctl_cpu_brand() -> String {
     }
     #[cfg(target_os = "windows")]
     {
-        if let Ok(out) = quiet_command("powershell").args([
-            "-NoProfile", "-Command",
-            "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name"
-        ]).output() {
+        if let Ok(out) = quiet_command("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name",
+            ])
+            .output()
+        {
             return String::from_utf8_lossy(&out.stdout).trim().to_string();
         }
     }
@@ -1736,7 +2036,9 @@ pub fn runnable_tiers(app: AppHandle) -> Result<RunnableTiers, String> {
 }
 
 fn current_performance_class() -> PerformanceClass {
-    let cores = std::thread::available_parallelism().map(|v| v.get()).unwrap_or(4);
+    let cores = std::thread::available_parallelism()
+        .map(|v| v.get())
+        .unwrap_or(4);
     let ram = total_memory_bytes();
     let gpus = detect_gpu();
     let primary_vram = gpus.iter().filter_map(|g| g.vram_bytes).max();
@@ -1756,18 +2058,12 @@ pub(crate) fn finalize_calibration_inner(measured_medium_rtf: f32) -> RunnableTi
     let now = chrono_like_now_iso();
 
     let models_dir = private_fast_models_dir().ok();
-    build_runnable_tiers_with_rtfs(
-        class,
-        measured_medium_rtf,
-        &fingerprint,
-        &now,
-        |id| {
-            models_dir
-                .as_ref()
-                .map(|dir| dir.join(format!("ggml-{id}.bin")).exists())
-                .unwrap_or(false)
-        },
-    )
+    build_runnable_tiers_with_rtfs(class, measured_medium_rtf, &fingerprint, &now, |id| {
+        models_dir
+            .as_ref()
+            .map(|dir| dir.join(format!("ggml-{id}.bin")).exists())
+            .unwrap_or(false)
+    })
 }
 
 #[tauri::command]
@@ -1787,7 +2083,9 @@ pub fn finalize_calibration(
 }
 
 fn chrono_like_now_iso() -> String {
-    if let Ok(stamp) = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
+    if let Ok(stamp) =
+        time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339)
+    {
         return stamp;
     }
     use std::time::{SystemTime, UNIX_EPOCH};

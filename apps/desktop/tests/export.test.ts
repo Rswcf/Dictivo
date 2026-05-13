@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LocalSession } from "@dictivo/shared";
-import { downloadText, sessionToMarkdown } from "../src/lib/export";
+import { downloadText, markdownFilenameForSession, safeDownloadBasename, sessionToMarkdown } from "../src/lib/export";
 
 const session: LocalSession = {
   id: "session_1",
@@ -37,6 +37,25 @@ describe("history export helpers", () => {
         "Final local transcript."
       ].join("\n")
     );
+  });
+
+  it("uses a stable markdown filename for normal session ids", () => {
+    expect(markdownFilenameForSession(session)).toBe("session_1.md");
+  });
+
+  it("sanitizes markdown filenames from legacy or corrupted session ids", () => {
+    expect(markdownFilenameForSession({ ...session, id: " ../bad/session:01\n " })).toBe("bad-session-01.md");
+    expect(markdownFilenameForSession({ ...session, id: "" })).toBe("dictivo-session.md");
+    expect(markdownFilenameForSession({ ...session, id: "CON" })).toBe("CON-session.md");
+  });
+
+  it("keeps download basenames short and filesystem-safe", () => {
+    const longId = `${"session-".repeat(20)}end`;
+
+    expect(safeDownloadBasename("report<>:\"/\\|?*\u0000 final")).toBe("report-final");
+    expect(safeDownloadBasename(longId).length).toBeLessThanOrEqual(80);
+    expect(safeDownloadBasename(longId)).not.toMatch(/[.-]$/);
+    expect(safeDownloadBasename("...")).toBe("dictivo-session");
   });
 
   it("downloads markdown through an object URL and revokes it", () => {

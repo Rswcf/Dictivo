@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("first launch shows onboarding wizard then main shell", async ({ page }) => {
   await page.addInitScript(() => {

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("tier selector reflects selection in footer", async ({ page }) => {
   await page.addInitScript(() => {

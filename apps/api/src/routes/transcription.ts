@@ -13,7 +13,7 @@ const sessionSchema = z.object({
   mode: z.enum(["dictation", "email", "message", "raw", "prompt"]),
   platform: z.enum(["macos", "windows", "linux", "web"]).optional(),
   appVersion: z.string().max(60).optional()
-});
+}).strict();
 
 export const transcriptionRoutes: FastifyPluginAsync = async (app) => {
   app.post("/v1/transcription/session", { preHandler: rejectForbiddenContentFields }, async (request, reply) => {

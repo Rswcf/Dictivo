@@ -66,4 +66,155 @@ describe("settingsStore v4 migration", () => {
     expect(loadSettings().selectedTier).toBe("fast");
     expect(loadSettings().onboardingCompleted).toBe(true);
   });
+
+  it("normalizes corrupted v4 settings instead of loading invalid UI state", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({
+        language: "klingon",
+        selectedMode: "telepathy",
+        selectedTier: "large",
+        onboardingCompleted: "yes",
+        companionEnabled: "false",
+        companionAvatar: "spaceship",
+        hotkeys: { dictation: 123, pasteLast: null, activationMode: "press" },
+        localProcessing: {
+          autoPolish: "true",
+          spokenPunctuation: false,
+          fillerWords: null,
+          smartCapitalization: true
+        },
+        dictionary: "not-array",
+        snippets: "not-array"
+      })
+    );
+
+    const settings = loadSettings();
+
+    expect(settings).toMatchObject({
+      language: "en",
+      selectedMode: "message",
+      selectedTier: "medium",
+      onboardingCompleted: false,
+      companionEnabled: true,
+      companionAvatar: "dog",
+      hotkeys: {
+        dictation: "CommandOrControl+Shift+Space",
+        pasteLast: "CommandOrControl+Shift+V",
+        activationMode: "toggle"
+      },
+      localProcessing: {
+        autoPolish: true,
+        spokenPunctuation: false,
+        fillerWords: true,
+        smartCapitalization: true
+      },
+      dictionary: [],
+      snippets: []
+    });
+  });
+
+  it("sanitizes dictionary and snippet arrays from legacy or corrupted settings", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({
+        language: "de",
+        dictionary: [
+          " Dictivo ",
+          { id: "", value: "kubectl", language: "vi", createdAt: "" },
+          { id: "duplicate", value: "dictivo", language: "en", createdAt: "2026-05-13" },
+          { id: "empty", value: "   ", language: "en", createdAt: "2026-05-13" },
+          { id: "bad-language", value: "Supabase", language: "klingon", createdAt: "2026-05-13" },
+          null
+        ],
+        snippets: [
+          { id: "", trigger: " calendar ", replacement: " https://cal.example ", language: "es", createdAt: "" },
+          { id: "duplicate", trigger: "CALENDAR", replacement: "https://other.example", language: "en", createdAt: "2026-05-13" },
+          { id: "missing-replacement", trigger: "empty", replacement: "", language: "en" },
+          "not-a-snippet"
+        ]
+      })
+    );
+
+    const settings = loadSettings();
+
+    expect(settings.dictionary).toEqual([
+      {
+        id: "legacy-term-0",
+        value: "Dictivo",
+        language: "de",
+        createdAt: "1970-01-01T00:00:00.000Z"
+      },
+      {
+        id: "legacy-term-1",
+        value: "kubectl",
+        language: "vi",
+        createdAt: "1970-01-01T00:00:00.000Z"
+      },
+      {
+        id: "duplicate",
+        value: "dictivo",
+        language: "en",
+        createdAt: "2026-05-13"
+      },
+      {
+        id: "bad-language",
+        value: "Supabase",
+        language: "de",
+        createdAt: "2026-05-13"
+      }
+    ]);
+    expect(settings.snippets).toEqual([
+      {
+        id: "legacy-snippet-0",
+        trigger: "calendar",
+        replacement: "https://cal.example",
+        language: "es",
+        createdAt: "1970-01-01T00:00:00.000Z"
+      },
+      {
+        id: "duplicate",
+        trigger: "CALENDAR",
+        replacement: "https://other.example",
+        language: "en",
+        createdAt: "2026-05-13"
+      }
+    ]);
+  });
+
+  it("normalizes unsafe or duplicate stored hotkeys before registration", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({
+        hotkeys: {
+          dictation: "Shift+K",
+          pasteLast: "CommandOrControl+Shift+Space",
+          activationMode: "hold"
+        }
+      })
+    );
+
+    expect(loadSettings().hotkeys).toEqual({
+      dictation: "CommandOrControl+Shift+Space",
+      pasteLast: "CommandOrControl+Shift+V",
+      activationMode: "hold"
+    });
+
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({
+        hotkeys: {
+          dictation: "CommandOrControl+Shift+V",
+          pasteLast: "Ctrl+Shift+V",
+          activationMode: "toggle"
+        }
+      })
+    );
+
+    expect(loadSettings().hotkeys).toEqual({
+      dictation: "CommandOrControl+Shift+V",
+      pasteLast: "",
+      activationMode: "toggle"
+    });
+  });
 });

@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Playwright enables colored reporter output for its subprocesses. Codex shells
+// often export NO_COLOR, and Node warns when both signals are present.
+delete process.env.NO_COLOR;
+
 const port = process.env.PLAYWRIGHT_PORT ?? "1420";
 const baseURL = `http://127.0.0.1:${port}`;
 

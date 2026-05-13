@@ -1,5 +1,5 @@
-import { Download, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type {
   HardwareProfile,
   PrivateFastModel,
@@ -32,6 +32,7 @@ type ModelManagerProps = {
 type PendingConfirm =
   | { kind: "download"; tier: Tier; assignment: TierAssignment }
   | { kind: "warning"; tier: Tier; assignment: TierAssignment }
+  | { kind: "delete"; model: PrivateFastModel }
   | null;
 
 export function ModelManager({
@@ -45,6 +46,7 @@ export function ModelManager({
   rerunError,
   onModelAction,
   onImportModel,
+  onRefresh,
   onTierChange,
   onRerunBenchmark,
   onOpenWizard
@@ -54,8 +56,15 @@ export function ModelManager({
   const [pending, setPending] = useState<PendingConfirm>(null);
 
   const mediumModel = models.find((m) => m.id === runnableTiers.medium.modelId);
+  const operationInProgress = Boolean(operation);
+  const canImportModel = importPath.trim().length > 0 && !operationInProgress;
+
+  useEffect(() => {
+    if (operationInProgress) setPending(null);
+  }, [operationInProgress]);
 
   const handleTierCardClick = (tier: Tier) => {
+    if (operationInProgress) return;
     const assignment = runnableTiers[tier];
     if (tier === selectedTier && assignment.downloaded) return;
     if (!assignment.withinBudget) {
@@ -71,6 +80,11 @@ export function ModelManager({
 
   const handleConfirm = () => {
     if (!pending) return;
+    if (pending.kind === "delete") {
+      onModelAction("delete", pending.model.id);
+      setPending(null);
+      return;
+    }
     onTierChange(pending.tier);
     setPending(null);
   };
@@ -79,22 +93,26 @@ export function ModelManager({
     <div className="model-manager">
       <div className="recommend-card">
         <strong>Recommended for your hardware</strong>
-        <div style={{ marginTop: 6 }}>
+        <div className="recommend-card-summary">
           {mediumModel?.label ?? hardwareProfile?.recommendedModelId ?? "—"}
           {hardwareProfile
             ? ` · ${hardwareProfile.cpuCores} cores · ${formatRam(hardwareProfile.memoryTotalBytes)}`
             : ""}
         </div>
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="recommend-card-actions">
           <button
             type="button"
             className={`text-button rerun-button ${rerunStatus === "measuring" ? "is-measuring" : ""}`}
-            disabled={rerunStatus === "measuring"}
+            disabled={rerunStatus === "measuring" || operationInProgress}
             onClick={onRerunBenchmark}
           >
             {rerunStatus === "measuring" ? "Measuring…" : "Re-run setup"}
           </button>
-          <button type="button" className="text-button-link" onClick={onOpenWizard}>
+          <button type="button" className="text-button" disabled={operationInProgress} onClick={onRefresh}>
+            <RefreshCw size={13} />
+            Refresh status
+          </button>
+          <button type="button" className="text-button-link" disabled={operationInProgress} onClick={onOpenWizard}>
             Run setup wizard instead →
           </button>
         </div>
@@ -108,6 +126,8 @@ export function ModelManager({
           title={
             pending.kind === "warning"
               ? `${TIER_DISPLAY[pending.tier].name} may run slowly`
+              : pending.kind === "delete"
+                ? `Delete ${pending.model.label}?`
               : `Download ${TIER_DISPLAY[pending.tier].name}?`
           }
           body={
@@ -115,11 +135,13 @@ export function ModelManager({
               ? `${pending.assignment.modelId} could take roughly ${pending.assignment.realtimeFactor.toFixed(1)}× realtime on your hardware. 30 seconds of audio may take ${Math.round(
                   pending.assignment.realtimeFactor * 30
                 )} seconds or more. Continue?`
+              : pending.kind === "delete"
+                ? "This removes the local model file from this computer. You can download or import it again later."
               : `This tier needs ${pending.assignment.modelId} (${
                   models.find((m) => m.id === pending.assignment.modelId)?.sizeLabel ?? "size unknown"
                 }). Download and switch?`
           }
-          confirmLabel={pending.kind === "warning" ? "Continue" : "Download"}
+          confirmLabel={pending.kind === "warning" ? "Continue" : pending.kind === "delete" ? "Delete" : "Download"}
           onConfirm={handleConfirm}
           onCancel={() => setPending(null)}
         />
@@ -134,6 +156,7 @@ export function ModelManager({
             model={models.find((m) => m.id === runnableTiers[tier].modelId)}
             isSelected={selectedTier === tier}
             isBusy={Boolean(operation) && operation.endsWith(`:${runnableTiers[tier].modelId}`)}
+            disabled={operationInProgress}
             onClick={() => handleTierCardClick(tier)}
           />
         ))}
@@ -141,9 +164,10 @@ export function ModelManager({
 
       <details className="advanced">
         <summary>Advanced — full model catalog</summary>
-        <div className="model-catalog" style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+        <div className="model-catalog">
           {models.map((model) => {
             const pendingOp = operation.endsWith(`:${model.id}`);
+            const assignedTiers = tierLabelsForModel(model.id, runnableTiers);
             return (
               <article className={`tier-card ${model.selected ? "is-recommended" : ""}`} key={model.id}>
                 <div className="name">{model.label}</div>
@@ -151,13 +175,16 @@ export function ModelManager({
                   {model.installed ? "Installed" : model.sizeLabel}
                   {model.selected ? " · Selected" : ""}
                 </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <div className="meta tier-assignment">
+                  {assignedTiers ? `Tier: ${assignedTiers}` : "Not assigned to current tiers"}
+                </div>
+                <div className="model-action-row">
                   {model.installed ? (
                     <>
                       <button
                         type="button"
                         className="text-button"
-                        disabled={model.selected || Boolean(operation)}
+                        disabled={model.selected || operationInProgress}
                         onClick={() => onModelAction("select", model.id)}
                       >
                         {model.selected ? "Selected" : "Select"}
@@ -165,8 +192,8 @@ export function ModelManager({
                       <button
                         type="button"
                         className="text-button"
-                        disabled={Boolean(operation)}
-                        onClick={() => onModelAction("delete", model.id)}
+                        disabled={operationInProgress}
+                        onClick={() => setPending({ kind: "delete", model })}
                       >
                         <Trash2 size={13} />
                         {pendingOp && operation.startsWith("delete:") ? "Deleting" : "Delete"}
@@ -176,7 +203,7 @@ export function ModelManager({
                     <button
                       type="button"
                       className="text-button"
-                      disabled={Boolean(operation)}
+                      disabled={operationInProgress}
                       onClick={() => onModelAction("download", model.id)}
                     >
                       <Download size={13} />
@@ -189,8 +216,13 @@ export function ModelManager({
           })}
         </div>
 
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 12 }}>
-          <select value={importModelId} onChange={(event) => setImportModelId(event.target.value)}>
+        <div className="model-import-row">
+          <select
+            value={importModelId}
+            disabled={operationInProgress}
+            onChange={(event) => setImportModelId(event.target.value)}
+            aria-label="Model to import"
+          >
             {models.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.label}
@@ -199,16 +231,18 @@ export function ModelManager({
           </select>
           <input
             value={importPath}
+            disabled={operationInProgress}
             onChange={(event) => setImportPath(event.target.value)}
             placeholder="/path/to/ggml-small.bin"
+            aria-label="Model file path"
           />
-          <button type="button" className="text-button" onClick={() => onImportModel(importModelId, importPath)}>
+          <button type="button" className="text-button" disabled={!canImportModel} onClick={() => onImportModel(importModelId, importPath.trim())}>
             Import
           </button>
         </div>
       </details>
 
-      <small style={{ color: "var(--faint)", fontSize: 11 }}>{status.message}</small>
+      <small className="model-status-message">{status.message}</small>
     </div>
   );
 }
@@ -219,6 +253,7 @@ function TierCard({
   model,
   isSelected,
   isBusy,
+  disabled,
   onClick
 }: {
   tier: Tier;
@@ -226,6 +261,7 @@ function TierCard({
   model: PrivateFastModel | undefined;
   isSelected: boolean;
   isBusy: boolean;
+  disabled: boolean;
   onClick: () => void;
 }) {
   const display = TIER_DISPLAY[tier];
@@ -242,6 +278,7 @@ function TierCard({
     <button
       type="button"
       className={stateClasses}
+      disabled={disabled}
       onClick={onClick}
       aria-pressed={isSelected}
       aria-label={`${display.name} tier — ${display.sub}`}
@@ -296,4 +333,11 @@ function ConfirmInline({
 function formatRam(bytes?: number) {
   if (!bytes) return "RAM unknown";
   return `${Math.round(bytes / 1024 ** 3)} GB RAM`;
+}
+
+function tierLabelsForModel(modelId: string, tiers: RunnableTiers) {
+  return (["fast", "medium", "slow"] as const)
+    .filter((tier) => tiers[tier].modelId === modelId)
+    .map((tier) => TIER_DISPLAY[tier].name)
+    .join(", ");
 }

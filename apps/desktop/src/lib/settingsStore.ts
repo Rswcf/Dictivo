@@ -1,7 +1,11 @@
-import type { DictionaryTerm, InputMode, Snippet, SupportedLanguage } from "@dictivo/shared";
+import { SUPPORTED_LANGUAGES, type DictionaryTerm, type InputMode, type Snippet, type SupportedLanguage } from "@dictivo/shared";
 
 const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
+const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
+const SELECTABLE_TIERS = ["fast", "medium", "slow"] as const satisfies readonly Settings["selectedTier"][];
+const COMPANION_AVATARS = ["dog", "cat", "trump", "bikini", "muscle"] as const satisfies readonly CompanionAvatar[];
+const LEGACY_CREATED_AT = "1970-01-01T00:00:00.000Z";
 
 export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini" | "muscle";
 
@@ -58,10 +62,14 @@ const DEFAULTS: Settings = {
 };
 
 export function normalizeHotkeys(value: Partial<HotkeySettings> | undefined): HotkeySettings {
+  const dictation = safeShortcut(value?.dictation, DEFAULT_HOTKEYS.dictation);
+  const fallbackPasteLast = shortcutsConflict(dictation, DEFAULT_HOTKEYS.pasteLast) ? "" : DEFAULT_HOTKEYS.pasteLast;
+  const pasteLast = safeShortcut(value?.pasteLast, fallbackPasteLast);
+
   return {
-    dictation: value?.dictation ?? DEFAULT_HOTKEYS.dictation,
-    pasteLast: value?.pasteLast ?? DEFAULT_HOTKEYS.pasteLast,
-    activationMode: value?.activationMode ?? DEFAULT_HOTKEYS.activationMode
+    dictation,
+    pasteLast: shortcutsConflict(dictation, pasteLast) ? fallbackPasteLast : pasteLast,
+    activationMode: isOneOf(value?.activationMode, ["toggle", "hold"] as const) ? value.activationMode : DEFAULT_HOTKEYS.activationMode
   };
 }
 
@@ -69,10 +77,10 @@ export function normalizeLocalProcessing(
   value: Partial<LocalProcessingSettings> | undefined
 ): LocalProcessingSettings {
   return {
-    autoPolish: value?.autoPolish ?? DEFAULT_LOCAL_PROCESSING.autoPolish,
-    spokenPunctuation: value?.spokenPunctuation ?? DEFAULT_LOCAL_PROCESSING.spokenPunctuation,
-    fillerWords: value?.fillerWords ?? DEFAULT_LOCAL_PROCESSING.fillerWords,
-    smartCapitalization: value?.smartCapitalization ?? DEFAULT_LOCAL_PROCESSING.smartCapitalization
+    autoPolish: booleanOrDefault(value?.autoPolish, DEFAULT_LOCAL_PROCESSING.autoPolish),
+    spokenPunctuation: booleanOrDefault(value?.spokenPunctuation, DEFAULT_LOCAL_PROCESSING.spokenPunctuation),
+    fillerWords: booleanOrDefault(value?.fillerWords, DEFAULT_LOCAL_PROCESSING.fillerWords),
+    smartCapitalization: booleanOrDefault(value?.smartCapitalization, DEFAULT_LOCAL_PROCESSING.smartCapitalization)
   };
 }
 
@@ -86,23 +94,12 @@ export function loadSettings(): Settings {
   if (typeof localStorage === "undefined") return DEFAULTS;
   try {
     const fresh = localStorage.getItem(STORAGE_KEY);
-    if (fresh) return { ...DEFAULTS, ...JSON.parse(fresh) };
+    if (fresh) return normalizeSettings(JSON.parse(fresh), false);
 
     for (const key of LEGACY_KEYS) {
       const raw = localStorage.getItem(key);
       if (!raw) continue;
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const migrated: Settings = {
-        ...DEFAULTS,
-        ...(parsed as Partial<Settings>),
-        selectedTier: profileToTier(parsed.privateFastProfile),
-        onboardingCompleted: Boolean(parsed.onboardingCompleted),
-        hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
-        localProcessing: normalizeLocalProcessing(
-          parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
-        )
-      };
-      return migrated;
+      return normalizeSettings(JSON.parse(raw), true);
     }
   } catch (error) {
     console.warn("settingsStore: load failed, using defaults", error);
@@ -118,4 +115,238 @@ export function saveSettings(settings: Settings) {
   } catch (error) {
     console.warn("settingsStore: save failed", error);
   }
+}
+
+function normalizeSettings(value: unknown, legacy: boolean): Settings {
+  if (!value || typeof value !== "object") return DEFAULTS;
+  const parsed = value as Record<string, unknown>;
+  const language = isOneOf(parsed.language, SUPPORTED_LANGUAGES) ? parsed.language : DEFAULTS.language;
+  const selectedTier = isOneOf(parsed.selectedTier, SELECTABLE_TIERS)
+    ? parsed.selectedTier
+    : legacy
+      ? profileToTier(parsed.privateFastProfile)
+      : DEFAULTS.selectedTier;
+
+  return {
+    ...DEFAULTS,
+    language,
+    selectedMode: isOneOf(parsed.selectedMode, INPUT_MODES) ? parsed.selectedMode : DEFAULTS.selectedMode,
+    selectedTier,
+    onboardingCompleted: booleanOrDefault(parsed.onboardingCompleted, DEFAULTS.onboardingCompleted),
+    companionEnabled: booleanOrDefault(parsed.companionEnabled, DEFAULTS.companionEnabled),
+    companionAvatar: isOneOf(parsed.companionAvatar, COMPANION_AVATARS) ? parsed.companionAvatar : DEFAULTS.companionAvatar,
+    hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
+    localProcessing: normalizeLocalProcessing(
+      parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
+    ),
+    dictionary: normalizeDictionaryTerms(parsed.dictionary, language),
+    snippets: normalizeSnippets(parsed.snippets, language)
+  };
+}
+
+function booleanOrDefault(value: unknown, fallback: boolean) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function safeShortcut(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const shortcut = value.trim();
+  if (!shortcut) return "";
+  return isGlobalSafeShortcut(shortcut) ? shortcut : fallback;
+}
+
+function isGlobalSafeShortcut(shortcut: string) {
+  const parts = shortcut.split("+").map((part) => part.trim()).filter(Boolean);
+  const hasPrimaryModifier = parts.some((part) => PRIMARY_SHORTCUT_MODIFIERS.has(normalizeShortcutPart(part)));
+  const hasKey = parts.some((part) => !SHORTCUT_MODIFIERS.has(normalizeShortcutPart(part)));
+  return hasPrimaryModifier && hasKey;
+}
+
+const SHORTCUT_MODIFIERS = new Set([
+  "commandorcontrol",
+  "commandorctrl",
+  "cmdorcontrol",
+  "cmdorctrl",
+  "primary",
+  "mod",
+  "command",
+  "cmd",
+  "meta",
+  "super",
+  "control",
+  "ctrl",
+  "ctl",
+  "alt",
+  "option",
+  "opt",
+  "shift"
+]);
+
+const PRIMARY_SHORTCUT_MODIFIERS = new Set([
+  "commandorcontrol",
+  "commandorctrl",
+  "cmdorcontrol",
+  "cmdorctrl",
+  "primary",
+  "mod",
+  "command",
+  "cmd",
+  "meta",
+  "super",
+  "control",
+  "ctrl",
+  "ctl",
+  "alt",
+  "option",
+  "opt"
+]);
+
+function shortcutsConflict(left: string, right: string) {
+  if (!left.trim() || !right.trim()) return false;
+  const leftParsed = parseShortcut(left);
+  const rightParsed = parseShortcut(right);
+  if (!leftParsed.key || !rightParsed.key || leftParsed.key !== rightParsed.key) return false;
+  return modifierOptions(leftParsed.modifiers).some((leftOption) =>
+    modifierOptions(rightParsed.modifiers).some((rightOption) => sameModifierSet(leftOption, rightOption))
+  );
+}
+
+function parseShortcut(shortcut: string) {
+  const modifiers = new Set<string>();
+  const keyParts: string[] = [];
+
+  for (const part of shortcut.split("+").map((value) => value.trim()).filter(Boolean)) {
+    const normalized = normalizeShortcutPart(part);
+    const modifier = normalizeShortcutModifier(normalized);
+    if (modifier) {
+      modifiers.add(modifier);
+    } else {
+      keyParts.push(normalizeShortcutKey(normalized));
+    }
+  }
+
+  return { modifiers, key: keyParts.join("+") };
+}
+
+function normalizeShortcutPart(value: string) {
+  return value.toLowerCase().replace(/[\s_-]/g, "");
+}
+
+function normalizeShortcutModifier(value: string) {
+  if (["commandorcontrol", "commandorctrl", "cmdorcontrol", "cmdorctrl", "primary", "mod"].includes(value)) return "primary";
+  if (["command", "cmd", "meta", "super"].includes(value)) return "command";
+  if (["control", "ctrl", "ctl"].includes(value)) return "control";
+  if (["alt", "option", "opt"].includes(value)) return "alt";
+  if (value === "shift") return "shift";
+  return "";
+}
+
+function normalizeShortcutKey(value: string) {
+  if (value === "spacebar") return "space";
+  if (value === "esc") return "escape";
+  if (value === "return") return "enter";
+  if (value.startsWith("key") && value.length === 4) return value.slice(3);
+  return value;
+}
+
+function modifierOptions(modifiers: Set<string>) {
+  if (!modifiers.has("primary")) return [new Set(modifiers)];
+
+  const base = new Set(modifiers);
+  base.delete("primary");
+  return [new Set([...base, "command"]), new Set([...base, "control"])];
+}
+
+function sameModifierSet(left: Set<string>, right: Set<string>) {
+  if (left.size !== right.size) return false;
+  return Array.from(left).every((modifier) => right.has(modifier));
+}
+
+function normalizeDictionaryTerms(value: unknown, fallbackLanguage: SupportedLanguage): DictionaryTerm[] {
+  if (!Array.isArray(value)) return DEFAULTS.dictionary;
+
+  const seen = new Set<string>();
+  const terms: DictionaryTerm[] = [];
+
+  value.forEach((item, index) => {
+    const normalized = normalizeDictionaryTerm(item, index, fallbackLanguage);
+    if (!normalized) return;
+    const dedupeKey = `${normalized.language}:${normalized.value.trim().toLocaleLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    terms.push(normalized);
+  });
+
+  return terms;
+}
+
+function normalizeDictionaryTerm(
+  value: unknown,
+  index: number,
+  fallbackLanguage: SupportedLanguage
+): DictionaryTerm | null {
+  if (typeof value === "string") {
+    const term = value.trim();
+    if (!term) return null;
+    return {
+      id: `legacy-term-${index}`,
+      value: term,
+      language: fallbackLanguage,
+      createdAt: LEGACY_CREATED_AT
+    };
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Record<string, unknown>;
+  const term = typeof parsed.value === "string" ? parsed.value.trim() : "";
+  if (!term) return null;
+
+  return {
+    id: nonEmptyStringOr(parsed.id, `legacy-term-${index}`),
+    value: term,
+    language: isOneOf(parsed.language, SUPPORTED_LANGUAGES) ? parsed.language : fallbackLanguage,
+    createdAt: nonEmptyStringOr(parsed.createdAt, LEGACY_CREATED_AT)
+  };
+}
+
+function normalizeSnippets(value: unknown, fallbackLanguage: SupportedLanguage): Snippet[] {
+  if (!Array.isArray(value)) return DEFAULTS.snippets;
+
+  const seen = new Set<string>();
+  const snippets: Snippet[] = [];
+
+  value.forEach((item, index) => {
+    const normalized = normalizeSnippet(item, index, fallbackLanguage);
+    if (!normalized) return;
+    const dedupeKey = `${normalized.language}:${normalized.trigger.trim().toLocaleLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    snippets.push(normalized);
+  });
+
+  return snippets;
+}
+
+function normalizeSnippet(value: unknown, index: number, fallbackLanguage: SupportedLanguage): Snippet | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Record<string, unknown>;
+  const trigger = typeof parsed.trigger === "string" ? parsed.trigger.trim() : "";
+  const replacement = typeof parsed.replacement === "string" ? parsed.replacement.trim() : "";
+  if (!trigger || !replacement) return null;
+
+  return {
+    id: nonEmptyStringOr(parsed.id, `legacy-snippet-${index}`),
+    trigger,
+    replacement,
+    language: isOneOf(parsed.language, SUPPORTED_LANGUAGES) ? parsed.language : fallbackLanguage,
+    createdAt: nonEmptyStringOr(parsed.createdAt, LEGACY_CREATED_AT)
+  };
+}
+
+function nonEmptyStringOr(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length > 0 ? value : fallback;
+}
+
+function isOneOf<T extends string>(value: unknown, choices: readonly T[]): value is T {
+  return typeof value === "string" && (choices as readonly string[]).includes(value);
 }

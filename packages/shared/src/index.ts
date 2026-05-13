@@ -128,7 +128,22 @@ export const FORBIDDEN_BACKEND_CONTENT_FIELDS = [
   "audio",
   "audioBlob",
   "audioUrl",
+  "body",
+  "content",
+  "finalText",
+  "initialPrompt",
+  "messageContent",
+  "messages",
+  "prompt",
+  "promptTerms",
+  "promptText",
+  "rawText",
+  "snippet",
+  "snippetReplacement",
   "transcript",
+  "transcribedText",
+  "transcription",
+  "transcriptionText",
   "transcriptText",
   "text",
   "summary",
@@ -143,6 +158,10 @@ export const FORBIDDEN_BACKEND_CONTENT_FIELDS = [
 
 export type ForbiddenBackendContentField = (typeof FORBIDDEN_BACKEND_CONTENT_FIELDS)[number];
 
+const NORMALIZED_FORBIDDEN_BACKEND_CONTENT_FIELDS = new Set(
+  FORBIDDEN_BACKEND_CONTENT_FIELDS.map(normalizeFieldName)
+);
+
 export function findForbiddenContentFields(value: unknown): string[] {
   const matches = new Set<string>();
   visit(value, []);
@@ -156,12 +175,16 @@ export function findForbiddenContentFields(value: unknown): string[] {
     }
 
     for (const [key, child] of Object.entries(node)) {
-      if ((FORBIDDEN_BACKEND_CONTENT_FIELDS as readonly string[]).includes(key)) {
+      if (NORMALIZED_FORBIDDEN_BACKEND_CONTENT_FIELDS.has(normalizeFieldName(key))) {
         matches.add([...path, key].join("."));
       }
       visit(child, [...path, key]);
     }
   }
+}
+
+function normalizeFieldName(field: string) {
+  return field.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
 export function estimateWordCount(text: string, language: SupportedLanguage): number {

@@ -40,7 +40,7 @@ Most dictation apps make you choose between speed, accuracy, and privacy. Dictiv
 | 🔒 100% on-device | ✅ | ❌ cloud | ✅ | ❌ cloud | ✅ |
 | 🖥 Auto-tunes to your hardware | ✅ | ❌ | ❌ | — | ❌ |
 | ⚡ Global hotkey + paste-to-active-app | ✅ | ✅ | ✅ | ❌ | partial |
-| 🎯 Message / Email / Prompt modes | ✅ | ✅ | partial | ❌ | ❌ |
+| 🎯 Local polish + snippets | ✅ | ✅ | partial | ❌ | ❌ |
 | 📖 Local dictionary + snippets | ✅ | partial | ✅ | ❌ | ❌ |
 | 🌍 macOS **and** Windows | ✅ | ✅ | macOS only | ✅ | macOS only |
 | 💰 Free, open source | ✅ MIT | ❌ paid | ❌ paid | ❌ paid | ✅ bundled |
@@ -71,7 +71,7 @@ Out-of-budget tiers (⚠) are still clickable — you get a warning confirm with
 1. Download the latest Dictivo.dmg (macOS) or .msi (Windows) from Releases
 2. Open Dictivo
 3. The setup wizard scans your hardware → downloads one recommended model → measures speed
-4. Press ⌥ Space, speak, press ⌥ Space again. Done.
+4. Press `CommandOrControl+Shift+Space`, speak, press the same shortcut again. Done.
 ```
 
 **Or run from source**
@@ -91,12 +91,12 @@ Requirements: Node 20+, Rust stable, macOS or Windows.
 ```text
    ┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐
    │  Microphone │───▶│  whisper.cpp     │───▶│  Local polish   │
-   │  ⌥ Space    │    │  (your hardware) │    │  (Msg / Email / │
-   └─────────────┘    └──────────────────┘    │   Raw / Prompt) │
+   │  Hotkey     │    │  (your hardware) │    │  (punctuation / │
+   └─────────────┘    └──────────────────┘    │   fillers / caps)│
           ▲                                    └────────┬────────┘
           │                                             │
           │                                             ▼
-   ⌥ Space                                  ┌──────────────────────┐
+   Hotkey                                   ┌──────────────────────┐
    to start/stop                            │ Pasted into active   │
                                             │ app · saved locally  │
                                             └──────────────────────┘
@@ -125,8 +125,8 @@ It's silly. People share it. We're keeping it.
 
 ## Features
 
-- **🎙 4 polish modes** — Message, Email, Raw, Prompt. Same recording, four different finished outputs.
-- **🔥 Global hotkeys** — `⌥+Space` to dictate, `⌥+Shift+V` to paste the last transcript anywhere.
+- **🎙 Smart local polish** — punctuation cleanup, filler removal, capitalization, dictionary terms, and snippets, all configurable with Processing toggles in Settings.
+- **🔥 Global hotkeys** — `CommandOrControl+Shift+Space` to dictate, `CommandOrControl+Shift+V` to paste the last transcript anywhere.
 - **📖 Local dictionary & snippets** — Teach Dictivo proper nouns and trigger phrases. Zero round-trip to a server.
 - **🧠 7-language transcription** — English, 中文, Español, 日本語, Français, Deutsch, Tiếng Việt (and any other Whisper-supported tongue at the engine level).
 - **🪟 Floating companion window** — Always-on-top, transparent, draggable, dismissible.
@@ -174,6 +174,7 @@ npm run tauri:build -w @dictivo/desktop
 npm run typecheck           # all packages
 npm run test                # vitest across shared/desktop/api
 npm run e2e                 # playwright web-preview suite
+npm run smoke:private-fast  # installed app + local model native smoke
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
 

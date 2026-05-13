@@ -4,6 +4,8 @@ mod storage;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -17,6 +19,14 @@ const MENU_STATUS: &str = "status";
 const MENU_SHOW_MAIN: &str = "show-main";
 const MENU_HIDE_COMPANION: &str = "hide-companion";
 const MENU_QUIT: &str = "quit";
+
+fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd
+}
 
 struct AppLifecycle {
     is_quitting: AtomicBool,
@@ -38,10 +48,35 @@ struct PermissionStatus {
     paste_automation: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum PermissionSettingsTarget {
+    Microphone,
+    Accessibility,
+    PasteAutomation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PermissionSettingsPlatform {
+    #[cfg(any(test, target_os = "macos"))]
+    Macos,
+    #[cfg(any(test, target_os = "windows"))]
+    Windows,
+    #[cfg(any(test, all(not(target_os = "macos"), not(target_os = "windows"))))]
+    Linux,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PasteResult {
     pasted: bool,
+    copied: bool,
+    method: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CopyResult {
     copied: bool,
     method: String,
 }
@@ -56,15 +91,153 @@ struct ClipboardMarker {
 #[tauri::command]
 fn request_permissions() -> PermissionStatus {
     PermissionStatus {
-        microphone: "pending-native-prompt".to_string(),
-        accessibility: "pending-native-prompt".to_string(),
-        paste_automation: "pending-native-prompt".to_string(),
+        microphone: microphone_permission_status().to_string(),
+        accessibility: accessibility_permission_status().to_string(),
+        paste_automation: paste_automation_permission_status().to_string(),
+    }
+}
+
+fn microphone_permission_status() -> &'static str {
+    "not-determined"
+}
+
+#[cfg(target_os = "macos")]
+fn accessibility_permission_status() -> &'static str {
+    accessibility_status_from_trusted(macos_accessibility_trusted())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn accessibility_permission_status() -> &'static str {
+    "not-required"
+}
+
+fn accessibility_status_from_trusted(trusted: bool) -> &'static str {
+    if trusted {
+        "granted"
+    } else {
+        "denied"
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn paste_automation_permission_status() -> &'static str {
+    "not-verified"
+}
+
+#[cfg(target_os = "windows")]
+fn paste_automation_permission_status() -> &'static str {
+    "not-verified"
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn paste_automation_permission_status() -> &'static str {
+    "clipboard-only"
+}
+
+#[cfg(target_os = "macos")]
+fn macos_accessibility_trusted() -> bool {
+    unsafe { AXIsProcessTrusted() }
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
+
+#[tauri::command]
+fn open_permission_settings(target: PermissionSettingsTarget) -> Result<(), String> {
+    let (program, args) = permission_settings_command(target);
+    let status = quiet_command(program)
+        .args(args)
+        .status()
+        .map_err(|error| format!("Unable to open system settings: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Unable to open system settings automatically. Open Privacy & Security in system settings and grant the permission manually.".to_string())
+    }
+}
+
+fn permission_settings_command(
+    target: PermissionSettingsTarget,
+) -> (&'static str, Vec<&'static str>) {
+    permission_settings_command_for_platform(current_permission_settings_platform(), target)
+}
+
+fn current_permission_settings_platform() -> PermissionSettingsPlatform {
+    #[cfg(target_os = "macos")]
+    {
+        return PermissionSettingsPlatform::Macos;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return PermissionSettingsPlatform::Windows;
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        PermissionSettingsPlatform::Linux
+    }
+}
+
+fn permission_settings_command_for_platform(
+    platform: PermissionSettingsPlatform,
+    target: PermissionSettingsTarget,
+) -> (&'static str, Vec<&'static str>) {
+    match platform {
+        #[cfg(any(test, target_os = "macos"))]
+        PermissionSettingsPlatform::Macos => {
+            let url = match target {
+                PermissionSettingsTarget::Microphone => {
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                }
+                PermissionSettingsTarget::Accessibility => {
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                }
+                PermissionSettingsTarget::PasteAutomation => {
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+                }
+            };
+            ("open", vec![url])
+        }
+        #[cfg(any(test, target_os = "windows"))]
+        PermissionSettingsPlatform::Windows => {
+            let uri = match target {
+                PermissionSettingsTarget::Microphone => "ms-settings:privacy-microphone",
+                PermissionSettingsTarget::Accessibility => "ms-settings:easeofaccess-keyboard",
+                PermissionSettingsTarget::PasteAutomation => "ms-settings:privacy",
+            };
+            ("cmd", vec!["/C", "start", "", uri])
+        }
+        #[cfg(any(test, all(not(target_os = "macos"), not(target_os = "windows"))))]
+        PermissionSettingsPlatform::Linux => {
+            let uri = match target {
+                PermissionSettingsTarget::Microphone => "settings://privacy",
+                PermissionSettingsTarget::Accessibility => "settings://universal-access",
+                PermissionSettingsTarget::PasteAutomation => "settings://privacy",
+            };
+            ("xdg-open", vec![uri])
+        }
     }
 }
 
 #[tauri::command]
 fn clipboard_marker() -> Result<ClipboardMarker, String> {
     current_clipboard_marker()
+}
+
+#[tauri::command]
+fn copy_text(text: String) -> Result<CopyResult, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+    clipboard
+        .set_text(text)
+        .map_err(|error| error.to_string())?;
+
+    Ok(CopyResult {
+        copied: true,
+        method: "clipboard".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -90,7 +263,7 @@ fn paste_text(
 
     #[cfg(target_os = "macos")]
     {
-        let status = Command::new("osascript")
+        let status = quiet_command("osascript")
             .arg("-e")
             .arg(r#"tell application "System Events" to keystroke "v" using command down"#)
             .status()
@@ -108,7 +281,7 @@ fn paste_text(
 
     #[cfg(target_os = "windows")]
     {
-        let status = Command::new("powershell")
+        let status = quiet_command("powershell")
             .arg("-NoProfile")
             .arg("-Command")
             .arg("$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys('^v')")
@@ -132,7 +305,9 @@ fn paste_text(
     })
 }
 
-fn clipboard_changed_since(expected_clipboard_marker: Option<ClipboardMarker>) -> Result<bool, String> {
+fn clipboard_changed_since(
+    expected_clipboard_marker: Option<ClipboardMarker>,
+) -> Result<bool, String> {
     let Some(expected) = expected_clipboard_marker else {
         return Ok(false);
     };
@@ -158,7 +333,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppLifecycle::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             storage::init_database().map_err(Box::<dyn std::error::Error>::from)?;
             configure_tray(app).map_err(Box::<dyn std::error::Error>::from)?;
@@ -178,7 +352,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             request_permissions,
+            open_permission_settings,
             clipboard_marker,
+            copy_text,
             paste_text,
             start_dictation,
             stop_dictation,
@@ -206,13 +382,7 @@ pub fn run() {
 }
 
 fn configure_tray(app: &tauri::App) -> tauri::Result<()> {
-    let status = MenuItem::with_id(
-        app,
-        MENU_STATUS,
-        "Dictivo is running",
-        false,
-        None::<&str>,
-    )?;
+    let status = MenuItem::with_id(app, MENU_STATUS, "Dictivo is running", false, None::<&str>)?;
     let show_main = MenuItem::with_id(app, MENU_SHOW_MAIN, "Show Dictivo", true, None::<&str>)?;
     let hide_companion = MenuItem::with_id(
         app,
@@ -233,33 +403,59 @@ fn configure_tray(app: &tauri::App) -> tauri::Result<()> {
         .tooltip("Dictivo is running locally")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            MENU_SHOW_MAIN => show_window(app, "main"),
-            MENU_HIDE_COMPANION => {
+        .on_menu_event(|app, event| match tray_menu_action(event.id().as_ref()) {
+            TrayMenuAction::ShowMain => show_window(app, "main"),
+            TrayMenuAction::HideCompanion => {
                 let _ = app.emit_to("main", "companion-hide-requested", {});
                 hide_window(app, "companion");
             }
-            MENU_QUIT => {
+            TrayMenuAction::Quit => {
                 app.state::<AppLifecycle>()
                     .is_quitting
                     .store(true, Ordering::SeqCst);
                 app.exit(0);
             }
-            _ => {}
+            TrayMenuAction::None => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
+                button,
+                button_state,
                 ..
             } = event
             {
-                show_window(tray.app_handle(), "main");
+                if tray_click_shows_main(button, button_state) {
+                    show_window(tray.app_handle(), "main");
+                }
             }
         })
         .build(app)?;
 
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TrayMenuAction {
+    ShowMain,
+    HideCompanion,
+    Quit,
+    None,
+}
+
+fn tray_menu_action(menu_id: &str) -> TrayMenuAction {
+    match menu_id {
+        MENU_SHOW_MAIN => TrayMenuAction::ShowMain,
+        MENU_HIDE_COMPANION => TrayMenuAction::HideCompanion,
+        MENU_QUIT => TrayMenuAction::Quit,
+        _ => TrayMenuAction::None,
+    }
+}
+
+fn tray_click_shows_main(button: MouseButton, button_state: MouseButtonState) -> bool {
+    matches!(
+        (button, button_state),
+        (MouseButton::Left, MouseButtonState::Up)
+    )
 }
 
 fn show_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
@@ -316,7 +512,14 @@ fn marker_from_bytes(kind: &str, bytes: &[u8]) -> ClipboardMarker {
 
 #[cfg(test)]
 mod tests {
-    use super::{clipboard_changed_since, marker_from_bytes, should_hide_on_close};
+    use super::{
+        accessibility_status_from_trusted, clipboard_changed_since, marker_from_bytes,
+        permission_settings_command, permission_settings_command_for_platform,
+        should_hide_on_close, tray_click_shows_main, tray_menu_action, PermissionSettingsPlatform,
+        PermissionSettingsTarget, TrayMenuAction, MENU_HIDE_COMPANION, MENU_QUIT, MENU_SHOW_MAIN,
+        MENU_STATUS,
+    };
+    use tauri::tray::{MouseButton, MouseButtonState};
 
     #[test]
     fn close_hides_main_and_companion_while_app_keeps_running() {
@@ -329,6 +532,34 @@ mod tests {
         assert!(!should_hide_on_close("main", true));
         assert!(!should_hide_on_close("companion", true));
         assert!(!should_hide_on_close("settings", false));
+    }
+
+    #[test]
+    fn tray_menu_ids_map_to_expected_window_actions() {
+        assert_eq!(tray_menu_action(MENU_SHOW_MAIN), TrayMenuAction::ShowMain);
+        assert_eq!(
+            tray_menu_action(MENU_HIDE_COMPANION),
+            TrayMenuAction::HideCompanion
+        );
+        assert_eq!(tray_menu_action(MENU_QUIT), TrayMenuAction::Quit);
+        assert_eq!(tray_menu_action(MENU_STATUS), TrayMenuAction::None);
+        assert_eq!(tray_menu_action("unknown"), TrayMenuAction::None);
+    }
+
+    #[test]
+    fn tray_left_click_release_shows_main_window() {
+        assert!(tray_click_shows_main(
+            MouseButton::Left,
+            MouseButtonState::Up
+        ));
+        assert!(!tray_click_shows_main(
+            MouseButton::Left,
+            MouseButtonState::Down
+        ));
+        assert!(!tray_click_shows_main(
+            MouseButton::Right,
+            MouseButtonState::Up
+        ));
     }
 
     #[test]
@@ -354,5 +585,129 @@ mod tests {
     #[test]
     fn missing_clipboard_marker_allows_copy_and_auto_paste_attempt() {
         assert!(!clipboard_changed_since(None).unwrap());
+    }
+
+    #[test]
+    fn accessibility_trust_maps_to_user_permission_status() {
+        assert_eq!(accessibility_status_from_trusted(true), "granted");
+        assert_eq!(accessibility_status_from_trusted(false), "denied");
+    }
+
+    #[test]
+    fn permission_settings_command_targets_platform_privacy_pages() {
+        let (program, microphone_args) =
+            permission_settings_command(PermissionSettingsTarget::Microphone);
+        let (_, accessibility_args) =
+            permission_settings_command(PermissionSettingsTarget::Accessibility);
+        let (_, automation_args) =
+            permission_settings_command(PermissionSettingsTarget::PasteAutomation);
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(program, "open");
+            assert!(microphone_args[0].contains("Privacy_Microphone"));
+            assert!(accessibility_args[0].contains("Privacy_Accessibility"));
+            assert!(automation_args[0].contains("Privacy_Automation"));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(program, "cmd");
+            assert!(microphone_args.contains(&"ms-settings:privacy-microphone"));
+            assert!(accessibility_args.contains(&"ms-settings:easeofaccess-keyboard"));
+        }
+
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            assert_eq!(program, "xdg-open");
+            assert!(microphone_args[0].contains("privacy"));
+            assert!(accessibility_args[0].contains("universal-access"));
+        }
+    }
+
+    #[test]
+    fn permission_settings_commands_are_locked_for_all_release_platforms() {
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Macos,
+                PermissionSettingsTarget::Microphone
+            ),
+            (
+                "open",
+                vec!["x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]
+            )
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Macos,
+                PermissionSettingsTarget::Accessibility
+            ),
+            (
+                "open",
+                vec![
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                ]
+            )
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Macos,
+                PermissionSettingsTarget::PasteAutomation
+            ),
+            (
+                "open",
+                vec!["x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"]
+            )
+        );
+
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Windows,
+                PermissionSettingsTarget::Microphone
+            ),
+            (
+                "cmd",
+                vec!["/C", "start", "", "ms-settings:privacy-microphone"]
+            )
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Windows,
+                PermissionSettingsTarget::Accessibility
+            ),
+            (
+                "cmd",
+                vec!["/C", "start", "", "ms-settings:easeofaccess-keyboard"]
+            )
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Windows,
+                PermissionSettingsTarget::PasteAutomation
+            ),
+            ("cmd", vec!["/C", "start", "", "ms-settings:privacy"])
+        );
+
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Linux,
+                PermissionSettingsTarget::Microphone
+            ),
+            ("xdg-open", vec!["settings://privacy"])
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Linux,
+                PermissionSettingsTarget::Accessibility
+            ),
+            ("xdg-open", vec!["settings://universal-access"])
+        );
+        assert_eq!(
+            permission_settings_command_for_platform(
+                PermissionSettingsPlatform::Linux,
+                PermissionSettingsTarget::PasteAutomation
+            ),
+            ("xdg-open", vec!["settings://privacy"])
+        );
     }
 }

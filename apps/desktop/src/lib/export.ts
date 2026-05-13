@@ -1,5 +1,8 @@
 import type { LocalSession } from "@dictivo/shared";
 
+const DEFAULT_SESSION_BASENAME = "dictivo-session";
+const RESERVED_WINDOWS_BASENAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
 export function sessionToMarkdown(session: LocalSession) {
   const lines = [
     `# ${session.title}`,
@@ -16,6 +19,28 @@ export function sessionToMarkdown(session: LocalSession) {
   ];
 
   return lines.join("\n");
+}
+
+export function markdownFilenameForSession(session: LocalSession) {
+  const safeId = safeDownloadBasename(session.id, DEFAULT_SESSION_BASENAME);
+  return `${safeId}.md`;
+}
+
+export function safeDownloadBasename(value: string, fallback = DEFAULT_SESSION_BASENAME) {
+  const safeFallback = sanitizeBasenameCandidate(fallback) || DEFAULT_SESSION_BASENAME;
+  const basename = sanitizeBasenameCandidate(value) || safeFallback;
+  return RESERVED_WINDOWS_BASENAME.test(basename) ? `${basename}-session` : basename;
+}
+
+function sanitizeBasenameCandidate(value: string) {
+  return value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.-]+/, "")
+    .replace(/[.-]+$/g, "")
+    .slice(0, 80)
+    .replace(/[.-]+$/g, "");
 }
 
 export function downloadText(filename: string, text: string) {

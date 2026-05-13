@@ -34,6 +34,7 @@ type DictationWorkbenchProps = {
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
   onOpenHistory: () => void;
+  onDisableCompanion: () => void;
 };
 
 export function DictationWorkbench({
@@ -53,7 +54,8 @@ export function DictationWorkbench({
   onTierChange,
   onToggleDictation,
   onLiveTextChange,
-  onOpenHistory
+  onOpenHistory,
+  onDisableCompanion
 }: DictationWorkbenchProps) {
   const wordCount = estimateWordCount(liveText, language);
   const accel = hardwareProfile?.accelerators?.[0] ?? "CPU";
@@ -61,6 +63,7 @@ export function DictationWorkbench({
   const dictationShortcut = formatShortcutForDisplay(hotkeys.dictation);
   const pasteShortcut = formatShortcutForDisplay(hotkeys.pasteLast);
   const dictationAction = hotkeys.activationMode === "hold" ? "Hold and speak" : "Start / stop dictation";
+  const countLabel = language === "zh" || language === "ja" ? "characters" : "words";
 
   const availableTiers: Array<[Tier, TierAssignment]> = (["fast", "medium", "slow"] as const)
     .map((id) => [id, runnableTiers[id]] as [Tier, TierAssignment])
@@ -127,21 +130,21 @@ export function DictationWorkbench({
           <span className="meta-chip">{modelLabel}</span>
         </div>
         <span>
-          {wordCount} words · {hotkeyStatus}
+          {wordCount} {countLabel} · {hotkeyStatus}
           {pasteStatus ? ` · ${pasteStatus}` : ""}
         </span>
       </div>
 
       {companionEnabled && (
-        <CompanionPreview avatar={companionAvatar} isDictating={isDictating} hotkey={dictationShortcut} />
+        <CompanionPreview avatar={companionAvatar} isDictating={isDictating} hotkey={dictationShortcut} onDisable={onDisableCompanion} />
       )}
     </section>
   );
 }
 
-function CompanionPreview({ avatar, isDictating, hotkey }: { avatar: CompanionAvatar; isDictating: boolean; hotkey: string }) {
+function CompanionPreview({ avatar, isDictating, hotkey, onDisable }: { avatar: CompanionAvatar; isDictating: boolean; hotkey: string; onDisable: () => void }) {
   return (
-    <div className="companion-preview" aria-hidden="true">
+    <div className="companion-preview" aria-label="Floating companion preview">
       <div className="avatar">
         <AvatarGlyph avatar={avatar} />
       </div>
@@ -151,23 +154,10 @@ function CompanionPreview({ avatar, isDictating, hotkey }: { avatar: CompanionAv
       </div>
       <button
         type="button"
+        className="companion-preview-hide"
         title="Hide preview"
         aria-label="Hide preview"
-        style={{
-          marginLeft: 4,
-          width: 18,
-          height: 18,
-          borderRadius: 999,
-          background: "transparent",
-          border: 0,
-          color: "var(--faint)",
-          display: "grid",
-          placeItems: "center",
-          opacity: 0.5
-        }}
-        onClick={(event) => {
-          event.currentTarget.parentElement?.remove();
-        }}
+        onClick={onDisable}
       >
         <XIcon size={11} />
       </button>

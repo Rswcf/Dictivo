@@ -17,17 +17,36 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
   const [term, setTerm] = useState("");
   const [trigger, setTrigger] = useState("");
   const [replacement, setReplacement] = useState("");
+  const normalizedTerm = normalizeEntry(term);
+  const normalizedTrigger = normalizeEntry(trigger);
+  const termExists = normalizedTerm.length > 0 && dictionary.some((item) => normalizeEntry(item.value) === normalizedTerm);
+  const snippetExists = normalizedTrigger.length > 0 && snippets.some((item) => normalizeEntry(item.trigger) === normalizedTrigger);
+  const canAddTerm = normalizedTerm.length > 0 && !termExists;
+  const canAddSnippet = normalizedTrigger.length > 0 && replacement.trim().length > 0 && !snippetExists;
+  const termFeedback = termExists ? "Term already exists." : "";
+  const snippetFeedback = snippetExists
+    ? "Snippet trigger already exists."
+    : (trigger.length > 0 || replacement.length > 0) && !canAddSnippet
+      ? "Enter both trigger and replacement."
+      : "";
 
   return (
     <section className="dictionary-grid">
       <div className="side-panel">
         <PanelTitle icon={<BookOpenText size={18} />} title="Local Dictionary" />
         <div className="inline-form">
-          <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Supabase, 张伟, kubectl..." />
+          <input
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Supabase, 张伟, kubectl..."
+            aria-label="Dictionary term"
+          />
           <IconButton
             label="Add term"
             tone="primary"
+            disabled={!canAddTerm}
             onClick={() => {
+              if (!canAddTerm) return;
               onAddTerm(term);
               setTerm("");
             }}
@@ -35,6 +54,7 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
             <Plus size={18} />
           </IconButton>
         </div>
+        {termFeedback && <p className="field-feedback" aria-live="polite">{termFeedback}</p>}
         <div className="field-example">
           <span>Example</span>
           <code>Dictivo</code>
@@ -45,7 +65,13 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
             <div className="empty-panel">No local dictionary terms yet.</div>
           ) : (
             dictionary.map((item) => (
-              <button key={item.id} onClick={() => onRemoveTerm(item.id)} title="Remove term">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onRemoveTerm(item.id)}
+                title="Remove term"
+                aria-label={`Remove dictionary term ${item.value}`}
+              >
                 {item.value}
               </button>
             ))
@@ -56,11 +82,14 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
       <div className="side-panel">
         <PanelTitle icon={<Bot size={18} />} title="Local Snippets" />
         <div className="snippet-form">
-          <input value={trigger} onChange={(event) => setTrigger(event.target.value)} placeholder="my calendar link" />
-          <input value={replacement} onChange={(event) => setReplacement(event.target.value)} placeholder="https://..." />
+          <input value={trigger} onChange={(event) => setTrigger(event.target.value)} placeholder="my calendar link" aria-label="Snippet trigger" />
+          <input value={replacement} onChange={(event) => setReplacement(event.target.value)} placeholder="https://..." aria-label="Snippet replacement" />
           <button
+            type="button"
             className="text-button"
+            disabled={!canAddSnippet}
             onClick={() => {
+              if (!canAddSnippet) return;
               onAddSnippet(trigger, replacement);
               setTrigger("");
               setReplacement("");
@@ -70,6 +99,7 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
             Add
           </button>
         </div>
+        {snippetFeedback && <p className="field-feedback" aria-live="polite">{snippetFeedback}</p>}
         <div className="field-example field-example--snippet">
           <span>Example</span>
           <code>my calendar link</code>
@@ -84,7 +114,7 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
               <div key={item.id}>
                 <div className="snippet-head">
                   <strong>{item.trigger}</strong>
-                  <button className="text-button" onClick={() => onRemoveSnippet(item.id)}>
+                  <button type="button" className="text-button" onClick={() => onRemoveSnippet(item.id)} aria-label={`Remove snippet ${item.trigger}`}>
                     <Trash2 size={16} />
                     Remove
                   </button>
@@ -97,6 +127,10 @@ export function DictionaryView({ dictionary, snippets, onAddTerm, onAddSnippet, 
       </div>
     </section>
   );
+}
+
+function normalizeEntry(value: string) {
+  return value.trim().toLocaleLowerCase();
 }
 
 function PanelTitle({ icon, title }: { icon: ReactNode; title: string }) {

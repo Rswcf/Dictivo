@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CaptureSource, InputMode, LocalSession, Snippet, SupportedLanguage } from "@dictivo/shared";
+import { PROVIDERS, SUPPORTED_LANGUAGES, type CaptureSource, type InputMode, type LocalSession, type Snippet, type SupportedLanguage } from "@dictivo/shared";
 
 const storageKey = "dictivo-local-sessions";
+const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
 
 export type PrivateFastStatus = {
   ready: boolean;
@@ -25,6 +26,13 @@ export type PasteResult = {
   copied: boolean;
   method?: string;
 };
+
+export type CopyResult = {
+  copied: boolean;
+  method?: string;
+};
+
+export type PermissionSettingsTarget = "microphone" | "accessibility" | "pasteAutomation";
 
 export type ClipboardMarker = {
   kind: string;
@@ -98,12 +106,34 @@ export function isTauriRuntime() {
 export async function requestNativePermissions() {
   if (!isTauriRuntime()) {
     return {
-      microphone: "granted",
+      microphone: "web-preview",
       accessibility: "web-preview",
       pasteAutomation: "clipboard-only"
     };
   }
-  return invoke("request_permissions");
+  const nativePermissions = await invoke<Record<string, string>>("request_permissions");
+  const browserMicrophone = await browserMicrophonePermissionStatus();
+  return browserMicrophone ? { ...nativePermissions, microphone: browserMicrophone } : nativePermissions;
+}
+
+async function browserMicrophonePermissionStatus(): Promise<string | null> {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) return null;
+
+  try {
+    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    if (status.state === "granted") return "granted";
+    if (status.state === "denied") return "denied";
+    if (status.state === "prompt") return "not-determined";
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export async function openPermissionSettings(target: PermissionSettingsTarget): Promise<void> {
+  if (!isTauriRuntime()) throw new Error("Opening system permission settings requires the desktop app runtime.");
+  return invoke<void>("open_permission_settings", { target });
 }
 
 export async function getClipboardMarker(): Promise<ClipboardMarker | null> {
@@ -113,16 +143,74 @@ export async function getClipboardMarker(): Promise<ClipboardMarker | null> {
 
 export async function pasteText(text: string, expectedClipboardMarker?: ClipboardMarker | null): Promise<PasteResult> {
   if (!isTauriRuntime()) {
-    await globalThis.navigator?.clipboard?.writeText(text);
+    await writeClipboardInPreview(text);
     return { pasted: false, copied: true, method: "clipboard" };
   }
   return invoke<PasteResult>("paste_text", { text, expectedClipboardMarker: expectedClipboardMarker ?? null });
 }
 
+export async function copyText(text: string): Promise<CopyResult> {
+  if (!isTauriRuntime()) {
+    await writeClipboardInPreview(text);
+    return { copied: true, method: "clipboard" };
+  }
+  return invoke<CopyResult>("copy_text", { text });
+}
+
+async function writeClipboardInPreview(text: string) {
+  const clipboard = globalThis.navigator?.clipboard;
+  if (clipboard?.writeText) {
+    try {
+      await clipboard.writeText(text);
+      return;
+    } catch {
+      if (copyWithSelectionFallback(text)) return;
+      throw new Error("Clipboard copy was blocked by the browser preview. Use the desktop app or grant clipboard permission.");
+    }
+  }
+
+  if (copyWithSelectionFallback(text)) return;
+  throw new Error("Clipboard copy is not available in this preview.");
+}
+
+function copyWithSelectionFallback(text: string) {
+  if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  textarea.style.opacity = "0";
+
+  const activeElement =
+    typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const selection = document.getSelection();
+  const selectedRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    textarea.remove();
+    activeElement?.focus();
+    if (selection && selectedRange) {
+      selection.removeAllRanges();
+      selection.addRange(selectedRange);
+    }
+  }
+}
+
 export async function saveLocalSession(session: LocalSession) {
   if (!isTauriRuntime()) {
+    if (typeof localStorage === "undefined") return;
     const sessions = await listLocalSessions();
-    localStorage.setItem(storageKey, JSON.stringify([session, ...sessions].slice(0, 100)));
+    const withoutCurrentSession = sessions.filter((item) => item.id !== session.id);
+    localStorage.setItem(storageKey, JSON.stringify([session, ...withoutCurrentSession].slice(0, 100)));
     return;
   }
   await invoke("save_session", { session });
@@ -130,14 +218,37 @@ export async function saveLocalSession(session: LocalSession) {
 
 export async function listLocalSessions(): Promise<LocalSession[]> {
   if (!isTauriRuntime()) {
+    if (typeof localStorage === "undefined") return [];
     const raw = localStorage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as LocalSession[]) : [];
+    if (!raw) return [];
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem(storageKey);
+        return [];
+      }
+
+      const sessions = parsed.filter(isLocalSession);
+      if (sessions.length !== parsed.length) {
+        if (sessions.length === 0) {
+          localStorage.removeItem(storageKey);
+        } else {
+          localStorage.setItem(storageKey, JSON.stringify(sessions.slice(0, 100)));
+        }
+      }
+      return sessions.slice(0, 100);
+    } catch {
+      localStorage.removeItem(storageKey);
+      return [];
+    }
   }
   return invoke<LocalSession[]>("list_sessions");
 }
 
 export async function clearLocalSessions() {
   if (!isTauriRuntime()) {
+    if (typeof localStorage === "undefined") return;
     localStorage.removeItem(storageKey);
     return;
   }
@@ -146,6 +257,7 @@ export async function clearLocalSessions() {
 
 export async function deleteLocalSession(sessionId: string) {
   if (!isTauriRuntime()) {
+    if (typeof localStorage === "undefined") return;
     const sessions = await listLocalSessions();
     const remaining = sessions.filter((session) => session.id !== sessionId);
     if (remaining.length === 0) {
@@ -156,6 +268,28 @@ export async function deleteLocalSession(sessionId: string) {
     return;
   }
   await invoke("delete_session", { sessionId });
+}
+
+function isLocalSession(value: unknown): value is LocalSession {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<LocalSession>;
+	return (
+	  typeof session.id === "string" &&
+	  typeof session.title === "string" &&
+	  isOneOf(session.mode, INPUT_MODES) &&
+	  isOneOf(session.language, SUPPORTED_LANGUAGES) &&
+	  session.privacyMode === "local-only" &&
+	  isOneOf(session.provider, PROVIDERS) &&
+	  typeof session.createdAt === "string" &&
+	  typeof session.durationSeconds === "number" &&
+	  typeof session.wordCount === "number" &&
+	  typeof session.text === "string" &&
+	  (session.rawText === undefined || typeof session.rawText === "string")
+	);
+}
+
+function isOneOf<T extends string>(value: unknown, choices: readonly T[]): value is T {
+  return typeof value === "string" && (choices as readonly string[]).includes(value);
 }
 
 export async function getPrivateFastStatus(): Promise<PrivateFastStatus> {
@@ -384,7 +518,7 @@ export async function transcribePrivateFast(audio: Blob, options: PrivateFastTra
 }
 
 function buildPromptTerms(dictionary: string[], snippets: Array<Pick<Snippet, "trigger" | "replacement">>) {
-  return [...dictionary, ...snippets.flatMap((snippet) => [snippet.trigger, snippet.replacement])]
+  return [...dictionary, ...snippets.map((snippet) => snippet.trigger)]
     .map((term) => term.trim())
     .filter((term) => term.length > 1)
     .slice(0, 80);

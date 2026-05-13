@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { OnboardingWizard } from "../src/components/OnboardingWizard";
+import { benchmarkTier, detectGpu, downloadPrivateFastModel, getHardwareProfile, getPrivateFastModels } from "../src/lib/desktopBridge";
 
 afterEach(() => cleanup());
 
@@ -58,5 +59,85 @@ describe("OnboardingWizard", () => {
     await waitFor(() => expect(screen.getByText(/Looking at your computer/i)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
     expect(onComplete).toHaveBeenCalled();
+  });
+
+	  it("shows hardware scan failures without trapping the user", async () => {
+	    vi.mocked(getHardwareProfile).mockRejectedValueOnce(new Error("Hardware scan failed"));
+	    const onComplete = vi.fn();
+	    render(<OnboardingWizard onComplete={onComplete} />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Hardware scan failed");
+    expect(screen.getByRole("button", { name: /continue/i })).toHaveProperty("disabled", true);
+	    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+	    expect(onComplete).toHaveBeenCalledTimes(1);
+	  });
+
+  it("continues hardware setup when optional GPU detection fails", async () => {
+    vi.mocked(detectGpu).mockRejectedValueOnce(new Error("GPU probe unavailable"));
+	    render(<OnboardingWizard onComplete={() => {}} />);
+
+	    await waitFor(() => expect(screen.getByText(/CPU · 10 cores/i)).toBeTruthy());
+	    expect(screen.getByText(/GPU · Not detected/i)).toBeTruthy();
+	    expect(screen.queryByRole("alert")).toBeNull();
+
+	    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(screen.getByText(/Recommended for your hardware/i)).toBeTruthy());
+  });
+
+  it("surfaces model catalog failures without blocking setup", async () => {
+    vi.mocked(getPrivateFastModels).mockRejectedValueOnce(new Error("catalog unavailable"));
+    render(<OnboardingWizard onComplete={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect((await screen.findByRole("status")).textContent).toContain("Model details are unavailable");
+    expect(screen.getByText(/large-v3-turbo-q5_0/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /download/i })).toHaveProperty("disabled", false);
+  });
+
+  it("shows an explicit retry action after setup failure", async () => {
+	    vi.mocked(downloadPrivateFastModel).mockRejectedValueOnce(new Error("Not enough disk space"));
+	    render(<OnboardingWizard onComplete={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+
+	    expect((await screen.findByRole("alert")).textContent).toContain("Not enough disk space");
+	    fireEvent.click(screen.getByRole("button", { name: /try setup again/i }));
+
+	    await waitFor(() => expect(screen.getByText(/Ready/i)).toBeTruthy(), { timeout: 5000 });
+	  });
+
+	  it("does not allow skipping while setup is running", async () => {
+	    let finishDownload: (value: unknown) => void = () => {};
+	    vi.mocked(downloadPrivateFastModel).mockReturnValueOnce(
+	      new Promise((resolve) => {
+	        finishDownload = resolve;
+	      })
+	    );
+	    render(<OnboardingWizard onComplete={() => {}} />);
+
+	    await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
+	    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+	    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+
+	    expect(screen.getByRole("button", { name: /skip setup/i })).toHaveProperty("disabled", true);
+	    finishDownload({ ready: true, modelId: "large-v3-turbo-q5_0", modelName: "Large v3 Turbo Q5", message: "ok", setupHint: "" });
+	    await waitFor(() => expect(screen.getByText(/Ready/i)).toBeTruthy(), { timeout: 5000 });
+	  });
+
+	  it("returns to the model step with retry when calibration fails", async () => {
+    vi.mocked(benchmarkTier).mockRejectedValueOnce(new Error("Benchmark timed out"));
+    render(<OnboardingWizard onComplete={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Benchmark timed out");
+    expect(screen.getByText(/Recommended for your hardware/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /try setup again/i })).toBeTruthy();
   });
 });

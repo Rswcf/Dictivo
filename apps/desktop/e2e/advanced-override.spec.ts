@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("settings advanced disclosure exposes raw model catalog", async ({ page }) => {
   await page.addInitScript(() => {

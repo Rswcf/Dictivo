@@ -10,16 +10,35 @@ import { closePool } from "./lib/db.js";
 
 export function buildServer() {
   const app = Fastify({
-    logger: {
-      level: config.NODE_ENV === "production" ? "info" : "debug",
-      redact: [
-        "req.body",
-        "req.headers.authorization",
-        "req.headers.cookie",
-        "req.headers.x-api-key"
-      ]
-    },
+    logger:
+      config.NODE_ENV === "test"
+        ? false
+        : {
+            level: config.NODE_ENV === "production" ? "info" : "debug",
+            redact: [
+              "req.body",
+              "req.headers.authorization",
+              "req.headers.cookie",
+              "req.headers.x-api-key"
+            ]
+          },
     bodyLimit: 64 * 1024
+  });
+
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
+    const rawBody = body.toString("utf8");
+    (request as { rawBody?: string }).rawBody = rawBody;
+    if (!rawBody) {
+      done(null, null);
+      return;
+    }
+
+    try {
+      done(null, JSON.parse(rawBody) as unknown);
+    } catch (error) {
+      done(error as Error, undefined);
+    }
   });
 
   app.register(cors, {
@@ -32,16 +51,18 @@ export function buildServer() {
     timeWindow: "1 minute"
   });
 
-  app.get("/health", async () => ({
-    ok: true,
-    service: "dictivo-api",
-    contentRetention: "none"
-  }));
+  app.register(async (routes) => {
+    routes.get("/health", async () => ({
+      ok: true,
+      service: "dictivo-api",
+      contentRetention: "none"
+    }));
 
-  app.register(entitlementsRoutes);
-  app.register(transcriptionRoutes);
-  app.register(usageRoutes);
-  app.register(billingRoutes);
+    routes.register(entitlementsRoutes);
+    routes.register(transcriptionRoutes);
+    routes.register(usageRoutes);
+    routes.register(billingRoutes);
+  });
 
   return app;
 }

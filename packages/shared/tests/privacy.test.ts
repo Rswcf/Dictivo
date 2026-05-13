@@ -8,11 +8,22 @@ describe("findForbiddenContentFields", () => {
         provider: "local-whisper",
         payload: {
           transcriptText: "private",
+          transcript_text: "private snake case",
+          content: "private alias",
+          rawText: "private raw",
+          raw_text: "private raw snake case",
           safe: true
         },
-        usage: [{ wordCount: 12 }]
+        usage: [{ wordCount: 12, prompt_terms: ["private term"] }]
       })
-    ).toEqual(["payload.transcriptText"]);
+    ).toEqual([
+      "payload.content",
+      "payload.rawText",
+      "payload.raw_text",
+      "payload.transcriptText",
+      "payload.transcript_text",
+      "usage.0.prompt_terms"
+    ]);
   });
 
   it("allows metadata-only payloads", () => {

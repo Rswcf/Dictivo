@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, statSync } from "node:fs";
 import { buildCompanionSnapshot } from "../src/lib/companion";
+import { companionWindowPosition } from "../src/lib/companionWindowPosition";
 
 describe("floating companion state", () => {
   it("summarizes an active recording with the stop hotkey and timer source", () => {
@@ -148,5 +149,47 @@ describe("floating companion state", () => {
     expect(asset.size).toBeGreaterThan(100_000);
     expect([...header]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
     expect(componentSource).toContain("trump-companion.png");
+  });
+});
+
+describe("floating companion window positioning", () => {
+  it("anchors the companion near the top-right of the visible work area", () => {
+    expect(
+      companionWindowPosition({
+        position: { x: 0, y: 0 },
+        size: { width: 1440, height: 900 }
+      }, { width: 360, height: 100 })
+    ).toEqual({ x: 1056, y: 24 });
+  });
+
+  it("respects monitor origins on secondary displays", () => {
+    expect(
+      companionWindowPosition({
+        position: { x: -1280, y: 80 },
+        size: { width: 1280, height: 720 }
+      }, { width: 360, height: 100 })
+    ).toEqual({ x: -384, y: 104 });
+  });
+
+  it("keeps the window inside very small work areas", () => {
+    expect(
+      companionWindowPosition({
+        position: { x: 40, y: 30 },
+        size: { width: 300, height: 120 }
+      }, { width: 360, height: 140 })
+    ).toEqual({ x: 40, y: 30 });
+  });
+
+  it("uses a custom margin when supplied", () => {
+    expect(
+      companionWindowPosition(
+        {
+          position: { x: 10, y: 20 },
+          size: { width: 1000, height: 600 }
+        },
+        { width: 320, height: 100 },
+        12
+      )
+    ).toEqual({ x: 678, y: 32 });
   });
 });

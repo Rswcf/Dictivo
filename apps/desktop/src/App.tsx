@@ -20,6 +20,7 @@ import { runLocalDictation } from "./lib/localDictationEngine";
 import {
   benchmarkTier,
   clearLocalSessions,
+  copyText,
   deleteLocalSession,
   finalizeCalibration,
   getClipboardMarker,
@@ -30,6 +31,7 @@ import {
   importPrivateFastModel,
   isTauriRuntime,
   listLocalSessions,
+  openPermissionSettings,
   pasteText,
   requestNativePermissions,
   rerunBenchmark,
@@ -37,7 +39,9 @@ import {
   selectPrivateFastModel,
   deletePrivateFastModel,
   downloadPrivateFastModel,
+  writeRunnableTiers,
   type HardwareProfile,
+  type PermissionSettingsTarget,
   type PrivateFastModel,
   type PrivateFastStatus,
   type RunnableTiers,
@@ -53,6 +57,7 @@ import {
   type CompanionAvatar
 } from "./lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase } from "./lib/companion";
+import { companionWindowPosition } from "./lib/companionWindowPosition";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { DictationWorkbench } from "./components/DictationWorkbench";
 import { CompanionWindow } from "./components/CompanionWindow";
@@ -130,30 +135,53 @@ export function App({ windowLabel = "main" }: AppProps) {
     () => privateFastModels.find((model) => model.selected) ?? privateFastModels.find((model) => model.id === privateFastStatus.modelId),
     [privateFastModels, privateFastStatus.modelId]
   );
+  const dictionaryForLanguage = useMemo(
+    () => dictionary.filter((term) => term.language === language),
+    [dictionary, language]
+  );
+  const snippetsForLanguage = useMemo(
+    () => snippets.filter((snippet) => snippet.language === language),
+    [snippets, language]
+  );
 
   const refreshNativeState = useCallback(async () => {
-    const [status, models, hardware, permissionState] = await Promise.all([
-      getPrivateFastStatus(),
-      getPrivateFastModels(),
-      getHardwareProfile(),
-      requestNativePermissions()
-    ]);
-    setPrivateFastStatus(status);
-    setPrivateFastModels(models);
-    setHardwareProfile(hardware);
-    setPermissions(permissionState as Record<string, string>);
+    try {
+      const [status, models, hardware, permissionState] = await Promise.all([
+        getPrivateFastStatus(),
+        getPrivateFastModels(),
+        getHardwareProfile(),
+        requestNativePermissions()
+      ]);
+      setPrivateFastStatus(status);
+      setPrivateFastModels(models);
+      setHardwareProfile(hardware);
+      setPermissions(permissionState as Record<string, string>);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to refresh local engine status.");
+    }
   }, []);
 
   useEffect(() => {
-    void listLocalSessions().then((items) => {
-      setSessions(items);
-      lastFinalTextRef.current = items[0]?.text ?? "";
-    });
+    let cancelled = false;
+    void listLocalSessions()
+      .then((items) => {
+        if (cancelled) return;
+        setSessions(items);
+        lastFinalTextRef.current = items[0]?.text ?? "";
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setStatusMessage(error instanceof Error ? error.message : "Unable to load local history.");
+      });
     void refreshNativeState();
+    return () => { cancelled = true; };
   }, [refreshNativeState]);
 
   useEffect(() => {
-    localStorage.removeItem("dictivo-settings-v2");
+    try {
+      if (typeof localStorage !== "undefined") localStorage.removeItem("dictivo-settings-v2");
+    } catch {
+      // Non-critical legacy cleanup can fail when storage is blocked.
+    }
     saveSettings({
       language,
       selectedMode: DEFAULT_DICTATION_MODE,
@@ -168,15 +196,20 @@ export function App({ windowLabel = "main" }: AppProps) {
     });
   }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
 
-  useEffect(() => {
-    void getRunnableTiers().then(setRunnableTiers).catch(() => {});
-  }, [onboardingCompleted]);
+	useEffect(() => {
+	  void getRunnableTiers()
+	    .then(setRunnableTiers)
+	    .catch((error: unknown) => {
+	      setStatusMessage(error instanceof Error ? error.message : "Unable to load local engine tier cache.");
+	    });
+	}, [onboardingCompleted]);
 
   const handleTierChange = useCallback(
     async (next: Tier) => {
       const previous = selectedTier;
       setSelectedTier(next);
-      const assignment = runnableTiers[next];
+      let currentTiers = runnableTiers;
+      const assignment = currentTiers[next];
 
       if (!assignment.downloaded) {
         setPrivateFastOperation(`download:${assignment.modelId}`);
@@ -185,10 +218,12 @@ export function App({ windowLabel = "main" }: AppProps) {
           setPrivateFastStatus(downloadStatus);
           setPrivateFastModels(await getPrivateFastModels());
           const rtf = await benchmarkTier(assignment.modelId);
-          const refreshed = await finalizeCalibration(
-            rtf,
-            runnableTiers.medium.modelId
-          );
+          const refreshed =
+            next === "medium"
+              ? await finalizeCalibration(rtf, assignment.modelId)
+              : markTierBenchmarked(currentTiers, next, rtf);
+          if (next !== "medium") await writeRunnableTiers(refreshed);
+          currentTiers = refreshed;
           setRunnableTiers(refreshed);
         } catch (error) {
           setStatusMessage(error instanceof Error ? error.message : "Failed to switch tier.");
@@ -199,13 +234,14 @@ export function App({ windowLabel = "main" }: AppProps) {
         }
       }
 
-      const final = runnableTiers[next];
-      if (final.modelId && final.modelId !== selectedModel?.id) {
+      const final = currentTiers[next];
+      if (isTauriRuntime() && final.modelId && final.modelId !== selectedModel?.id) {
         try {
           const status = await selectPrivateFastModel(final.modelId);
           setPrivateFastStatus(status);
           setPrivateFastModels(await getPrivateFastModels());
         } catch (error) {
+          setSelectedTier(previous);
           setStatusMessage(error instanceof Error ? error.message : "Failed to activate tier.");
         }
       }
@@ -236,6 +272,11 @@ export function App({ windowLabel = "main" }: AppProps) {
     setOnboardingCompleted(false);
   }, []);
 
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboardingCompleted(true);
+    setView("dictation");
+  }, []);
+
   const saveSession = useCallback(async (partial: Omit<LocalSession, "id" | "createdAt">) => {
     const session: LocalSession = {
       ...partial,
@@ -249,6 +290,10 @@ export function App({ windowLabel = "main" }: AppProps) {
   }, []);
 
   const startDictation = useCallback(async () => {
+    if (isDictatingRef.current) {
+      return;
+    }
+
     if (!privateFastStatus.ready) {
       setStatusMessage(`${privateFastStatus.message} ${privateFastStatus.setupHint}`);
       setDictationPhase("blocked");
@@ -256,6 +301,8 @@ export function App({ windowLabel = "main" }: AppProps) {
       return;
     }
 
+    const previousLiveText = liveText;
+    isDictatingRef.current = true;
     setIsDictating(true);
     setDictationPhase("recording");
     setRecordingStartedAt(Date.now());
@@ -266,14 +313,17 @@ export function App({ windowLabel = "main" }: AppProps) {
     try {
       dictationRecordingRef.current = await startAudioRecording("microphone", "wav");
     } catch (error) {
+      isDictatingRef.current = false;
       setIsDictating(false);
       setDictationPhase("error");
       setRecordingStartedAt(undefined);
+      setLiveText(previousLiveText);
       setStatusMessage(error instanceof Error ? error.message : "Unable to start microphone recording.");
     }
-  }, [privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint]);
+  }, [liveText, privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint]);
 
   const stopDictation = useCallback(async () => {
+    isDictatingRef.current = false;
     setIsDictating(false);
     setDictationPhase("processing");
     setRecordingStartedAt(undefined);
@@ -291,8 +341,8 @@ export function App({ windowLabel = "main" }: AppProps) {
       const clipboardBeforeTranscription = await getClipboardMarker().catch(() => null);
       const audio = await recording.stop();
       const durationSeconds = Math.max(1, Math.round((Date.now() - recording.startedAt) / 1000));
-      const dictionaryValues = dictionary.map((term) => term.value);
-      const snippetValues = snippets.map(({ trigger, replacement }) => ({ trigger, replacement }));
+      const dictionaryValues = dictionaryForLanguage.map((term) => term.value);
+      const snippetValues = snippetsForLanguage.map(({ trigger, replacement }) => ({ trigger, replacement }));
       const result = await runLocalDictation(audio, {
         language,
         dictionary: dictionaryValues,
@@ -302,28 +352,42 @@ export function App({ windowLabel = "main" }: AppProps) {
         localProcessing
       });
 
-      const pasteResult = await pasteText(result.finalizedText, clipboardBeforeTranscription);
       const wordCount = countWords(result.finalizedText, language);
-      await saveSession({
-        title: `Message ${new Date().toLocaleTimeString()}`,
-        mode: DEFAULT_DICTATION_MODE,
-        language,
-        privacyMode: "local-only",
-        provider: "local-whisper",
-        durationSeconds,
-        wordCount,
-        rawText: result.rawText,
-        text: result.finalizedText
-      });
+      let pasteResult: Awaited<ReturnType<typeof pasteText>> | undefined;
+      let pasteError = "";
+      let saveError = "";
+
+      try {
+        pasteResult = await pasteText(result.finalizedText, clipboardBeforeTranscription);
+      } catch (error) {
+        pasteError = error instanceof Error ? error.message : "Clipboard paste failed.";
+      }
+
+      lastFinalTextRef.current = result.finalizedText;
+      try {
+        await saveSession({
+          title: `Message ${new Date().toLocaleTimeString()}`,
+          mode: DEFAULT_DICTATION_MODE,
+          language,
+          privacyMode: "local-only",
+          provider: "local-whisper",
+          durationSeconds,
+          wordCount,
+          rawText: result.rawText,
+          text: result.finalizedText
+        });
+      } catch (error) {
+        saveError = error instanceof Error ? error.message : "History save failed.";
+      }
 
       setLiveText(result.finalizedText);
       setDictationPhase("complete");
       setPasteStatus(
-        pasteResult.pasted
+        pasteResult?.pasted
           ? "Pasted into active app"
-          : pasteResult.method === "clipboard-changed-copied"
+          : pasteResult?.method === "clipboard-changed-copied"
             ? "Copied; auto paste skipped"
-            : pasteResult.copied
+            : pasteResult?.copied
               ? "Copied to clipboard"
               : "Transcript kept in Dictivo"
       );
@@ -334,9 +398,15 @@ export function App({ windowLabel = "main" }: AppProps) {
             ? result.slowWarning
             : `Local transcription completed with ${result.profileUsed} profile.`;
       setStatusMessage(
-        pasteResult.method === "clipboard-changed-copied"
+        pasteError && saveError
+          ? `${completionMessage} Transcript is shown here, but paste/copy failed (${pasteError}) and history could not be saved (${saveError}).`
+          : pasteError
+            ? `${completionMessage} Transcript is shown here, but could not be pasted or copied: ${pasteError}`
+            : saveError
+              ? `${completionMessage} Transcript is ready, but history could not be saved: ${saveError}`
+              : pasteResult?.method === "clipboard-changed-copied"
           ? `${completionMessage} The clipboard changed during transcription, so Dictivo copied the transcript but skipped automatic paste. Press Command+V to paste it.`
-          : pasteResult.copied
+          : pasteResult?.copied
             ? completionMessage
             : `${completionMessage} Transcript is available in Dictivo, but could not be copied to the clipboard.`
       );
@@ -344,7 +414,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       setDictationPhase("error");
       setStatusMessage(error instanceof Error ? error.message : "Local dictation failed.");
     }
-  }, [dictionary, language, localProcessing, saveSession, selectedTier, snippets]);
+  }, [dictionaryForLanguage, language, localProcessing, saveSession, selectedTier, snippetsForLanguage]);
 
   const toggleDictation = useCallback(() => {
     if (isDictatingRef.current) {
@@ -370,10 +440,14 @@ export function App({ windowLabel = "main" }: AppProps) {
       return;
     }
 
-    const result = await pasteText(text);
-    setDictationPhase("complete");
-    setPasteStatus(result.pasted ? "Pasted last transcript" : "Copied last transcript");
-    setStatusMessage("Last local transcript is ready in the target app or clipboard.");
+    try {
+      const result = await pasteText(text);
+      setDictationPhase("complete");
+      setPasteStatus(result.pasted ? "Pasted last transcript" : "Copied last transcript");
+      setStatusMessage("Last local transcript is ready in the target app or clipboard.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to paste last transcript.");
+    }
   }, [liveText, sessions]);
 
   const clearHistory = useCallback(async () => {
@@ -408,6 +482,47 @@ export function App({ windowLabel = "main" }: AppProps) {
       setStatusMessage("Message deleted.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Unable to delete message.");
+    } finally {
+      setHistoryOperation("");
+    }
+  }, []);
+
+  const copyHistoryText = useCallback(async (session: LocalSession, kind: "raw" | "final") => {
+    const text = kind === "raw" ? session.rawText ?? "" : session.text;
+    const label = kind === "raw" ? "Raw transcript" : "Final text";
+    if (!text.trim()) {
+      setStatusMessage(`${label} is empty.`);
+      return;
+    }
+
+    setStatusMessage("");
+    setHistoryOperation(`copy:${session.id}:${kind}`);
+    try {
+      await copyText(text);
+      setPasteStatus(`${label} copied`);
+      setStatusMessage(`${label} copied to clipboard.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : `Unable to copy ${label.toLowerCase()}.`);
+    } finally {
+      setHistoryOperation("");
+    }
+  }, []);
+
+  const pasteHistorySession = useCallback(async (session: LocalSession) => {
+    if (!session.text.trim()) {
+      setStatusMessage("This history message has no final text to paste.");
+      return;
+    }
+
+    setStatusMessage("");
+    setHistoryOperation(`paste:${session.id}`);
+    try {
+      const result = await pasteText(session.text);
+      lastFinalTextRef.current = session.text;
+      setPasteStatus(result.pasted ? "Pasted history message" : "Copied history message");
+      setStatusMessage(result.pasted ? "History message pasted." : "History message copied to clipboard.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to paste history message.");
     } finally {
       setHistoryOperation("");
     }
@@ -555,29 +670,38 @@ export function App({ windowLabel = "main" }: AppProps) {
   const addDictionaryTerm = useCallback((value: string) => {
     const trimmed = value.trim();
     if (!trimmed) return;
-    setDictionary((current) => [
-      { id: createId("term"), value: trimmed, language, createdAt: new Date().toISOString() },
-      ...current
-    ]);
+    const normalized = trimmed.toLocaleLowerCase();
+    setDictionary((current) => {
+      if (current.some((item) => item.language === language && item.value.trim().toLocaleLowerCase() === normalized)) return current;
+      return [
+        { id: createId("term"), value: trimmed, language, createdAt: new Date().toISOString() },
+        ...current
+      ];
+    });
   }, [language]);
 
   const addSnippet = useCallback((trigger: string, replacement: string) => {
-    if (!trigger.trim() || !replacement.trim()) return;
-    setSnippets((current) => [
-      {
-        id: createId("snippet"),
-        trigger: trigger.trim(),
-        replacement: replacement.trim(),
-        language,
-        createdAt: new Date().toISOString()
-      },
-      ...current
-    ]);
+    const trimmedTrigger = trigger.trim();
+    const trimmedReplacement = replacement.trim();
+    if (!trimmedTrigger || !trimmedReplacement) return;
+    const normalizedTrigger = trimmedTrigger.toLocaleLowerCase();
+    setSnippets((current) => {
+      if (current.some((item) => item.language === language && item.trigger.trim().toLocaleLowerCase() === normalizedTrigger)) return current;
+      return [
+        {
+          id: createId("snippet"),
+          trigger: trimmedTrigger,
+          replacement: trimmedReplacement,
+          language,
+          createdAt: new Date().toISOString()
+        },
+        ...current
+      ];
+    });
   }, [language]);
 
   const runPrivateFastModelAction = useCallback(
     async (action: "select" | "download" | "delete", modelId: string) => {
-      if (action === "delete" && !window.confirm(`Delete local model ${modelId}? You can download or import it again later.`)) return;
       setPrivateFastOperation(`${action}:${modelId}`);
       setStatusMessage("");
 
@@ -620,6 +744,15 @@ export function App({ windowLabel = "main" }: AppProps) {
     }
   }, []);
 
+  const handleOpenPermissionSettings = useCallback(async (target: PermissionSettingsTarget) => {
+    try {
+      await openPermissionSettings(target);
+      setStatusMessage("Opened system settings. Refresh local status after granting the permission.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to open system settings.");
+    }
+  }, []);
+
   const updateHotkey = useCallback((key: keyof HotkeySettings, value: string) => {
     setHotkeys((current) => normalizeHotkeys({ ...current, [key]: value }));
   }, []);
@@ -632,7 +765,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   }, []);
 
   if (!onboardingCompleted) {
-    return <OnboardingWizard onComplete={() => setOnboardingCompleted(true)} />;
+    return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
   return (
@@ -671,7 +804,11 @@ export function App({ windowLabel = "main" }: AppProps) {
           )}
           <div className="toolbar">
             <label className="select-control">
-              <select value={language} onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}>
+              <select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}
+                aria-label="Dictation language"
+              >
                 {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -707,6 +844,7 @@ export function App({ windowLabel = "main" }: AppProps) {
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
             onOpenHistory={() => setView("history")}
+            onDisableCompanion={() => setCompanionEnabled(false)}
           />
         )}
 
@@ -717,15 +855,19 @@ export function App({ windowLabel = "main" }: AppProps) {
             onQueryChange={setQuery}
             onClear={() => void clearHistory()}
             onDeleteSession={(sessionId) => void deleteHistorySession(sessionId)}
+            onCopyText={(session, kind) => void copyHistoryText(session, kind)}
+            onPasteSession={(session) => void pasteHistorySession(session)}
             isClearing={historyOperation === "clear"}
+            copyingSessionId={historyOperation.startsWith("copy:") ? historyOperation.slice("copy:".length) : undefined}
             deletingSessionId={historyOperation.startsWith("delete:") ? historyOperation.slice("delete:".length) : undefined}
+            pastingSessionId={historyOperation.startsWith("paste:") ? historyOperation.slice("paste:".length) : undefined}
           />
         )}
 
         {view === "dictionary" && (
           <DictionaryView
-            dictionary={dictionary}
-            snippets={snippets}
+            dictionary={dictionaryForLanguage}
+            snippets={snippetsForLanguage}
             onAddTerm={addDictionaryTerm}
             onAddSnippet={addSnippet}
             onRemoveTerm={(id) => setDictionary((current) => current.filter((item) => item.id !== id))}
@@ -753,6 +895,7 @@ export function App({ windowLabel = "main" }: AppProps) {
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
             onImportModel={(modelId, sourcePath) => void runImportModel(modelId, sourcePath)}
             onRefreshNative={() => void refreshNativeState()}
+            onOpenPermissionSettings={(target) => void handleOpenPermissionSettings(target)}
             selectedTier={selectedTier}
             rerunStatus={rerunStatus}
             rerunError={rerunError}
@@ -833,6 +976,26 @@ function tierToProfile(tier: Tier): "fast" | "balanced" | "quality" {
   return "balanced";
 }
 
+function markTierBenchmarked(tiers: RunnableTiers, tier: Tier, realtimeFactor: number): RunnableTiers {
+  return {
+    ...tiers,
+    [tier]: {
+      ...tiers[tier],
+      realtimeFactor,
+      predicted: false,
+      downloaded: true,
+      withinBudget: realtimeFactor <= tierBudget(tier)
+    },
+    benchmarkedAt: new Date().toISOString()
+  };
+}
+
+function tierBudget(tier: Tier) {
+  if (tier === "fast") return 1.0;
+  if (tier === "medium") return 2.0;
+  return 4.0;
+}
+
 function placeholderRunnableTiers(): RunnableTiers {
   const empty = {
     modelId: "",
@@ -854,9 +1017,6 @@ async function positionCompanionWindow(window: TauriWindow) {
   const [monitor, size] = await Promise.all([primaryMonitor(), window.outerSize()]);
   if (!monitor) return;
 
-  const workArea = monitor.workArea;
-  const margin = 24;
-  const x = workArea.position.x + workArea.size.width - size.width - margin;
-  const y = workArea.position.y + margin;
-  await window.setPosition(new PhysicalPosition(Math.max(workArea.position.x, x), Math.max(workArea.position.y, y)));
+  const position = companionWindowPosition(monitor.workArea, size);
+  await window.setPosition(new PhysicalPosition(position.x, position.y));
 }

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "paths": {
+      "@dictivo/shared": ["../../packages/shared/src/index.ts"]
+    },
+    "rootDir": "../.."
+  }
+}
