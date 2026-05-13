@@ -68,7 +68,7 @@ Out-of-budget tiers (⚠) are still clickable — you get a warning confirm with
 **Install a release build** (recommended)
 
 ```text
-1. Download the latest Dictivo.dmg (macOS) or .msi (Windows) from Releases
+1. Download the latest Dictivo.dmg (macOS), .exe current-user installer (Windows), or .msi for managed deployment from Releases
 2. Open Dictivo
 3. The setup wizard scans your hardware → downloads one recommended model → measures speed
 4. Press `CommandOrControl+Shift+Space`, speak, press the same shortcut again. Done.

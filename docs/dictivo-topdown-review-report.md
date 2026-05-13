@@ -143,7 +143,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 | 跨应用 hotkey | 在 Notes/TextEdit/浏览器输入框外部触发 start/stop 和 paste-last | 每次按压只触发一次，hold/release 行为正确 |
 | Companion 原生窗口 | 启用 companion，录音/处理/完成/隐藏 | 透明、无边框、置顶、位置正确，托盘隐藏可用 |
 | 剪贴板 race | 转写期间手动改剪贴板 | Dictivo 跳过自动粘贴，只复制结果并提示 |
-| Windows 打包 | 在 Windows runner 或真机执行 MSI build/install | 模型路径、sendkeys、global shortcut、tray 行为正确 |
+| Windows 打包 | 在 Windows runner 或真机执行 NSIS `.exe` current-user install 和 MSI managed install | 模型路径、sendkeys、global shortcut、tray 行为正确；公司电脑优先验证 `.exe` 是否避免不必要的 IT 授权 |
 
 ## 7. UX 优化建议
 
@@ -176,7 +176,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 | Native whisper.cpp smoke | `npm run smoke:private-fast` 固化安装包内置 binary + 本地模型 + benchmark 音频的真实转写验证，覆盖模型路径、输出文件、样本文本和 `/dev/null.txt` 回归 | 本机 macOS 冒烟已覆盖 |
 | 隐私承诺不回归 | API forbidden-content guard、shared privacy tests、CSP/remote font 清理、非 Tauri microphone 状态修正、Tauri runtime browser microphone permission merge、metadata-only API 测试均通过 | 已覆盖 |
 | 当前产品文档不宣传已移除主模式切换/旧 hotkey | README 与三份本地化 README 已更新；`docsConsistency.test.ts` 防回归 | 已覆盖 |
-| 剩余原生/人工验证 | 本报告第 6 节、[docs/test-matrix.md](/Users/mayijie/Projects/Code/033_Dictivo/docs/test-matrix.md:36) 和 [docs/native-manual-test-plan.md](/Users/mayijie/Projects/Code/033_Dictivo/docs/native-manual-test-plan.md:1) 记录真实麦克风、OS 权限弹窗、跨应用 hotkey 行为、Companion 原生窗口、真实剪贴板 race、真实 tray 点击、Windows 安装/运行；microphone denial app handling、language/dictionary/snippet app wiring、clipboard race app handling、默认快捷键 reserve、hold repeat suppression、paste-last app wiring、Windows MSI workflow contract、Windows quiet child command wiring、packaged whisper smoke、安装包 metadata smoke、tray action mapping、模型操作锁/低磁盘预检和隐私网络/API guard 已有 partial automated 证据 | 未能自动关闭 |
+| 剩余原生/人工验证 | 本报告第 6 节、[docs/test-matrix.md](/Users/mayijie/Projects/Code/033_Dictivo/docs/test-matrix.md:36) 和 [docs/native-manual-test-plan.md](/Users/mayijie/Projects/Code/033_Dictivo/docs/native-manual-test-plan.md:1) 记录真实麦克风、OS 权限弹窗、跨应用 hotkey 行为、Companion 原生窗口、真实剪贴板 race、真实 tray 点击、Windows 安装/运行；microphone denial app handling、language/dictionary/snippet app wiring、clipboard race app handling、默认快捷键 reserve、hold repeat suppression、paste-last app wiring、Windows MSI/NSIS workflow contract、Windows quiet child command wiring、packaged whisper smoke、安装包 metadata smoke、tray action mapping、模型操作锁/低磁盘预检和隐私网络/API guard 已有 partial automated 证据 | 未能自动关闭 |
 
 结论：当前自动化、本机 macOS 构建安装和可执行原生冒烟验证都通过，且已修复本轮能在当前环境中确认的真实缺陷。Goal 仍不能标记完成，因为 `docs/goal-dictivo-review.md` 明确要求覆盖真实麦克风、真实模型、OS 权限、跨应用热键和平台差异；这些需要真实授权、模型文件和/或 Windows/Linux 环境，当前本机自动化不能证明。
 
@@ -188,6 +188,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 
 - Documentation drift：主 README、三个本地化 README 和 `docs/test-matrix.md` 仍描述已从主界面移除的 Message / Email / Raw / Prompt 模式切换。当前产品主路径是默认 Message 输出，并通过 Settings -> Local Engine -> Processing toggles 控制标点、填充词和大小写处理。
 - Documentation drift：英文 README 仍宣传旧的 `⌥+Space` / `⌥+Shift+V` 默认快捷键，但当前默认值是 `CommandOrControl+Shift+Space` 和 `CommandOrControl+Shift+V`。
+- Windows installer UX gap：release workflow 被锁到 `--bundles msi` 后只产出 MSI。MSI 更容易触发公司电脑的软件安装管控，缺少之前可用于当前用户安装的 NSIS `.exe` 路径。
 - Rust hygiene：`cargo test` 仍输出 `dead_code` warnings，主要来自测试专用 prediction helper 和非当前平台 GPU helper stub。
 - Test coverage gap：History / Dictionary 关键交互此前主要依赖静态渲染和 Playwright happy path，组件级用户操作覆盖不足。
 - Tooling hygiene：root `lint` script 使用 `npm run lint -ws --if-present`，npm 提示 `-ws` 将来会移除；同时各 workspace 没有自己的 lint script，导致该门禁实际空跑。
@@ -266,7 +267,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - Private Fast packaging hygiene gap：`prepare-private-fast-engine.mjs` 此前不会清理上一次生成的 manifest、macOS `whisper-cli`、Windows `whisper-cli.exe` 或 DLL；在同一工作目录重复准备不同平台 bundle 时，旧平台 artifact 可能被误带进新安装包。
 - Tray behavior coverage gap：Tray close/show/hide/quit 是桌面应用核心生命周期，但此前只有关闭窗口的 Rust 纯函数覆盖，tray 菜单 id 路由和左键点击 show-main 行为仍只能靠人工矩阵。
 - Windows child-process UX gap：Private Fast 子进程已使用 no-window wrapper，但通用 Tauri 层的 Windows `powershell` 粘贴和 `cmd /C start` 设置入口仍直接使用 `Command::new`；Windows 桌面用户可能看到短暂控制台窗口闪烁。
-- Release workflow contract gap：Windows MSI 和 macOS universal app 的真实安装仍需目标系统，但仓库里此前没有完整测试锁定 Windows x64 / macOS universal matrix、bundle type、artifact path 和 release gate 顺序；发布 workflow 轻微漂移可能让 installer/app artifact 假通过或不产出预期产物。
+- Release workflow contract gap：Windows installers 和 macOS universal app 的真实安装仍需目标系统，但仓库里此前没有完整测试锁定 Windows x64 / macOS universal matrix、bundle type、artifact path 和 release gate 顺序；发布 workflow 轻微漂移可能让 installer/app artifact 假通过或不产出预期产物。
 - Interactive CI risk：`global_hotkey_probe` 明确 `#[ignore]` 且需要交互式桌面，但 desktop release workflow 此前在 push/tag CI 中无条件用 `--ignored` 运行它；headless runner 或已占用快捷键会让自动发布构建被非确定性交互探针阻塞。
 - App failure-feedback coverage gap：Privacy `Open settings` 和 Local Engine import 的成功路径已有覆盖，但系统设置打不开、导入文件无效这两个常见失败分支此前缺少 App 级断言，容易回归成无提示或操作锁不释放。
 - Clipboard bridge coverage gap：App 层已经覆盖 clipboard marker race，但 bridge 层此前没有直接断言 `getClipboardMarker()` / `pasteText()` / `copyText()` 会把 marker 和文本精确转发到 Tauri commands；这会削弱跨应用粘贴保护的端到端证据链。
@@ -382,7 +383,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 扩展 [releaseWorkflow.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/releaseWorkflow.test.ts:1)：覆盖 smoke 脚本的 transcript phrase 断言、`/dev/null.txt` / `failed to open` 输出错误拦截、安装包 plist metadata 校验，以及 smoke 模型目录扫描优先级。
 - 改进 [lib.rs](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src-tauri/src/lib.rs:326)：tray menu id 和 tray left-click 处理抽成可测纯逻辑；Rust tests 覆盖 Show Dictivo、Hide Companion、Quit Dictivo、status no-op，以及 left-click-release 只触发 show-main。
 - 改进 [lib.rs](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src-tauri/src/lib.rs:20)：通用 Tauri 层新增 `quiet_command()`，Windows 下对系统设置入口和 paste automation 的 `cmd` / `powershell` 调用设置 `CREATE_NO_WINDOW`，和 Private Fast 子进程策略保持一致。
-- 新增 [releaseWorkflow.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/releaseWorkflow.test.ts:1)：静态锁定 `.github/workflows/build-desktop.yml` 的 macOS universal app target、Windows x64 MSI target、artifact path、Lint/Typecheck/Test/Rust/E2E/Prepare Private Fast/Build/Upload 的发布 gate 顺序，以及 Private Fast prepare script 的 stale artifact cleanup contract。
+- 新增 [releaseWorkflow.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/releaseWorkflow.test.ts:1)：静态锁定 `.github/workflows/build-desktop.yml` 的 macOS universal app target、Windows x64 MSI + NSIS target、artifact path、Lint/Typecheck/Test/Rust/E2E/Prepare Private Fast/Build/Upload 的发布 gate 顺序，以及 Private Fast prepare script 的 stale artifact cleanup contract。
 - 改进 [prepare-private-fast-engine.mjs](/Users/mayijie/Projects/Code/033_Dictivo/scripts/prepare-private-fast-engine.mjs:19)：准备平台 bundle 前会清理生成目录里的旧 `manifest.json`、`whisper-cli`、`whisper-cli.exe` 和 `*.dll`，避免跨平台重复构建时把旧 artifact 带入新包。
 - 新增 [companionWindowPosition.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/companionWindowPosition.ts:1)，并让 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:986) 复用该纯函数定位 companion；`companion.test.ts` 覆盖普通屏幕、副屏负坐标、小 work area 和自定义 margin。
 - 新增 [companionWindow.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/companionWindow.test.tsx:1)：mock Tauri event/window API，直接覆盖浮窗默认 idle、`companion-state` 更新、recording timer、processing/complete/blocked visual state、drag start、hide request 和 dog/cat/Trump/bikini/muscle avatar 渲染。
@@ -480,7 +481,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Hold hotkey repeat 补强后通过，desktop tests 增至 153，覆盖重复 Pressed 事件不会重复启动 recording，Released 后只 stop/transcribe 一次。
 - `npm run test -w @dictivo/desktop -- tests/appStartup.test.tsx`：recording setup race 补强后通过，desktop tests 增至 172，覆盖用户在 microphone setup promise resolve 前点击 Stop 时，App 会显示正在停止、controller resolve 后调用 `stop()` 并继续本地转写，不再出现 `No active recording was found.`。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Microphone denial / clipboard race 补强后通过，desktop tests 增至 155，覆盖录音启动失败恢复 editor、不保存空历史，以及 clipboard marker race 时保留 transcript、保存 history、提示跳过自动粘贴。
-- `npm run test -w @dictivo/desktop -- releaseWorkflow.test.ts`：release workflow / Private Fast prepare hygiene / smoke script / Windows quiet child-process contract / Node 24 Actions hygiene 补强后通过，desktop tests 增至 171，覆盖 macOS universal app matrix、Windows x64 MSI matrix、发布 gate 顺序、dependency audit、Rust format check、whitespace check、当前 Node 24-compatible GitHub Actions、`windows-2025-vs2026` runner label、交互式 global hotkey probe 只能手动 opt-in、生成目录中 stale manifest / macOS binary / Windows binary / DLL 的清理约束、smoke transcript / metadata / model-scan 纯逻辑，以及 paste/settings/Private Fast 子进程都继续通过 `CREATE_NO_WINDOW` helper 运行；临时目录行为测试证明清理会删除生成 artifact 且保留 README、benchmark WAV 和普通 notes 文件。
+- `npm run test -w @dictivo/desktop -- releaseWorkflow.test.ts`：release workflow / Private Fast prepare hygiene / smoke script / Windows quiet child-process contract / Node 24 Actions hygiene 补强后通过，desktop tests 增至 171，覆盖 macOS universal app matrix、Windows x64 MSI + NSIS matrix、发布 gate 顺序、dependency audit、Rust format check、whitespace check、当前 Node 24-compatible GitHub Actions、`windows-2025-vs2026` runner label、交互式 global hotkey probe 只能手动 opt-in、生成目录中 stale manifest / macOS binary / Windows binary / DLL 的清理约束、smoke transcript / metadata / model-scan 纯逻辑，以及 paste/settings/Private Fast 子进程都继续通过 `CREATE_NO_WINDOW` helper 运行；临时目录行为测试证明清理会删除生成 artifact 且保留 README、benchmark WAV 和普通 notes 文件。
 - `npm run test -w @dictivo/desktop -- version.test.ts`：Tauri native config contract 补强后通过，desktop tests 增至 158，覆盖 app identity、打包资源、主窗口尺寸、capability window scope，以及 companion 原生窗口 transparent / borderless / always-on-top / hidden-start / no-taskbar / no-focus / no-shadow 配置。
 - `npm run test -w @dictivo/desktop -- version.test.ts`：Private Fast resource contract 补强后通过，覆盖 manifest 语义、CLI binary 存在且非空、benchmark WAV 为 RIFF/WAVE 16 kHz mono 16-bit PCM 且包含 data chunk。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Privacy / Local Engine failure-feedback 覆盖补强后通过，desktop tests 增至 160，覆盖系统设置入口失败时用户可见错误、模型导入失败时错误横幅和 operation lock 释放。

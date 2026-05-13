@@ -37,8 +37,8 @@ jobs:
             os: windows-2025-vs2026
             rust_targets: x86_64-pc-windows-msvc
             tauri_target: x86_64-pc-windows-msvc
-            tauri_bundles: msi
-            artifact_name: Dictivo-Windows-x64
+            tauri_bundles: msi,nsis
+            artifact_name: Dictivo-Windows-x64-installers
             bundle_path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle
 
     steps:

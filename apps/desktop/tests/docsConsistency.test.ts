@@ -34,4 +34,11 @@ describe("user-facing documentation", () => {
     expect(readme).toContain("Smart local polish");
     expect(readme).toContain("Processing toggles");
   });
+
+  it("documents both Windows installer tracks", () => {
+    const readme = readFileSync("../../README.md", "utf8");
+    expect(readme).toContain(".exe current-user installer");
+    expect(readme).toContain(".msi");
+    expect(readme).toContain("managed deployment");
+  });
 });

@@ -21,7 +21,7 @@ Dictivo es una app de dictado local-first para macOS y Windows. Convierte voz en
 Cuando los builds estén publicados, descarga la última versión desde GitHub Releases:
 
 - macOS: `Dictivo.app` o `.dmg`
-- Windows: instalador incluido en los release assets
+- Windows: usa el instalador `.exe` para el usuario actual; usa `.msi` para despliegues administrados
 
 Abre Dictivo y ve a `Settings -> Local Engine` para descargar o importar un modelo local.
 

@@ -91,6 +91,11 @@ describe("release version metadata", () => {
       bundle: {
         category: string;
         resources: Record<string, string>;
+        windows?: {
+          nsis?: {
+            installMode?: string;
+          };
+        };
       };
     }>("src-tauri/tauri.conf.json");
     const capability = readJson<{ windows: string[]; permissions: string[] }>("src-tauri/capabilities/default.json");
@@ -101,6 +106,9 @@ describe("release version metadata", () => {
     expect(tauriConfig.bundle.resources).toMatchObject({
       "resources/private-fast": "private-fast",
       "resources/benchmark-5s.wav": "benchmark-5s.wav"
+    });
+    expect(tauriConfig.bundle.windows?.nsis).toMatchObject({
+      installMode: "currentUser"
     });
 
     const mainWindow = tauriConfig.app.windows.find((window) => window.label === "main");

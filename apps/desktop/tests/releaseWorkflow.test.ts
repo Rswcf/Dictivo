@@ -42,7 +42,7 @@ describe("desktop release workflow", () => {
     expect(macosMatrix).toContain("bundle_path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle");
   });
 
-  it("keeps the Windows MSI release target in the desktop build matrix", () => {
+  it("keeps Windows MSI and NSIS release targets in the desktop build matrix", () => {
     const windowsMatrix = workflow.slice(
       workflow.indexOf("- label: Windows x64"),
       workflow.indexOf("steps:")
@@ -51,8 +51,8 @@ describe("desktop release workflow", () => {
     expect(windowsMatrix).toContain("os: windows-2025-vs2026");
     expect(windowsMatrix).toContain("rust_targets: x86_64-pc-windows-msvc");
     expect(windowsMatrix).toContain("tauri_target: x86_64-pc-windows-msvc");
-    expect(windowsMatrix).toContain("tauri_bundles: msi");
-    expect(windowsMatrix).toContain("artifact_name: Dictivo-Windows-x64");
+    expect(windowsMatrix).toContain("tauri_bundles: msi,nsis");
+    expect(windowsMatrix).toContain("artifact_name: Dictivo-Windows-x64-installers");
     expect(windowsMatrix).toContain("bundle_path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle");
   });
 
