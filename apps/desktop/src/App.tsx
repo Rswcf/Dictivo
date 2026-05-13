@@ -121,9 +121,16 @@ export function App({ windowLabel = "main" }: AppProps) {
   const stopAfterRecordingSetupRef = useRef(false);
   const companionPositionedRef = useRef(false);
   const lastFinalTextRef = useRef("");
+  const mountedRef = useRef(true);
   const startDictationRef = useRef<(() => Promise<void>) | null>(null);
   const stopDictationRef = useRef<(() => Promise<void>) | null>(null);
   const pasteLastTranscriptRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,11 +161,13 @@ export function App({ windowLabel = "main" }: AppProps) {
         getHardwareProfile(),
         requestNativePermissions()
       ]);
+      if (!mountedRef.current) return;
       setPrivateFastStatus(status);
       setPrivateFastModels(models);
       setHardwareProfile(hardware);
       setPermissions(permissionState as Record<string, string>);
     } catch (error) {
+      if (!mountedRef.current) return;
       setStatusMessage(error instanceof Error ? error.message : "Unable to refresh local engine status.");
     }
   }, []);
@@ -198,13 +207,19 @@ export function App({ windowLabel = "main" }: AppProps) {
     });
   }, [companionAvatar, companionEnabled, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
 
-	useEffect(() => {
-	  void getRunnableTiers()
-	    .then(setRunnableTiers)
-	    .catch((error: unknown) => {
-	      setStatusMessage(error instanceof Error ? error.message : "Unable to load local engine tier cache.");
-	    });
-	}, [onboardingCompleted]);
+  useEffect(() => {
+    let cancelled = false;
+    void getRunnableTiers()
+      .then((tiers) => {
+        if (!cancelled) setRunnableTiers(tiers);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setStatusMessage(error instanceof Error ? error.message : "Unable to load local engine tier cache.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingCompleted]);
 
   const handleTierChange = useCallback(
     async (next: Tier) => {
