@@ -212,6 +212,32 @@ test("uploads, persists, previews, and removes a custom companion avatar", async
   });
 });
 
+test("removing a custom companion avatar preserves the selected built-in avatar", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Companion", exact: true }).click();
+  await page.getByLabel("Upload custom companion avatar").setInputFiles({
+    name: "custom-avatar.png",
+    mimeType: "image/png",
+    buffer: customAvatarPng
+  });
+  await expect(page.getByRole("button", { name: "Custom", exact: true })).toHaveClass(/is-selected/);
+
+  await page.getByRole("button", { name: "Cat" }).click();
+  await expect(page.getByRole("button", { name: "Cat" })).toHaveClass(/is-selected/);
+  await page.getByRole("button", { name: "Remove custom" }).click();
+
+  await expect(page.getByRole("button", { name: "Custom", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Cat" })).toHaveClass(/is-selected/);
+  await expect.poll(() => companionSettings(page)).toEqual({
+    avatar: "cat",
+    customName: null,
+    enabled: false,
+    hasCustomDataUrl: false
+  });
+});
+
 test("keeps keyboard focus visible across main workflows and inline confirmations", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Dictation language").focus();
