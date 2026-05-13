@@ -509,7 +509,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 新增 [uiSemantics.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/uiSemantics.test.ts:1)：用 TypeScript 编译器解析 `src/**/*.tsx`，扫描原生 `<button>` JSX opening tags，断言每个按钮都有显式 `type` 属性。
 - `npm run test -w @dictivo/desktop -- hotkeys.test.ts appStartup.test.tsx companionWindow.test.tsx`：通过；desktop Vitest 增至 182 tests。
 - `npm run test -w @dictivo/desktop -- uiSemantics.test.ts`：通过；desktop Vitest 增至 183 tests，覆盖按钮 `type` 防回归。
-- `npm run test:coverage`：通过；shared 5、desktop 190、API 16 个测试通过。当前 desktop coverage 为 statements 90.14%、branches 78.87%、functions 94.45%、lines 94.77%。
+- `npm run test:coverage`：通过；shared 5、desktop 190、API 16 个测试通过。当前 desktop coverage 为 statements 90.09%、branches 78.78%、functions 94.45%、lines 94.70%。
 - GitHub Actions `Build desktop apps` run `25797354930` 在提交 `8c1a4c4` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
 - 已下载并核对 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
 
@@ -522,6 +522,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 用户可以在 Settings → Companion 上传本地 PNG/JPG/WebP/GIF 卡通头像，上传后自动切换为 `Custom`，主界面 companion preview 和独立 floating companion window 都会使用这张图。
 - 头像只保存在本地 settings，不上传到 API；文件限制为 1.5 MB 内，避免把过大的 base64 data URL 写入 localStorage 或发送到 companion window state。
 - 用户可以删除自定义头像；如果当前正在使用 custom，会回退到 dog；如果用户已经切到其他内置头像，删除 custom 不会改掉当前选择。
+- 左侧用于打开 floating companion 的头像按钮也会显示 custom 图片，避免入口图标和实际浮窗头像不一致。
 - 启动时会校验旧 settings：如果 `companionAvatar` 是 `custom` 但图片数据缺失、远程 URL、格式不对或过大，会自动回退到 dog，避免空白浮窗。
 
 实现与证据：
@@ -529,8 +530,9 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - 改进 [settingsStore.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/settingsStore.ts:8)：新增 `custom` avatar 类型、`customCompanionAvatar` 本地字段、上传文件读取和 settings normalization。
 - 改进 [SettingsView.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/SettingsView.tsx:230)、[DictationWorkbench.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/DictationWorkbench.tsx:138)、[CompanionWindow.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/CompanionWindow.tsx:75) 和 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:824)：设置页上传/删除、主窗口预览、snapshot、浮窗渲染全链路打通。
 - 扩展 `settingsStore.test.ts`、`settingsInteraction.test.tsx`、`componentsStatic.test.tsx`、`companion.test.ts`、`companionWindow.test.tsx`：覆盖本地保存、非法图片回退、上传回调、主界面预览和浮窗 custom image 渲染。
+- 扩展 [app.spec.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/e2e/app.spec.ts:173)：浏览器 E2E 真实上传 custom PNG，断言 `Custom` 被选中、settings 写入本地、Dictation preview 和 sidebar launcher 使用 data URL，删除 custom 后回退到 dog。
 - `npm run typecheck -w @dictivo/desktop`：通过。
 - `npm run test -w @dictivo/desktop -- settingsStore.test.ts settingsInteraction.test.tsx companion.test.ts companionWindow.test.tsx componentsStatic.test.tsx componentsInteraction.test.tsx uiSemantics.test.ts`：通过；desktop Vitest 当前 190 tests。
 - `npm run test`：通过；shared 5、desktop 190、API 16 个测试通过。
-- `npm run e2e`：通过；9 条 chromium-desktop Playwright 场景通过。
-- `npm run test:coverage`：通过；desktop coverage 为 statements 90.14%、branches 78.87%、functions 94.45%、lines 94.77%。
+- `npm run e2e`：通过；10 条 chromium-desktop Playwright 场景通过。
+- `npm run test:coverage`：通过；desktop coverage 为 statements 90.09%、branches 78.78%、functions 94.45%、lines 94.70%。

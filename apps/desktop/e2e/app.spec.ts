@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "./fixtures";
 
@@ -29,6 +30,11 @@ const seededSessions = [
     text: "Second final transcript."
   }
 ];
+
+const customAvatarPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lH5f1QAAAABJRU5ErkJggg==",
+  "base64"
+);
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((sessions) => {
@@ -164,6 +170,46 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   expect(overflow).toBeLessThanOrEqual(2);
 });
 
+test("uploads, persists, previews, and removes a custom companion avatar", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Companion", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Show floating companion" }).check();
+  await page.getByLabel("Upload custom companion avatar").setInputFiles({
+    name: "custom-avatar.png",
+    mimeType: "image/png",
+    buffer: customAvatarPng
+  });
+
+  const customButton = page.getByRole("button", { name: "Custom", exact: true });
+  await expect(customButton).toBeVisible();
+  await expect(customButton).toHaveClass(/is-selected/);
+  await expect.poll(() => companionSettings(page)).toEqual({
+    avatar: "custom",
+    customName: "custom-avatar.png",
+    enabled: true,
+    hasCustomDataUrl: true
+  });
+
+  await page.getByRole("button", { name: "Dictation", exact: true }).click();
+  await expect(page.locator(".companion-preview img[alt='Custom companion avatar']")).toBeVisible();
+  await expect(page.locator(".sidebar-mascot img")).toHaveAttribute("src", /^data:image\/png;base64,/);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Companion", exact: true }).click();
+  await page.getByRole("button", { name: "Remove custom" }).click();
+
+  await expect(page.getByRole("button", { name: "Custom", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Dog" })).toHaveClass(/is-selected/);
+  await expect.poll(() => companionSettings(page)).toEqual({
+    avatar: "dog",
+    customName: null,
+    enabled: true,
+    hasCustomDataUrl: false
+  });
+});
+
 test("keeps keyboard focus visible across main workflows and inline confirmations", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Dictation language").focus();
@@ -220,6 +266,25 @@ async function activeElementLabel(page: Page) {
     if (!(active instanceof HTMLElement)) return "none";
     const label = active.getAttribute("aria-label") || active.getAttribute("title") || active.textContent?.trim() || active.tagName;
     return `${active.tagName.toLowerCase()}[${label}]`;
+  });
+}
+
+async function companionSettings(page: Page) {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem("dictivo-settings-v4");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      companionAvatar?: string;
+      companionEnabled?: boolean;
+      customCompanionAvatar?: { dataUrl?: string; name?: string } | null;
+    };
+
+    return {
+      avatar: parsed.companionAvatar ?? null,
+      customName: parsed.customCompanionAvatar?.name ?? null,
+      enabled: parsed.companionEnabled ?? null,
+      hasCustomDataUrl: Boolean(parsed.customCompanionAvatar?.dataUrl?.startsWith("data:image/png;base64,"))
+    };
   });
 }
 

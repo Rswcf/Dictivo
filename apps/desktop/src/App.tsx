@@ -848,7 +848,11 @@ export function App({ windowLabel = "main" }: AppProps) {
           <NavButton active={view === "settings"} label="Settings" icon={<Settings size={18} />} onClick={() => setView("settings")} />
         </nav>
 
-        <SidebarMascot avatar={companionAvatar} onClick={() => void showCompanionWindow()} />
+        <SidebarMascot
+          avatar={companionAvatar}
+          customAvatar={customCompanionAvatar}
+          onClick={() => void showCompanionWindow()}
+        />
       </aside>
 
       <section className="workspace">
@@ -994,15 +998,26 @@ function NavButton({ active, label, icon, onClick }: { active: boolean; label: s
   );
 }
 
-function SidebarMascot({ avatar, onClick }: { avatar: CompanionAvatar; onClick: () => void }) {
+function SidebarMascot({
+  avatar,
+  customAvatar,
+  onClick
+}: {
+  avatar: CompanionAvatar;
+  customAvatar: CustomCompanionAvatar | null;
+  onClick: () => void;
+}) {
   return (
     <button type="button" className="sidebar-mascot" title="Show floating companion" aria-label="Show floating companion" onClick={onClick}>
-      <MascotGlyph avatar={avatar} />
+      <MascotGlyph avatar={avatar} customAvatar={customAvatar} />
     </button>
   );
 }
 
-function MascotGlyph({ avatar }: { avatar: CompanionAvatar }) {
+function MascotGlyph({ avatar, customAvatar }: { avatar: CompanionAvatar; customAvatar: CustomCompanionAvatar | null }) {
+  if (avatar === "custom" && customAvatar) {
+    return <img src={customAvatar.dataUrl} alt="" draggable={false} />;
+  }
   if (avatar === "cat") {
     return (
       <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon cat">
