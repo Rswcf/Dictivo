@@ -605,6 +605,7 @@ export function App({ windowLabel = "main" }: AppProps) {
           return;
         }
         if (unavailable.length > 0) {
+          cleanupShortcuts();
           setHotkeyStatus("Hotkey unavailable");
           setStatusMessage(`Unable to reserve global hotkey: ${unavailable.join(", ")}`);
           return;
@@ -613,6 +614,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         setHotkeyStatus(`${hotkeys.dictation} ready`);
       })
       .catch((error: unknown) => {
+        cleanupShortcuts();
         if (!disposed) {
           setHotkeyStatus("Hotkey unavailable");
           setStatusMessage(error instanceof Error ? error.message : "Unable to register global hotkeys.");

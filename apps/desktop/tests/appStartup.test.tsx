@@ -1004,6 +1004,31 @@ describe("App startup recovery", () => {
     await waitFor(() => expect(shortcut.unregister).toHaveBeenCalledTimes(2));
   });
 
+  it("cleans up partially registered hotkeys when availability checks fail", async () => {
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    shortcut.register.mockResolvedValueOnce(undefined);
+    shortcut.isRegistered
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Unable to reserve global hotkey: CommandOrControl+Shift+V")).toBeTruthy());
+    expect(shortcut.unregister).toHaveBeenCalledWith(["CommandOrControl+Shift+Space", "CommandOrControl+Shift+V"]);
+  });
+
+  it("cleans up partially registered hotkeys when native registration rejects", async () => {
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    shortcut.register.mockRejectedValueOnce(new Error("Native shortcut registration failed"));
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Native shortcut registration failed")).toBeTruthy());
+    expect(shortcut.unregister).toHaveBeenCalledWith(["CommandOrControl+Shift+Space", "CommandOrControl+Shift+V"]);
+  });
+
   it("does not start duplicate recordings when hold hotkey repeats before release", async () => {
     let hotkeyHandler: ((event: { shortcut: string; state: "Pressed" | "Released" }) => void) | undefined;
     const stopRecording = vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" }));
