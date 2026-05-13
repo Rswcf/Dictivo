@@ -176,6 +176,8 @@ test("uploads, persists, previews, and removes a custom companion avatar", async
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Companion", exact: true }).click();
   await page.getByRole("checkbox", { name: "Show floating companion" }).check();
+  await page.getByLabel("Upload custom companion avatar").focus();
+  await expectUploadControlFocusVisible(page);
   await page.getByLabel("Upload custom companion avatar").setInputFiles({
     name: "custom-avatar.png",
     mimeType: "image/png",
@@ -286,6 +288,19 @@ async function companionSettings(page: Page) {
       hasCustomDataUrl: Boolean(parsed.customCompanionAvatar?.dataUrl?.startsWith("data:image/png;base64,"))
     };
   });
+}
+
+async function expectUploadControlFocusVisible(page: Page) {
+  const outline = await page.locator(".avatar-upload-control").evaluate((node) => {
+    const styles = getComputedStyle(node);
+    return {
+      outlineStyle: styles.outlineStyle,
+      outlineWidth: Number.parseFloat(styles.outlineWidth)
+    };
+  });
+
+  expect(outline.outlineStyle).not.toBe("none");
+  expect(outline.outlineWidth).toBeGreaterThanOrEqual(2);
 }
 
 async function expectVisibleFocus(page: Page) {
