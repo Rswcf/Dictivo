@@ -64,7 +64,7 @@ import { CompanionWindow } from "./components/CompanionWindow";
 import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
-import { resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
+import { formatShortcutForDisplay, resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
 import { BUNDLED_APP_VERSION, getAppVersion } from "./lib/version";
 
 type View = "dictation" | "history" | "dictionary" | "settings";
@@ -633,14 +633,14 @@ export function App({ windowLabel = "main" }: AppProps) {
         enabled: companionEnabled,
         avatar: companionAvatar,
         phase: dictationPhase,
-        hotkey: hotkeys.dictation,
+        hotkey: formatShortcutForDisplay(hotkeys.dictation, hardwareProfile?.platform),
         liveText,
         statusMessage,
         pasteStatus,
         recordingStartedAt,
         language
       }),
-    [companionAvatar, companionEnabled, dictationPhase, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
+    [companionAvatar, companionEnabled, dictationPhase, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
   );
 
   const showCompanionWindow = useCallback(async () => {

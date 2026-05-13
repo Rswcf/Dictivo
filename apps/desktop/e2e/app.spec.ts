@@ -123,10 +123,11 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   await page.getByRole("button", { name: "Change" }).first().click();
   await page.keyboard.press("Control+Alt+K");
   await expect(page.getByText("CommandOrControl+Alt+K")).toBeVisible();
+  const displayedShortcut = await page.evaluate(() => (/Mac|iPhone|iPad|iPod/i.test(navigator.platform) ? "⌘⌥K" : "Ctrl+Alt+K"));
   await page.getByRole("button", { name: "Dictation" }).click();
-  await expect(page.locator(".suggestion-chips .key").first()).toContainText("⌘⌥K");
+  await expect(page.locator(".suggestion-chips .key").first()).toContainText(displayedShortcut);
   await expect(page.getByText("Start / stop dictation")).toBeVisible();
-  await expect(page.locator(".capture-hint kbd")).toContainText("⌘⌥K");
+  await expect(page.locator(".capture-hint kbd")).toContainText(displayedShortcut);
   await expect(page.locator(".companion-preview")).toBeHidden();
   await page.getByRole("button", { name: "Show floating companion" }).click();
   await expect(page.locator(".companion-preview")).toBeVisible();

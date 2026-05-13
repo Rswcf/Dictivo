@@ -5,21 +5,20 @@ import { useEffect, useMemo, useState } from "react";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
-import type { CompanionAvatar } from "../lib/settingsStore";
-import type { CompanionPhase, CompanionSnapshot } from "../lib/companion";
+import { DEFAULT_HOTKEYS, type CompanionAvatar } from "../lib/settingsStore";
+import { buildCompanionSnapshot, type CompanionPhase, type CompanionSnapshot } from "../lib/companion";
+import { formatShortcutForDisplay } from "../lib/hotkeys";
 
-const defaultSnapshot: CompanionSnapshot = {
+const defaultSnapshot: CompanionSnapshot = buildCompanionSnapshot({
   enabled: true,
   avatar: "dog",
   phase: "idle",
-  hotkey: "CommandOrControl+Shift+Space",
-  title: "Standing by",
-  detail: "CommandOrControl+Shift+Space to record",
-  summary: "Local dictation is ready.",
-  transcriptPreview: "",
+  hotkey: formatShortcutForDisplay(DEFAULT_HOTKEYS.dictation),
+  liveText: "",
+  statusMessage: "",
   pasteStatus: "",
-  wordCount: 0
-};
+  language: "en"
+});
 
 export function CompanionWindow() {
   const [snapshot, setSnapshot] = useState<CompanionSnapshot>(defaultSnapshot);

@@ -497,13 +497,16 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 
 - Medium - 已修复：全局 hotkey `register()` 是异步 native 调用。旧实现会在 React effect cleanup 时调用一次 `unregister(shortcuts)`，但如果旧的 `register()` 在 cleanup 之后才 resolve，旧快捷键仍可能被 native 层注册并残留。该场景会影响用户快速修改快捷键、窗口卸载或 React effect 重跑时的跨应用快捷键可靠性。
 - Medium - 已修复：如果 native hotkey `register()` 成功返回后 `isRegistered()` 发现部分快捷键不可用，或 `register()` 本身 reject，旧实现只显示错误但没有主动 unregister 已经部分注册的 shortcuts。用户修改快捷键或遇到系统占用快捷键时，可能留下不可见的旧快捷键监听。
+- Low - 已修复：快捷键 chip 的展示把 `CommandOrControl` 固定渲染为 macOS 的 `⌘`。在 Windows 版本中实际触发键是 Ctrl，但用户会看到 `⌘⇧Space` 这类 macOS 符号，特别是在公司 Windows 电脑上会造成操作误导。
 
 修复与证据：
 
 - 改进 [App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:583)：抽出 `cleanupShortcuts()`，并在 `register()` resolve 后发现 effect 已 disposed 时再次调用 `unregister(shortcuts)`；如果 disposed 发生在 `isRegistered()` 检查期间、availability check 发现部分快捷键不可用，或 `register()` reject，也会 cleanup。
+- 改进 [hotkeys.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/lib/hotkeys.ts:36)、[DictationWorkbench.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/DictationWorkbench.tsx:63)、[App.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/App.tsx:630) 和 [CompanionWindow.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/src/components/CompanionWindow.tsx:11)：快捷键展示改成 platform-aware；macOS 继续显示 `⌘⇧Space`，Windows/Linux 显示 `Ctrl+Shift+Space`，floating companion 也使用同一展示值。
 - 扩展 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:983)：覆盖 App unmount 后 native hotkey registration 才 resolve 的竞态、availability check 部分失败、native registration reject 三条路径，断言 cleanup 时会 unregister，且用户看到明确错误信息。
-- `npm run test -w @dictivo/desktop -- appStartup.test.tsx hotkeys.test.ts`：通过；desktop Vitest 增至 180 tests。
-- `npm run test:coverage`：通过；shared 5、desktop 180、API 16 个测试通过。当前 desktop coverage 为 statements 90.66%、branches 79.43%、functions 95.53%、lines 95.28%。
+- 扩展 [hotkeys.test.ts](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/hotkeys.test.ts:32) 和 [appStartup.test.tsx](/Users/mayijie/Projects/Code/033_Dictivo/apps/desktop/tests/appStartup.test.tsx:309)：覆盖 macOS compact glyph、Windows/Linux `Ctrl+...` label，以及 Windows hardware profile 下主 workbench 的 Dictation / Paste Last chips 不再显示 macOS `⌘`。
+- `npm run test -w @dictivo/desktop -- hotkeys.test.ts appStartup.test.tsx companionWindow.test.tsx`：通过；desktop Vitest 增至 182 tests。
+- `npm run test:coverage`：通过；shared 5、desktop 182、API 16 个测试通过。当前 desktop coverage 为 statements 90.53%、branches 79.22%、functions 95.54%、lines 95.16%。
 - GitHub Actions `Build desktop apps` run `25797354930` 在提交 `8c1a4c4` 上通过，macOS universal 与 Windows x64 job 均完成并上传 artifact。
 - 已下载并核对 `Dictivo-Windows-x64-installers` artifact，包含 `msi/Dictivo_0.2.0_x64_en-US.msi` 和 `nsis/Dictivo_0.2.0_x64-setup.exe`。公司电脑优先使用 NSIS `.exe` current-user installer；MSI 保留给 managed deployment。
 

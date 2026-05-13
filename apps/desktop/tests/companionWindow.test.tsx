@@ -48,7 +48,7 @@ describe("CompanionWindow", () => {
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--idle");
     expect(screen.getByRole("img", { name: "Cartoon dog" })).toBeTruthy();
     expect(screen.getByText("Standing by")).toBeTruthy();
-    expect(screen.getByText("CommandOrControl+Shift+Space to record")).toBeTruthy();
+    expect(screen.getByText(/(⌘⇧Space|Ctrl\+Shift\+Space) to record/)).toBeTruthy();
 
     fireEvent.pointerDown(screen.getByLabelText("Dictivo floating recording status"));
     expect(tauri.startDragging).toHaveBeenCalledTimes(1);

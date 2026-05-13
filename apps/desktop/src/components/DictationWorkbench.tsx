@@ -60,8 +60,8 @@ export function DictationWorkbench({
   const wordCount = estimateWordCount(liveText, language);
   const accel = hardwareProfile?.accelerators?.[0] ?? "CPU";
   const modelLabel = selectedModel?.label ?? privateFastStatus.modelName;
-  const dictationShortcut = formatShortcutForDisplay(hotkeys.dictation);
-  const pasteShortcut = formatShortcutForDisplay(hotkeys.pasteLast);
+  const dictationShortcut = formatShortcutForDisplay(hotkeys.dictation, hardwareProfile?.platform);
+  const pasteShortcut = formatShortcutForDisplay(hotkeys.pasteLast, hardwareProfile?.platform);
   const dictationAction = hotkeys.activationMode === "hold" ? "Hold and speak" : "Start / stop dictation";
   const countLabel = language === "zh" || language === "ja" ? "characters" : "words";
 

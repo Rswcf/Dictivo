@@ -120,7 +120,7 @@ const readyStatus: PrivateFastStatus = {
 };
 
 const hardware: HardwareProfile = {
-  platform: "web",
+  platform: "macos",
   arch: "arm64",
   cpuCores: 8,
   memoryTotalBytes: 16 * 1024 ** 3,
@@ -325,6 +325,16 @@ describe("App startup recovery", () => {
     expect(screen.getAllByTitle("CommandOrControl+Alt+K")).toHaveLength(2);
     expect(screen.getByText("Hold and speak")).toBeTruthy();
     expect(screen.queryByText("Start / stop dictation")).toBeNull();
+  });
+
+  it("uses Windows shortcut labels when the native hardware profile reports Windows", async () => {
+    bridge.getHardwareProfile.mockResolvedValue({ ...hardware, platform: "windows", accelerators: ["DirectML"] });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("Ctrl+Shift+Space").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Ctrl+Shift+V").length).toBeGreaterThan(0);
+    expect(screen.queryByText("⌘⇧Space")).toBeNull();
   });
 
   it("keeps dictation workbench navigation and companion controls wired through app state", async () => {

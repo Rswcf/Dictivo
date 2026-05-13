@@ -30,9 +30,15 @@ describe("global hotkey helpers", () => {
   });
 
   it("formats settings shortcuts for compact workbench chips", () => {
-    expect(formatShortcutForDisplay("Alt+Space")).toBe("⌥Space");
-    expect(formatShortcutForDisplay("CommandOrControl+Alt+K")).toBe("⌘⌥K");
-    expect(formatShortcutForDisplay("")).toBe("Unset");
+    expect(formatShortcutForDisplay("Alt+Space", "macos")).toBe("⌥Space");
+    expect(formatShortcutForDisplay("CommandOrControl+Alt+K", "macos")).toBe("⌘⌥K");
+    expect(formatShortcutForDisplay("", "macos")).toBe("Unset");
+  });
+
+  it("formats cross-platform primary shortcuts with Windows/Linux labels", () => {
+    expect(formatShortcutForDisplay("CommandOrControl+Shift+Space", "windows")).toBe("Ctrl+Shift+Space");
+    expect(formatShortcutForDisplay("CommandOrControl+Alt+K", "windows")).toBe("Ctrl+Alt+K");
+    expect(formatShortcutForDisplay("CommandOrControl+Shift+V", "linux")).toBe("Ctrl+Shift+V");
   });
 
   it("maps toggle dictation events to start and stop actions", () => {

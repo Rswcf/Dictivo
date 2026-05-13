@@ -7,6 +7,8 @@ type ParsedShortcut = {
   key: string;
 };
 
+export type ShortcutDisplayPlatform = "macos" | "windows" | "linux" | "web";
+
 export type HotkeyIntent = "start-dictation" | "stop-dictation" | "paste-last" | "none";
 
 type HotkeyConfig = {
@@ -33,12 +35,13 @@ export function uniqueShortcuts(shortcuts: string[]) {
   return unique;
 }
 
-export function formatShortcutForDisplay(shortcut: string) {
+export function formatShortcutForDisplay(shortcut: string, platform?: ShortcutDisplayPlatform | null) {
+  const displayPlatform = resolveShortcutDisplayPlatform(platform);
   const tokens = shortcut
     .split("+")
-    .map((part) => formatShortcutToken(part.trim()))
+    .map((part) => formatShortcutToken(part.trim(), displayPlatform))
     .filter(Boolean);
-  return tokens.join("") || "Unset";
+  return tokens.join(displayPlatform === "macos" ? "" : "+") || "Unset";
 }
 
 export function shortcutMatches(actual: string, expected: string) {
@@ -78,13 +81,30 @@ export function resolveHotkeyIntent(
   return "none";
 }
 
-function formatShortcutToken(value: string) {
+function resolveShortcutDisplayPlatform(platform?: ShortcutDisplayPlatform | null): Exclude<ShortcutDisplayPlatform, "web"> {
+  if (platform === "macos" || platform === "windows" || platform === "linux") return platform;
+
+  const navigatorPlatform =
+    typeof navigator === "undefined"
+      ? ""
+      : (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ||
+        navigator.platform ||
+        navigator.userAgent ||
+        "";
+  if (/win/i.test(navigatorPlatform)) return "windows";
+  if (/linux|x11/i.test(navigatorPlatform)) return "linux";
+  return "macos";
+}
+
+function formatShortcutToken(value: string, platform: Exclude<ShortcutDisplayPlatform, "web">) {
   const normalized = value.toLowerCase().replace(/[\s_-]/g, "");
-  if (["commandorcontrol", "commandorctrl", "cmdorcontrol", "cmdorctrl", "primary", "mod"].includes(normalized)) return "⌘";
-  if (["command", "cmd", "meta", "super"].includes(normalized)) return "⌘";
-  if (["control", "ctrl", "ctl"].includes(normalized)) return "⌃";
-  if (["alt", "option", "opt"].includes(normalized)) return "⌥";
-  if (normalized === "shift") return "⇧";
+  if (["commandorcontrol", "commandorctrl", "cmdorcontrol", "cmdorctrl", "primary", "mod"].includes(normalized)) {
+    return platform === "macos" ? "⌘" : "Ctrl";
+  }
+  if (["command", "cmd", "meta", "super"].includes(normalized)) return platform === "macos" ? "⌘" : "Win";
+  if (["control", "ctrl", "ctl"].includes(normalized)) return platform === "macos" ? "⌃" : "Ctrl";
+  if (["alt", "option", "opt"].includes(normalized)) return platform === "macos" ? "⌥" : "Alt";
+  if (normalized === "shift") return platform === "macos" ? "⇧" : "Shift";
   if (normalized === "space" || normalized === "spacebar") return "Space";
   if (normalized === "escape" || normalized === "esc") return "Esc";
   if (normalized === "return") return "Enter";
