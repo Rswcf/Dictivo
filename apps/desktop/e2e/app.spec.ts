@@ -212,6 +212,27 @@ test("uploads, persists, previews, and removes a custom companion avatar", async
   });
 });
 
+test("rejects unsupported custom companion avatar files without changing settings", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Companion", exact: true }).click();
+  await page.getByLabel("Upload custom companion avatar").setInputFiles({
+    name: "avatar.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("not an image")
+  });
+
+  await expect(page.getByRole("alert")).toContainText("PNG, JPG, WebP, or GIF");
+  await expect(page.getByRole("button", { name: "Custom", exact: true })).toBeHidden();
+  await expect.poll(() => companionSettings(page)).toEqual({
+    avatar: "dog",
+    customName: null,
+    enabled: false,
+    hasCustomDataUrl: false
+  });
+});
+
 test("removing a custom companion avatar preserves the selected built-in avatar", async ({ page }) => {
   await page.goto("/");
 
