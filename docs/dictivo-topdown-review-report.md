@@ -190,6 +190,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - Documentation drift：英文 README 仍宣传旧的 `⌥+Space` / `⌥+Shift+V` 默认快捷键，但当前默认值是 `CommandOrControl+Shift+Space` 和 `CommandOrControl+Shift+V`。
 - Windows installer UX gap：release workflow 被锁到 `--bundles msi` 后只产出 MSI。MSI 更容易触发公司电脑的软件安装管控，缺少之前可用于当前用户安装的 NSIS `.exe` 路径。
 - Native event lifecycle gap：`App` 与 `CompanionWindow` 的 Tauri `listen()` 注册是异步 promise；如果窗口/React tree 在 promise resolve 前卸载，返回的 cleanup 会丢失，后续可能留下 native event listener。
+- Onboarding setup lifecycle gap：模型下载/setup 是不可取消的 async flow；如果 wizard 在下载 promise 结束前卸载，旧实现仍会继续 benchmark/finalize 并尝试更新已卸载的 React state。
 - Rust hygiene：`cargo test` 仍输出 `dead_code` warnings，主要来自测试专用 prediction helper 和非当前平台 GPU helper stub。
 - Test coverage gap：History / Dictionary 关键交互此前主要依赖静态渲染和 Playwright happy path，组件级用户操作覆盖不足。
 - Tooling hygiene：root `lint` script 使用 `npm run lint -ws --if-present`，npm 提示 `-ws` 将来会移除；同时各 workspace 没有自己的 lint script，导致该门禁实际空跑。
@@ -484,6 +485,7 @@ Dictivo 是一个 local-first 桌面听写应用，核心用户路径是：
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Microphone denial / clipboard race 补强后通过，desktop tests 增至 155，覆盖录音启动失败恢复 editor、不保存空历史，以及 clipboard marker race 时保留 transcript、保存 history、提示跳过自动粘贴。
 - `npm run test -w @dictivo/desktop -- releaseWorkflow.test.ts`：release workflow / Private Fast prepare hygiene / smoke script / Windows quiet child-process contract / Node 24 Actions hygiene 补强后通过，desktop tests 增至 171，覆盖 macOS universal app matrix、Windows x64 MSI + NSIS matrix、发布 gate 顺序、dependency audit、Rust format check、whitespace check、当前 Node 24-compatible GitHub Actions、`windows-2025-vs2026` runner label、交互式 global hotkey probe 只能手动 opt-in、生成目录中 stale manifest / macOS binary / Windows binary / DLL 的清理约束、smoke transcript / metadata / model-scan 纯逻辑，以及 paste/settings/Private Fast 子进程都继续通过 `CREATE_NO_WINDOW` helper 运行；临时目录行为测试证明清理会删除生成 artifact 且保留 README、benchmark WAV 和普通 notes 文件。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx companionWindow.test.tsx`：native event lifecycle 补强后通过，desktop tests 增至 175，覆盖 `App` 的 `companion-hide-requested` listener 和 `CompanionWindow` 的 `companion-state` listener 在组件先 unmount、Tauri `listen()` 后 resolve 时仍会立即执行 cleanup，不再泄漏 event listener。
+- `npm run test -w @dictivo/desktop -- onboardingWizard.test.tsx`：Onboarding setup lifecycle 补强后通过，desktop tests 增至 176，覆盖模型下载 promise pending 时 wizard unmount，下载结束后不会继续触发 benchmark/finalize 或更新卸载后的 setup 状态。
 - `npm run test -w @dictivo/desktop -- version.test.ts`：Tauri native config contract 补强后通过，desktop tests 增至 158，覆盖 app identity、打包资源、主窗口尺寸、capability window scope，以及 companion 原生窗口 transparent / borderless / always-on-top / hidden-start / no-taskbar / no-focus / no-shadow 配置。
 - `npm run test -w @dictivo/desktop -- version.test.ts`：Private Fast resource contract 补强后通过，覆盖 manifest 语义、CLI binary 存在且非空、benchmark WAV 为 RIFF/WAVE 16 kHz mono 16-bit PCM 且包含 data chunk。
 - `npm run test -w @dictivo/desktop -- appStartup.test.tsx`：Privacy / Local Engine failure-feedback 覆盖补强后通过，desktop tests 增至 160，覆盖系统设置入口失败时用户可见错误、模型导入失败时错误横幅和 operation lock 释放。

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   benchmarkTier,
   detectGpu,
@@ -21,6 +21,7 @@ type OnboardingWizardProps = {
 };
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
+  const mountedRef = useRef(true);
   const [step, setStep] = useState<Step>("scan");
   const [hardware, setHardware] = useState<HardwareProfile | null>(null);
   const [gpus, setGpus] = useState<GpuInfo[]>([]);
@@ -30,6 +31,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [busy, setBusy] = useState(false);
   const [progressLabel, setProgressLabel] = useState<string>("");
   const [tiers, setTiers] = useState<RunnableTiers | null>(null);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,16 +78,21 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     setProgressLabel("Downloading model...");
     try {
       await downloadPrivateFastModel(hardware.recommendedModelId);
+      if (!mountedRef.current) return;
       setProgressLabel("Running quick calibration...");
       setStep("calibrate");
       const rtf = await benchmarkTier(hardware.recommendedModelId);
+      if (!mountedRef.current) return;
       const runnable = await finalizeCalibration(rtf, hardware.recommendedModelId);
+      if (!mountedRef.current) return;
       setTiers(runnable);
       setStep("done");
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : "Setup failed");
       setStep("pick");
     } finally {
+      if (!mountedRef.current) return;
       setBusy(false);
       setProgressLabel("");
     }

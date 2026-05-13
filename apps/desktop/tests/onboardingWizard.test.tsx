@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { OnboardingWizard } from "../src/components/OnboardingWizard";
 import { benchmarkTier, detectGpu, downloadPrivateFastModel, getHardwareProfile, getPrivateFastModels } from "../src/lib/desktopBridge";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 vi.mock("../src/lib/desktopBridge", () => ({
   isTauriRuntime: () => false,
@@ -127,6 +130,28 @@ describe("OnboardingWizard", () => {
 	    finishDownload({ ready: true, modelId: "large-v3-turbo-q5_0", modelName: "Large v3 Turbo Q5", message: "ok", setupHint: "" });
 	    await waitFor(() => expect(screen.getByText(/Ready/i)).toBeTruthy(), { timeout: 5000 });
 	  });
+
+  it("stops setup side effects after unmounting during model download", async () => {
+    let finishDownload: (value: unknown) => void = () => {};
+    vi.mocked(downloadPrivateFastModel).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishDownload = resolve;
+      })
+    );
+
+    const { unmount } = render(<OnboardingWizard onComplete={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText(/Apple/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+    unmount();
+
+    await act(async () => {
+      finishDownload({ ready: true, modelId: "large-v3-turbo-q5_0", modelName: "Large v3 Turbo Q5", message: "ok", setupHint: "" });
+    });
+
+    expect(benchmarkTier).not.toHaveBeenCalled();
+  });
 
 	  it("returns to the model step with retry when calibration fails", async () => {
     vi.mocked(benchmarkTier).mockRejectedValueOnce(new Error("Benchmark timed out"));
