@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { ArrowUp, X } from "lucide-react";
-import { installUpdate, type UpdateInfo } from "../lib/desktopBridge";
+import { installUpdate, isTauriRuntime, type UpdateInfo } from "../lib/desktopBridge";
 
 type BannerState =
   | { kind: "idle" }
@@ -20,6 +20,13 @@ export function UpdateBanner({ onRenewClick }: UpdateBannerProps) {
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
 
   useEffect(() => {
+    // The Playwright browser preview has no Tauri runtime; calling listen()
+    // there throws ("Cannot read properties of undefined (reading
+    // 'transformCallback')"). Skip the subscription entirely outside the
+    // desktop app — there are no real update events to receive in a browser
+    // anyway.
+    if (!isTauriRuntime()) return;
+
     const subscriptions: Array<Promise<() => void>> = [
       listen<UpdateInfo>("dictivo://update-available", (event) => {
         setState({ kind: "available", info: event.payload });
