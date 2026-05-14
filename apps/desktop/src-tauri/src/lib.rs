@@ -337,6 +337,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             storage::init_database().map_err(Box::<dyn std::error::Error>::from)?;
             configure_tray(app).map_err(Box::<dyn std::error::Error>::from)?;

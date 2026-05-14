@@ -48,6 +48,9 @@ type SettingsViewProps = {
   onRerunBenchmark: () => void;
   onOpenWizard: () => void;
   initialSection?: SettingsSection;
+  /** License key handed in via a `dictivo://activate?key=...` deep link. */
+  pendingLicenseKey?: string;
+  onLicenseKeyConsumed?: () => void;
 };
 
 const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> = [
@@ -124,10 +127,18 @@ export function SettingsView({
   onTierChange,
   onRerunBenchmark,
   onOpenWizard,
-  initialSection = "engine"
+  initialSection = "engine",
+  pendingLicenseKey,
+  onLicenseKeyConsumed
 }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [avatarUploadError, setAvatarUploadError] = useState("");
+
+  // When a deep link arrives after Settings is already mounted (or the user
+  // navigates here mid-flow), follow the requested section.
+  useEffect(() => {
+    if (initialSection) setSection(initialSection);
+  }, [initialSection]);
 
   const handleCustomAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
@@ -276,7 +287,13 @@ export function SettingsView({
           </div>
         )}
 
-        {section === "license" && <LicenseAndUpdatesPanel appVersion={appVersion} />}
+        {section === "license" && (
+          <LicenseAndUpdatesPanel
+            appVersion={appVersion}
+            pendingLicenseKey={pendingLicenseKey}
+            onLicenseKeyConsumed={onLicenseKeyConsumed}
+          />
+        )}
 
         {section === "privacy" && (
           <div className="side-panel">
@@ -412,7 +429,17 @@ function normalizedShortcutKey(key: string) {
   return key;
 }
 
-function LicenseAndUpdatesPanel({ appVersion }: { appVersion: string }) {
+type LicenseAndUpdatesPanelProps = {
+  appVersion: string;
+  pendingLicenseKey?: string;
+  onLicenseKeyConsumed?: () => void;
+};
+
+function LicenseAndUpdatesPanel({
+  appVersion,
+  pendingLicenseKey,
+  onLicenseKeyConsumed
+}: LicenseAndUpdatesPanelProps) {
   const [license, setLicense] = useState<LicenseSummary | null>(null);
   const [licenseKeyDraft, setLicenseKeyDraft] = useState("");
   const [activationBusy, setActivationBusy] = useState(false);
@@ -426,6 +453,18 @@ function LicenseAndUpdatesPanel({ appVersion }: { appVersion: string }) {
   useEffect(() => {
     void getLicense().then(setLicense).catch(() => undefined);
   }, []);
+
+  // When a deep link delivers a license key while Settings is already mounted,
+  // prefill the input. We only auto-fill, not auto-submit, so the user always
+  // sees what is about to be sent to the license server.
+  useEffect(() => {
+    if (pendingLicenseKey && pendingLicenseKey.trim().length > 0) {
+      setLicenseKeyDraft(pendingLicenseKey.trim());
+      setActivationError("");
+      setActivationSuccess("Activation link received — review the key and click Activate.");
+      onLicenseKeyConsumed?.();
+    }
+  }, [pendingLicenseKey, onLicenseKeyConsumed]);
 
   const reloadLicense = useCallback(async () => {
     const fresh = await getLicense().catch(() => null);

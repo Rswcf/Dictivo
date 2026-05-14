@@ -65,6 +65,7 @@ import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { createActivationRateLimiter, parseDeepLink } from "./lib/deepLink";
 import { formatShortcutForDisplay, resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
 import { BUNDLED_APP_VERSION, getAppVersion } from "./lib/version";
 
@@ -116,6 +117,8 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [dictationPhase, setDictationPhase] = useState<CompanionPhase>("idle");
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>();
   const [appVersion, setAppVersion] = useState(BUNDLED_APP_VERSION);
+  const [pendingLicenseKey, setPendingLicenseKey] = useState<string>("");
+  const activationLimiterRef = useRef(createActivationRateLimiter());
 
   const dictationRecordingRef = useRef<RecordingController | null>(null);
   const isDictatingRef = useRef(false);
@@ -675,6 +678,41 @@ export function App({ windowLabel = "main" }: AppProps) {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+
+    const handleUrl = (url: string) => {
+      const parsed = parseDeepLink(url);
+      if (!parsed || parsed.kind !== "activate") return;
+      if (!activationLimiterRef.current.allow()) return;
+      setPendingLicenseKey(parsed.licenseKey);
+      setView("settings");
+    };
+
+    void (async () => {
+      try {
+        const { onOpenUrl, getCurrent } = await import("@tauri-apps/plugin-deep-link");
+        const cold = await getCurrent();
+        if (!disposed && cold) cold.forEach(handleUrl);
+        unsubscribe = await onOpenUrl((urls: string[]) => {
+          if (!disposed) urls.forEach(handleUrl);
+        });
+        if (disposed && unsubscribe) unsubscribe();
+      } catch (error) {
+        // Plugin missing or denied — deep links degrade gracefully to the
+        // manual "paste license key" flow. Never surface this to the user.
+        console.warn("deepLink: subscription failed", error);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
 
     let unlisten: (() => void) | undefined;
     let disposed = false;
@@ -953,6 +991,9 @@ export function App({ windowLabel = "main" }: AppProps) {
         {view === "settings" && (
           <SettingsView
             appVersion={appVersion}
+            initialSection={pendingLicenseKey ? "license" : undefined}
+            pendingLicenseKey={pendingLicenseKey}
+            onLicenseKeyConsumed={() => setPendingLicenseKey("")}
             hotkeys={hotkeys}
             localProcessing={localProcessing}
             permissions={permissions}

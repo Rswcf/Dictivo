@@ -148,7 +148,8 @@ describe("release version metadata", () => {
       "global-shortcut:default",
       "global-shortcut:allow-is-registered",
       "global-shortcut:allow-register",
-      "global-shortcut:allow-unregister"
+      "global-shortcut:allow-unregister",
+      "deep-link:default"
     ]);
   });
 
