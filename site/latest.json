@@ -1,6 +1,0 @@
-{
-  "version": "0.0.0",
-  "pub_date": "2026-05-14T00:00:00Z",
-  "notes": "Placeholder manifest. Real releases overwrite this file via the release-desktop.yml workflow.",
-  "platforms": {}
-}

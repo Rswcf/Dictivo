@@ -75,7 +75,7 @@
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2M0EyRTVBQjE2NUZGNTYKUldSVy8yV3hXaTQ2bHZJQXRZeFcranBjbW5OTlk2MjBOYU1Wd0FiK004Y1VRZ0pjYlY1ZTNBbHgK",
       "endpoints": [
-        "https://dictivo.app/latest.json"
+        "https://github.com/Rswcf/Dictivo/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

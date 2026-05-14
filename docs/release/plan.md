@@ -18,13 +18,14 @@
 
 | Component | Tool | Cost |
 |---|---|---|
-| Source code + binaries | GitHub | Free |
-| Marketing site (1 HTML file) | Cloudflare Pages | Free |
-| Domain + DNS | Cloudflare | ~$15/yr |
+| Source code (this repo) | GitHub `Rswcf/Dictivo` | Free |
+| Marketing site (separate repo) | GitHub `Rswcf/Dictivo-site` → Cloudflare Pages project `dictivo-app` | Free |
+| Installer hosting | Cloudflare R2 bucket `dictivo-downloads`, public domain `downloads.dictivo.app` | ~$2/yr storage |
+| Domain + DNS | Cloudflare Registrar | ~$15/yr |
 | Payment + license keys + emails | Lemon Squeezy (Merchant of Record) | 5% + $0.50/txn |
 | macOS code signing + notarization | Apple Developer Program (individual) | $99/yr |
 | ~~Windows code signing~~ | ~~Azure Trusted Signing~~ — **deferred to v1.1** | ~$120/yr |
-| Update manifest hosting | Static `latest.json` on Cloudflare Pages | Free |
+| Update manifest hosting | GitHub Releases (asset on each release) | Free |
 | Updater signature | Tauri minisign (Ed25519) | Free |
 | Model weights hosting | Hugging Face (current) → R2 only if HF rate-limits | $0 |
 | Site analytics (post-launch) | Plausible | Skip at launch |
@@ -36,55 +37,58 @@
 ## 3. Architecture — one diagram
 
 ```
-   ┌─────────────────────────────────────┐
-   │  dictivo.app                         │
-   │  (1 static HTML on Cloudflare Pages) │
-   │                                      │
-   │  • Hero + screenshots                │
-   │  • $49 [Buy] button → LS checkout    │
-   │  • Privacy + EULA (template-based)   │
-   └──────────────┬──────────────────────┘
-                  │  buyer clicks Buy
-                  ▼
-   ┌──────────────────────────────────────┐
-   │  Lemon Squeezy (Merchant of Record)  │
-   │                                      │
-   │  • Hosted checkout                   │
-   │  • Charges card, handles VAT/tax     │
-   │  • Issues license key                │
-   │  • Emails buyer license + receipt    │
-   │  • Manages renewals + refunds        │
-   └──────────────┬──────────────────────┘
-                  │  email with license key
-                  ▼
-   ┌──────────────────────────────────────┐
-   │  Dictivo (Tauri app on the user's PC)│
-   │                                      │
-   │  1. User pastes key into Settings    │
-   │  2. App calls LS Activate API once   │
-   │     → returns: valid, order date,    │
-   │       email, instance ID             │
-   │  3. App caches all that locally      │
-   │  4. App computes updates_until       │
-   │     = order.created_at + 12 months   │
-   │  5. App reads latest.json,           │
-   │     compares pub_date to             │
-   │     updates_until, decides whether   │
-   │     to surface "update available"    │
-   └──────────────┬──────────────────────┘
-                  │  reads update manifest
-                  ▼
-   ┌──────────────────────────────────────┐
-   │  GitHub Releases                      │
-   │                                      │
-   │  • Signed installers (.dmg, .exe)    │
-   │  • Signed updater payloads           │
-   │  • latest.json                       │
-   │  • .sig files (minisign)             │
-   └──────────────────────────────────────┘
+   ┌──────────────────────────────────────────┐
+   │  Marketing site (separate repo)          │
+   │  github.com/Rswcf/Dictivo-site            │
+   │  → Cloudflare Pages → dictivo.app         │
+   │                                          │
+   │  • Hero + pricing + FAQ                  │
+   │  • Privacy + EULA pages                  │
+   │  • Download buttons → downloads.dictivo  │
+   │  • $49 [Buy] button → LS checkout        │
+   └────────────────┬─────────────────────────┘
+                    │  buyer clicks Buy
+                    ▼
+   ┌──────────────────────────────────────────┐
+   │  Lemon Squeezy (Merchant of Record)      │
+   │                                          │
+   │  • Hosted checkout                       │
+   │  • Charges card, handles VAT/tax         │
+   │  • Issues license key                    │
+   │  • Emails buyer license + receipt        │
+   │  • Manages renewals + refunds            │
+   └────────────────┬─────────────────────────┘
+                    │  email with license key
+                    ▼
+   ┌──────────────────────────────────────────┐
+   │  Dictivo (Tauri app, this repo)          │
+   │                                          │
+   │  1. User pastes key into Settings        │
+   │  2. App calls LS Activate API once       │
+   │     → returns: valid, order date, email  │
+   │  3. App caches the license locally       │
+   │  4. App computes updates_until           │
+   │     = order.created_at + 12 months       │
+   │  5. App polls latest.json once on launch │
+   │     and every 24h; compares pub_date     │
+   │     to updates_until to decide whether   │
+   │     to surface a new build               │
+   └────────────────┬─────────────────────────┘
+                    │  fetches latest.json
+                    ▼
+   ┌──────────────────────────────────────────┐
+   │  GitHub Releases (this repo)             │
+   │  Tag-driven: `git push --tags`           │
+   │                                          │
+   │  • latest.json (release asset)           │
+   │  • Dictivo.app.tar.gz + .sig (updater)   │
+   │  • Dictivo-*.dmg (user installer, also   │
+   │    mirrored to R2 for downloads.        │
+   │    dictivo.app/* routes)                 │
+   └──────────────────────────────────────────┘
 ```
 
-That is the complete picture. Nothing is hidden.
+Three repos, zero custom backend code. Marketing site, desktop app, and the LS dashboard are the entire operational surface.
 
 ## 4. Why this is dramatically simpler than v1
 
@@ -169,16 +173,19 @@ LS Activate API enforces `activation_limit` natively. Set it to **2** in the LS 
 - LS handles chargeback disputes end-to-end. You only see the net payout.
 - After a refund, the license key is automatically invalidated by LS. The app's next activation check (re-paste, or just one heartbeat) returns `valid: false`. Until then, the app continues to function (perpetual fallback applies). This is acceptable and on-brand.
 
-## 6. Update delivery — using GitHub Releases + static manifest
+## 6. Update delivery — GitHub Releases only
 
-1. CI builds signed `.app.tar.gz` (macOS) and `.nsis.zip` (Windows) on every `v*.*.*` tag.
-2. CI generates `latest.json` from the build outputs.
-3. CI uploads everything to a GitHub Release.
-4. CI also deploys `latest.json` to Cloudflare Pages at `https://dictivo.app/latest.json`.
-5. Tauri updater plugin in the app polls `https://dictivo.app/latest.json` once on launch + every 24h.
-6. The `url` in `latest.json` points at the GitHub Release asset — GitHub serves it free.
+1. CI in **this** repo builds signed `.app.tar.gz` (macOS) on every `v*.*.*` tag.
+2. CI generates `latest.json` containing the signed URL + minisign signature.
+3. CI publishes everything as assets on the GitHub Release.
+4. Tauri updater plugin in the installed app polls
+   `https://github.com/Rswcf/Dictivo/releases/latest/download/latest.json`
+   once on launch + every 24h. GitHub auto-redirects to the asset on the most-recent non-prerelease tag.
+5. The `url` field inside `latest.json` points at the same release's `.app.tar.gz`.
 
-No Cloudflare Worker, no R2 bucket, no API. Just a static file in two places (GitHub Release + Cloudflare Pages mirror for branded URL).
+**Why not host on `dictivo.app/latest.json`?** Because the marketing site lives in a separate repo (`Rswcf/Dictivo-site`). Cross-repo writes would require either (a) a GitHub PAT in this repo with write access to the other (sprawling secrets) or (b) a webhook chain that's brittle. The GitHub Releases asset URL solves all of this with zero infra: it works the moment the first release exists, it follows the latest tag automatically, and Tauri's updater follows the redirect natively.
+
+The marketing site's `downloads.json` and `downloads.dictivo.app/*` are a **separate concern** — they're the human-facing "Download for Mac" experience and are updated in the site repo via its own release flow. The two manifests never share a schema and never need to be in sync byte-for-byte.
 
 ## 7. Model hosting — keep Hugging Face for now
 

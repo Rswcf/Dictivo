@@ -13,7 +13,9 @@ name: Release desktop
 #   KEYCHAIN_PASSWORD                   — temp keychain password (any random string)
 #   TAURI_SIGNING_PRIVATE_KEY           — output of `tauri signer generate`
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for the signing key
-#   CLOUDFLARE_API_TOKEN                — token with Pages:Edit (for marketing-site mirror, optional)
+#
+# The marketing site (dictivo.app) lives in Rswcf/Dictivo-site and deploys
+# itself via its own Cloudflare Pages workflow — no secret needed here.
 #
 # The workflow is intentionally inert until those secrets exist — it will fail
 # fast at the signing step with a clear error rather than producing an
@@ -139,20 +141,18 @@ jobs:
         with:
           name: Dictivo ${{ steps.manifest.outputs.tag }}
           generate_release_notes: true
+          # SemVer-based prerelease detection (-rc.X, -alpha.X, -beta.X tags
+          # become prereleases automatically, so they don't poison the
+          # `releases/latest/download/latest.json` URL the in-app updater uses).
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             ${{ steps.manifest.outputs.tarball }}
             ${{ steps.manifest.outputs.signature_path }}
             apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/Dictivo_${{ steps.manifest.outputs.version }}_universal.dmg
             latest.json
 
-      # Optional: also publish latest.json to the marketing site so the in-app
-      # updater can hit a branded URL (dictivo.app/latest.json). Skip if the
-      # CLOUDFLARE_API_TOKEN secret isn't set yet.
-      - name: Mirror latest.json to Cloudflare Pages
-        if: ${{ env.CF_TOKEN_PRESENT == 'true' }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_TOKEN_PRESENT: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-        run: |
-          echo "TODO: wire wrangler pages publish for the dictivo.app marketing site"
-          echo "Currently the in-app updater reads latest.json from the GitHub release URL."
+      # The marketing site at https://dictivo.app lives in a separate repo
+      # (Rswcf/Dictivo-site) and deploys via its own Cloudflare Pages workflow.
+      # The in-app updater intentionally fetches latest.json from the GitHub
+      # Releases URL above, not from dictivo.app — so no cross-repo write is
+      # required here. The desktop release ships independently.

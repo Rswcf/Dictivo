@@ -265,7 +265,7 @@ After step 3.5 succeeds:
 1. Main product → Share → copy the checkout URL (e.g. `https://dictivo.lemonsqueezy.com/buy/abc-def-123`)
 2. Renewal product → Share → copy that checkout URL too
 
-**Tell me both URLs in chat** and I'll wire them into `site/index.html` (Buy button + Renew button).
+**Tell me both URLs in chat** and I'll wire them into the marketing site's `index.html` (in the **separate** `034_Dictivo_Site` / `Rswcf/Dictivo-site` repo — I'll switch repos to make the edit).
 
 ### Step 3.7 — Go live
 
@@ -278,75 +278,75 @@ When you're ready:
 
 ---
 
-## Phase 4 — Domain + Cloudflare Pages (1-2 hours, can do today)
+## Phase 4 — Marketing site & download host (mostly done)
 
-### Why
-The in-app updater fetches `https://dictivo.app/latest.json`. That URL needs to resolve. Plus buyers need a place to actually find and buy the product.
+### Status check — what you already have
 
-### Step 4.1 — Move DNS to Cloudflare
+You confirmed that the marketing site is **a separate repository** at
+`/Users/mayijie/Projects/Code/034_Dictivo_Site` (GitHub: `Rswcf/Dictivo-site`).
+It deploys automatically to Cloudflare Pages via
+`.github/workflows/deploy-cloudflare-pages.yml` whenever `main` is pushed.
 
-1. Sign up at https://dash.cloudflare.com/sign-up (free)
-2. Dashboard → "Add a site" → enter `dictivo.app` → Free plan
-3. Cloudflare scans your existing DNS records and shows you **two assigned nameservers**, e.g.:
-   ```
-   xena.ns.cloudflare.com
-   daniel.ns.cloudflare.com
-   ```
-4. Go to your current domain registrar (wherever you registered `dictivo.app`) → find "Manage nameservers" or "DNS settings" → replace existing nameservers with Cloudflare's two
-5. Save. Cloudflare emails you when the change has propagated (usually 1-6 hours, max 48)
+Existing pieces in that repo:
+- `index.html`, `changelog.html`, `security.html`
+- `assets/`, `docs/`, `_headers`, `_redirects`, `robots.txt`, `sitemap.xml`
+- `wrangler.toml` — Cloudflare Pages project `dictivo-app`
+- `downloads.json` — human-facing installer manifest pointing at
+  `downloads.dictivo.app/*` (a Cloudflare R2 public bucket)
+- `scripts/upload-downloads.sh` — manual R2 upload helper
 
-### Step 4.2 — Deploy the marketing site
+The desktop repo's `tauri.conf.json` updater endpoint is set to
+`https://github.com/Rswcf/Dictivo/releases/latest/download/latest.json`, so the
+marketing site does **not** need to serve `latest.json` — it's a release
+asset on this repo. This deliberately decouples the two repos.
 
-I've already created a minimal site for you at `site/` in this repo. It contains:
-- `index.html` — landing + pricing
-- `privacy.html` — privacy policy
-- `eula.html` — end-user license agreement
-- `latest.json` — placeholder for the in-app updater
-
-To deploy:
-
-1. Cloudflare dashboard → **Workers & Pages** → Create application → **Pages** → **Connect to Git**
-2. Authorize Cloudflare to read your GitHub repo, select `Dictivo`
-3. Build settings:
-   - Framework preset: **None**
-   - Build command: leave blank
-   - Build output directory: `site`
-   - Root directory: leave blank
-4. Save and Deploy
-5. First deploy takes ~30 seconds. You'll get a preview URL like `dictivo-xyz.pages.dev`.
-6. Open the preview URL in a browser — verify it loads
-7. Custom domain: in Pages project → **Custom domains** → **Set up a custom domain** → enter `dictivo.app`
-8. Cloudflare auto-configures the CNAME + provisions an SSL cert (~30 seconds)
-9. Repeat for `www.dictivo.app`
-
-### Step 4.3 — Verify
+### Step 4.1 — Verify the site is live (1 min)
 
 ```bash
 curl -I https://dictivo.app
-# expected: HTTP/2 200 with content-type: text/html
-
-curl https://dictivo.app/latest.json
-# expected: the placeholder JSON
+# expected: HTTP/2 200, served by Cloudflare
 ```
 
-If `latest.json` returns 404, double-check the file is in `site/latest.json` in the repo.
+If this fails, check the Pages project's most recent build at
+https://dash.cloudflare.com/?to=/:account/pages → `dictivo-app`.
 
-### Step 4.4 — Wire up the Buy button (after Phase 3)
+### Step 4.2 — Wire the Buy button (after Phase 3 LS approval)
 
-After Phase 3 step 3.6, you'll have the LS checkout URLs. Edit `site/index.html`:
+When Lemon Squeezy KYC clears and you create the product, you'll get a
+checkout URL like `https://dictivo.lemonsqueezy.com/buy/abc-def-123`.
 
-```html
-<!-- Find these placeholders -->
-<a href="REPLACE_WITH_LEMON_SQUEEZY_CHECKOUT_URL" class="cta cta-primary">Buy Dictivo — $49</a>
-...
-<a href="REPLACE_WITH_LEMON_SQUEEZY_RENEWAL_URL" class="cta">Renew for $24/year</a>
+Edit **in the site repo, not this one**:
+```bash
+cd /Users/mayijie/Projects/Code/034_Dictivo_Site
+# search for the placeholder href and replace with the LS URL
 ```
 
-Replace with your actual URLs. Commit + push → Cloudflare Pages auto-redeploys within 30 seconds.
+Commit + push → Cloudflare Pages auto-redeploys. Or paste both URLs in chat
+and I'll switch repos to do the edit.
 
-Or paste both URLs in chat — I'll do the edit.
+### Step 4.3 — Provision the R2 download host (1-time, ~20 min)
 
-**Phase 4 done.**
+When you're ready to ship the first signed installer, run the site repo's
+`scripts/upload-downloads.sh` to create the `dictivo-downloads` bucket and
+attach `downloads.dictivo.app`. Detailed steps are inside that script and the
+site repo's README. The release CI in this repo can later be extended to
+upload signed artifacts to that bucket automatically; for v1.0 the manual
+upload script is fine.
+
+### Step 4.4 — Cloudflare Email Routing (5 min, recommended now)
+
+So `hello@dictivo.app` can receive mail. This is the address LS will use as
+your support contact, and the From line on every receipt.
+
+1. CF dashboard → `dictivo.app` → **Email** → **Email Routing** → Enable
+2. CF asks you to add MX + TXT records → click **Add records and enable** (it
+   does it automatically since the domain is at CF Registrar)
+3. **Routes** → **Create address** → `hello@dictivo.app` → "Send to an email"
+   → your real inbox (Gmail / etc.)
+4. Verify the destination email by clicking the link CF sends you
+
+**Phase 4 status:** mostly already done — only Step 4.2 (button URL) and
+4.3 (R2 first upload) remain, both gated on Phase 3 + first build.
 
 ---
 
