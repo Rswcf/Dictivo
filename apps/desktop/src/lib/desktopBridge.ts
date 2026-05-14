@@ -536,3 +536,77 @@ async function blobToBase64(blob: Blob) {
 
   return btoa(binary);
 }
+
+// ============================================================================
+// License + Updates
+// ============================================================================
+
+export type LicenseSummary = {
+  present: boolean;
+  email: string;
+  productName: string;
+  createdAt: string;
+  updatesUntil: string;
+  daysRemaining: number;
+  status: string;
+};
+
+export type UpdateInfo = {
+  version: string;
+  currentVersion: string;
+  pubDate: string;
+  notes: string;
+  windowBlocked: boolean;
+};
+
+export type UpdateCheckKind = "available" | "windowExpired" | "upToDate" | "failed";
+
+export type UpdateCheckResult = {
+  kind: UpdateCheckKind;
+  info: UpdateInfo | null;
+  error: string | null;
+};
+
+export async function activateLicense(licenseKey: string, instanceName: string): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) {
+    throw new Error("License activation requires the desktop app runtime.");
+  }
+  return invoke<LicenseSummary>("license_activate", { licenseKey, instanceName });
+}
+
+export async function getLicense(): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) {
+    return {
+      present: false,
+      email: "",
+      productName: "",
+      createdAt: "",
+      updatesUntil: "",
+      daysRemaining: 0,
+      status: "web-preview"
+    };
+  }
+  return invoke<LicenseSummary>("license_get");
+}
+
+export async function refreshLicense(): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) throw new Error("License refresh requires the desktop app runtime.");
+  return invoke<LicenseSummary>("license_refresh");
+}
+
+export async function deactivateLicense(): Promise<void> {
+  if (!isTauriRuntime()) throw new Error("License deactivation requires the desktop app runtime.");
+  return invoke<void>("license_deactivate");
+}
+
+export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  if (!isTauriRuntime()) {
+    return { kind: "upToDate", info: null, error: null };
+  }
+  return invoke<UpdateCheckResult>("updater_check_now");
+}
+
+export async function installUpdate(): Promise<void> {
+  if (!isTauriRuntime()) throw new Error("Installing updates requires the desktop app runtime.");
+  return invoke<void>("updater_install");
+}

@@ -1,5 +1,15 @@
-import { Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from "lucide-react";
-import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { ArrowUp, Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, Receipt, RefreshCw, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  activateLicense,
+  checkForUpdate,
+  deactivateLicense,
+  getLicense,
+  installUpdate,
+  refreshLicense,
+  type LicenseSummary,
+  type UpdateCheckResult
+} from "../lib/desktopBridge";
 import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
@@ -8,7 +18,7 @@ import { shortcutMatches } from "../lib/hotkeys";
 import { readCustomCompanionAvatar, type CompanionAvatar, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings } from "../lib/settingsStore";
 import { ModelManager } from "./ModelManager";
 
-type SettingsSection = "engine" | "hotkeys" | "companion" | "privacy";
+type SettingsSection = "engine" | "hotkeys" | "companion" | "license" | "privacy";
 
 type SettingsViewProps = {
   appVersion: string;
@@ -45,6 +55,7 @@ const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> =
   { id: "engine", label: "Local Engine", icon: <WifiOff size={14} /> },
   { id: "hotkeys", label: "Hotkeys", icon: <KeyRound size={14} /> },
   { id: "companion", label: "Companion", icon: <Bot size={14} /> },
+  { id: "license", label: "License & Updates", icon: <Receipt size={14} /> },
   { id: "privacy", label: "Privacy", icon: <Lock size={14} /> }
 ];
 
@@ -267,6 +278,8 @@ export function SettingsView({
           </div>
         )}
 
+        {section === "license" && <LicenseAndUpdatesPanel appVersion={appVersion} />}
+
         {section === "privacy" && (
           <div className="side-panel">
             <div className="panel-title"><Lock size={16} /><h2>Permissions & Privacy</h2></div>
@@ -399,4 +412,200 @@ function normalizedShortcutKey(key: string) {
   if (key === " ") return "Space";
   if (key.length === 1) return key.toUpperCase();
   return key;
+}
+
+function LicenseAndUpdatesPanel({ appVersion }: { appVersion: string }) {
+  const [license, setLicense] = useState<LicenseSummary | null>(null);
+  const [licenseKeyDraft, setLicenseKeyDraft] = useState("");
+  const [activationBusy, setActivationBusy] = useState(false);
+  const [activationError, setActivationError] = useState("");
+  const [activationSuccess, setActivationSuccess] = useState("");
+
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
+
+  useEffect(() => {
+    void getLicense().then(setLicense).catch(() => undefined);
+  }, []);
+
+  const reloadLicense = useCallback(async () => {
+    const fresh = await getLicense().catch(() => null);
+    if (fresh) setLicense(fresh);
+  }, []);
+
+  const handleActivate = useCallback(async () => {
+    setActivationError("");
+    setActivationSuccess("");
+    if (!licenseKeyDraft.trim()) {
+      setActivationError("Enter your license key first.");
+      return;
+    }
+    setActivationBusy(true);
+    try {
+      const instanceName =
+        typeof navigator !== "undefined" && navigator.userAgent
+          ? `Dictivo on ${navigator.platform || "this device"}`
+          : "Dictivo activation";
+      const fresh = await activateLicense(licenseKeyDraft.trim(), instanceName);
+      setLicense(fresh);
+      setLicenseKeyDraft("");
+      setActivationSuccess(`Activated. Updates included until ${formatDate(fresh.updatesUntil)}.`);
+    } catch (error) {
+      setActivationError(error instanceof Error ? error.message : "Activation failed.");
+    } finally {
+      setActivationBusy(false);
+    }
+  }, [licenseKeyDraft]);
+
+  const handleRefresh = useCallback(async () => {
+    setActivationError("");
+    setActivationSuccess("");
+    setActivationBusy(true);
+    try {
+      const fresh = await refreshLicense();
+      setLicense(fresh);
+      setActivationSuccess("License refreshed.");
+    } catch (error) {
+      setActivationError(error instanceof Error ? error.message : "Refresh failed.");
+    } finally {
+      setActivationBusy(false);
+    }
+  }, []);
+
+  const handleDeactivate = useCallback(async () => {
+    setActivationError("");
+    setActivationSuccess("");
+    setActivationBusy(true);
+    try {
+      await deactivateLicense();
+      await reloadLicense();
+      setActivationSuccess("License removed from this device.");
+    } catch (error) {
+      setActivationError(error instanceof Error ? error.message : "Deactivation failed.");
+    } finally {
+      setActivationBusy(false);
+    }
+  }, [reloadLicense]);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateMessage("");
+    setUpdateBusy(true);
+    try {
+      const result = await checkForUpdate();
+      setUpdateCheck(result);
+      if (result.kind === "upToDate") setUpdateMessage("You're on the latest version.");
+      else if (result.kind === "failed") setUpdateMessage("Could not reach the update server.");
+      else if (result.kind === "windowExpired") setUpdateMessage("A newer version exists but your update window has ended.");
+      else if (result.kind === "available" && result.info) setUpdateMessage(`Update ${result.info.version} is ready.`);
+    } catch (error) {
+      setUpdateMessage(error instanceof Error ? error.message : "Update check failed.");
+    } finally {
+      setUpdateBusy(false);
+    }
+  }, []);
+
+  const handleInstall = useCallback(async () => {
+    setUpdateMessage("Downloading update...");
+    setUpdateBusy(true);
+    try {
+      await installUpdate();
+      setUpdateMessage("Update downloaded. It will install the next time you quit Dictivo.");
+    } catch (error) {
+      setUpdateMessage(error instanceof Error ? error.message : "Install failed.");
+    } finally {
+      setUpdateBusy(false);
+    }
+  }, []);
+
+  return (
+    <div className="side-panel">
+      <div className="panel-title"><Receipt size={16} /><h2>License & Updates</h2></div>
+
+      {license?.present ? (
+        <div className="license-card">
+          <div className="license-row"><span>Licensed to</span><strong>{license.email || "—"}</strong></div>
+          {license.productName ? (
+            <div className="license-row"><span>Product</span><strong>{license.productName}</strong></div>
+          ) : null}
+          <div className="license-row"><span>Purchased</span><strong>{formatDate(license.createdAt)}</strong></div>
+          <div className="license-row">
+            <span>Updates until</span>
+            <strong>
+              {formatDate(license.updatesUntil)}
+              {license.daysRemaining > 0 ? ` (${license.daysRemaining} days left)` : license.daysRemaining === 0 ? " (today)" : " (window ended)"}
+            </strong>
+          </div>
+          <div className="license-row"><span>Status</span><strong>{license.status}</strong></div>
+          <div className="license-actions">
+            <button type="button" onClick={handleRefresh} disabled={activationBusy}>
+              <RefreshCw size={13} /> Refresh
+            </button>
+            <button type="button" onClick={handleDeactivate} disabled={activationBusy}>
+              <Trash2 size={13} /> Remove from this device
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="license-card license-card--empty">
+          <p className="muted">
+            Dictivo runs free with the <code>tiny</code> model. Activate a license to unlock all models and 12 months of updates.
+          </p>
+          <label className="license-input-row">
+            <span>License key</span>
+            <input
+              type="text"
+              value={licenseKeyDraft}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              onChange={(e) => setLicenseKeyDraft(e.target.value)}
+              disabled={activationBusy}
+            />
+          </label>
+          <button
+            type="button"
+            className="primary"
+            onClick={handleActivate}
+            disabled={activationBusy || !licenseKeyDraft.trim()}
+          >
+            Activate
+          </button>
+        </div>
+      )}
+
+      {activationError && <div className="settings-inline-error" role="alert">{activationError}</div>}
+      {activationSuccess && <div className="settings-inline-success" role="status">{activationSuccess}</div>}
+
+      <hr className="settings-divider" />
+
+      <div className="updates-block">
+        <div className="updates-row">
+          <span>Current version</span>
+          <code>v{appVersion}</code>
+        </div>
+        <div className="updates-actions">
+          <button type="button" onClick={handleCheckUpdate} disabled={updateBusy}>
+            <RefreshCw size={13} /> Check for updates
+          </button>
+          {updateCheck?.kind === "available" && updateCheck.info ? (
+            <button type="button" className="primary" onClick={handleInstall} disabled={updateBusy}>
+              <ArrowUp size={13} /> Install {updateCheck.info.version}
+            </button>
+          ) : null}
+        </div>
+        {updateMessage ? <p className="muted updates-status">{updateMessage}</p> : null}
+        <p className="muted updates-footnote">
+          Dictivo checks once at launch and every 24 hours. The request carries only a version number and your license token — no identifiers, no telemetry.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function formatDate(iso: string) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }

@@ -1,0 +1,24 @@
+{
+  "name": "dictivo-marketing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion compositions for Dictivo launch assets (PH / HN / README).",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render DictivoDemo out/dictivo-demo.mp4 --codec=h264",
+    "render:gif": "remotion render DictivoDemo out/dictivo-demo.gif --image-format=png --width=1280",
+    "render:still": "remotion still DictivoDemo out/dictivo-demo-hero.png --frame=300"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/media": "^4.0.460",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,5 +1,7 @@
+mod license;
 mod private_fast;
 mod storage;
+mod updater;
 
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -333,9 +335,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppLifecycle::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             storage::init_database().map_err(Box::<dyn std::error::Error>::from)?;
             configure_tray(app).map_err(Box::<dyn std::error::Error>::from)?;
+            schedule_initial_update_check(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -375,7 +380,13 @@ pub fn run() {
             storage::save_session,
             storage::list_sessions,
             storage::clear_sessions,
-            storage::delete_session
+            storage::delete_session,
+            license::license_activate,
+            license::license_get,
+            license::license_refresh,
+            license::license_deactivate,
+            updater::updater_check_now,
+            updater::updater_install
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dictivo");
@@ -474,6 +485,25 @@ fn hide_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
 
 fn should_hide_on_close(window_label: &str, is_quitting: bool) -> bool {
     !is_quitting && matches!(window_label, "main" | "companion")
+}
+
+/// Fires an initial update check ~5 seconds after launch, then re-checks every
+/// 24 hours while the app is running. All results are emitted as events the
+/// React side listens to; failures are silent.
+fn schedule_initial_update_check(handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        // Let the app finish its cold-start work first.
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let _ = updater::check_and_notify(&handle).await;
+
+        let mut ticker = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        // The first tick fires immediately; skip it since we just checked.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let _ = updater::check_and_notify(&handle).await;
+        }
+    });
 }
 
 fn current_clipboard_marker() -> Result<ClipboardMarker, String> {

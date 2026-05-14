@@ -65,6 +65,7 @@ import { CompanionWindow } from "./components/CompanionWindow";
 import { HistoryView } from "./components/HistoryView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SettingsView } from "./components/SettingsView";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { formatShortcutForDisplay, resolveHotkeyIntent, uniqueShortcuts } from "./lib/hotkeys";
 import { BUNDLED_APP_VERSION, getAppVersion } from "./lib/version";
 
@@ -896,6 +897,8 @@ export function App({ windowLabel = "main" }: AppProps) {
             {statusMessage}
           </div>
         )}
+
+        <UpdateBanner onRenewClick={() => setView("settings")} />
 
         {view === "dictation" && (
           <DictationWorkbench

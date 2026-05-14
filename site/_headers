@@ -1,0 +1,16 @@
+# Cloudflare Pages security + caching headers
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+/latest.json
+  Cache-Control: public, max-age=300
+
+/*.html
+  Cache-Control: public, max-age=600
+
+/style.css
+  Cache-Control: public, max-age=86400

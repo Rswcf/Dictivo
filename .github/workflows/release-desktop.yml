@@ -1,0 +1,158 @@
+name: Release desktop
+
+# Tag-driven release: push a vX.Y.Z tag, get signed + notarized macOS builds
+# uploaded to a GitHub Release plus a latest.json manifest the in-app updater
+# can read. Windows is intentionally deferred to v1.1 (see docs/release/plan.md).
+#
+# Required GitHub secrets (set in repo Settings → Secrets and variables → Actions):
+#   APPLE_ID                            — Apple Developer account email
+#   APPLE_PASSWORD                      — app-specific password
+#   APPLE_TEAM_ID                       — 10-char Team ID
+#   APPLE_CERTIFICATE                   — base64-encoded .p12 of Developer ID Application
+#   APPLE_CERTIFICATE_PASSWORD          — passphrase for the .p12
+#   KEYCHAIN_PASSWORD                   — temp keychain password (any random string)
+#   TAURI_SIGNING_PRIVATE_KEY           — output of `tauri signer generate`
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — passphrase for the signing key
+#   CLOUDFLARE_API_TOKEN                — token with Pages:Edit (for marketing-site mirror, optional)
+#
+# The workflow is intentionally inert until those secrets exist — it will fail
+# fast at the signing step with a clear error rather than producing an
+# unsigned artifact.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS universal (signed + notarized)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust universal targets
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare Private Fast engine
+        run: node scripts/prepare-private-fast-engine.mjs
+
+      # tauri-action imports the Apple cert into a temp keychain, signs the
+      # universal binary, runs notarytool, staples, and emits the .app.tar.gz
+      # plus its minisign .sig. createUpdaterArtifacts is set in tauri.conf.json.
+      - name: Build, sign, notarize
+        uses: tauri-apps/tauri-action@v0
+        id: tauri
+        with:
+          projectPath: apps/desktop
+          tauriScript: npm run tauri:build -w @dictivo/desktop --
+          args: --target universal-apple-darwin --bundles app,dmg
+
+      - name: Compute manifest fields
+        id: manifest
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          BUNDLE_DIR="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos"
+          TARBALL="${BUNDLE_DIR}/Dictivo.app.tar.gz"
+          SIG="${TARBALL}.sig"
+          if [ ! -f "$SIG" ]; then
+            echo "::error::Signature file ${SIG} missing — was createUpdaterArtifacts set?"
+            exit 1
+          fi
+          SIG_CONTENT="$(cat "$SIG")"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            echo "version=${VERSION}"
+            echo "tag=${TAG}"
+            echo "tarball=${TARBALL}"
+            echo "signature_path=${SIG}"
+            echo "pub_date=${PUB_DATE}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "signature_content<<__SIG_EOF__"
+            echo "$SIG_CONTENT"
+            echo "__SIG_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build latest.json
+        run: |
+          set -e
+          TAG_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.manifest.outputs.tag }}/Dictivo.app.tar.gz"
+          cat <<EOF > latest.json
+          {
+            "version": "${{ steps.manifest.outputs.version }}",
+            "pub_date": "${{ steps.manifest.outputs.pub_date }}",
+            "notes": "See https://dictivo.app/changelog#${{ steps.manifest.outputs.version }}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": ${TAURI_SIG_JSON},
+                "url": "${TAG_URL}"
+              },
+              "darwin-x86_64": {
+                "signature": ${TAURI_SIG_JSON},
+                "url": "${TAG_URL}"
+              }
+            }
+          }
+          EOF
+          # The signature contains newlines; JSON-encode via jq.
+          jq --arg sig "${{ steps.manifest.outputs.signature_content }}" \
+             '.platforms["darwin-aarch64"].signature = $sig | .platforms["darwin-x86_64"].signature = $sig' \
+             latest.json > latest.tmp.json
+          mv latest.tmp.json latest.json
+          cat latest.json
+        env:
+          # Placeholder so the heredoc parses; jq fills it in immediately after.
+          TAURI_SIG_JSON: "\"placeholder\""
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Dictivo ${{ steps.manifest.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.manifest.outputs.tarball }}
+            ${{ steps.manifest.outputs.signature_path }}
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/Dictivo_${{ steps.manifest.outputs.version }}_universal.dmg
+            latest.json
+
+      # Optional: also publish latest.json to the marketing site so the in-app
+      # updater can hit a branded URL (dictivo.app/latest.json). Skip if the
+      # CLOUDFLARE_API_TOKEN secret isn't set yet.
+      - name: Mirror latest.json to Cloudflare Pages
+        if: ${{ env.CF_TOKEN_PRESENT == 'true' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_TOKEN_PRESENT: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          echo "TODO: wire wrangler pages publish for the dictivo.app marketing site"
+          echo "Currently the in-app updater reads latest.json from the GitHub release URL."
