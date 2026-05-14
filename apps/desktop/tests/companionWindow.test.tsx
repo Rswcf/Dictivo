@@ -15,7 +15,14 @@ const tauri = vi.hoisted(() => {
       return Promise.resolve(() => listeners.delete(eventName));
     }),
     startDragging: vi.fn().mockResolvedValue(undefined),
-    setSize: vi.fn().mockResolvedValue(undefined)
+    setSize: vi.fn().mockResolvedValue(undefined),
+    setPosition: vi.fn().mockResolvedValue(undefined),
+    outerPosition: vi.fn().mockResolvedValue({ x: 200, y: 200 }),
+    outerSize: vi.fn().mockResolvedValue({ width: 92, height: 92 }),
+    primaryMonitor: vi.fn().mockResolvedValue({
+      position: { x: 0, y: 0 },
+      size: { width: 1440, height: 900 }
+    })
   };
 });
 
@@ -28,12 +35,19 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     hide: tauri.hide,
     startDragging: tauri.startDragging,
-    setSize: tauri.setSize
+    setSize: tauri.setSize,
+    setPosition: tauri.setPosition,
+    outerPosition: tauri.outerPosition,
+    outerSize: tauri.outerSize
   }),
+  primaryMonitor: () => tauri.primaryMonitor(),
   // Tests don't care about real logical-pixel math; a passthrough stub is
   // enough for the companion to call `new LogicalSize(w, h)` without throwing.
   LogicalSize: class LogicalSize {
     constructor(public width: number, public height: number) {}
+  },
+  PhysicalPosition: class PhysicalPosition {
+    constructor(public x: number, public y: number) {}
   }
 }));
 
@@ -46,6 +60,10 @@ afterEach(() => {
   tauri.listen.mockClear();
   tauri.startDragging.mockClear();
   tauri.setSize.mockClear();
+  tauri.setPosition.mockClear();
+  tauri.outerPosition.mockClear();
+  tauri.outerSize.mockClear();
+  tauri.primaryMonitor.mockClear();
 });
 
 describe("CompanionWindow", () => {
@@ -58,12 +76,22 @@ describe("CompanionWindow", () => {
     expect(screen.getByText("Standing by")).toBeTruthy();
     expect(screen.getByText(/(⌘⇧Space|Ctrl\+Shift\+Space) to record/)).toBeTruthy();
 
-    fireEvent.pointerDown(screen.getByLabelText("Dictivo floating recording status"));
-    expect(tauri.startDragging).toHaveBeenCalledTimes(1);
+    // pointerDown alone is no longer enough to start a drag — the new
+    // gesture machine waits for movement past 5 px (drag), >600 ms (long
+    // press), or a short tap (toggle). Verify a clean pointerDown→Up with
+    // no movement routes to the short-tap toggle path.
+    const shell = screen.getByLabelText("Dictivo floating recording status");
+    fireEvent.pointerDown(shell, { button: 0, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(shell, { clientX: 40, clientY: 40 });
+    expect(tauri.startDragging).not.toHaveBeenCalled();
+    expect(tauri.emitTo).toHaveBeenCalledWith("main", "companion-toggle-dictation", {});
+
+    // Movement past threshold should promote to a drag.
+    fireEvent.pointerDown(shell, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(shell, { clientX: 140, clientY: 100 });
+    await waitFor(() => expect(tauri.startDragging).toHaveBeenCalledTimes(1));
 
     const hideButton = screen.getByRole("button", { name: "Hide companion" });
-    fireEvent.pointerDown(hideButton);
-    expect(tauri.startDragging).toHaveBeenCalledTimes(1);
     fireEvent.click(hideButton);
 
     expect(tauri.emitTo).toHaveBeenCalledWith("main", "companion-hide-requested", {});

@@ -1,12 +1,20 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow, LogicalSize, PhysicalPosition, primaryMonitor } from "@tauri-apps/api/window";
+import { ChevronRight, Eye, Settings as SettingsIcon, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import irisAvatarImage from "../assets/avatars/iris-companion.png";
 import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import { DEFAULT_HOTKEYS, type CompanionAvatar } from "../lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase, type CompanionSnapshot } from "../lib/companion";
+import { snapToWorkAreaEdge } from "../lib/companionWindowPosition";
 import { formatShortcutForDisplay } from "../lib/hotkeys";
+
+// Pointer-gesture tunables for batch 4. Picked so a deliberate tap (~120 ms)
+// clearly reads as a tap, while a brief mouse jiggle on press never trips
+// drag mode by accident.
+const DRAG_THRESHOLD_PX = 5;
+const TAP_MAX_MS = 250;
+const LONG_PRESS_MS = 600;
 
 // Batch 1 design language for the companion window:
 //   D — the state "halo" lives on the avatar wrap (.companion-avatar-wrap),
@@ -116,19 +124,146 @@ export function CompanionWindow() {
     return formatElapsed(Math.max(0, Math.floor((now - snapshot.recordingStartedAt) / 1000)));
   }, [now, snapshot.recordingStartedAt]);
 
-  const startDragging = () => {
-    void getCurrentWindow().startDragging().catch(() => undefined);
-  };
-
-  const hideCompanion = () => {
+  const hideCompanion = useCallback(() => {
     void emitTo("main", "companion-hide-requested", {});
     void getCurrentWindow().hide().catch(() => undefined);
+  }, []);
+
+  const openSettings = useCallback(() => {
+    void emitTo("main", "companion-open-settings", {});
+  }, []);
+
+  const showMainWindow = useCallback(() => {
+    void emitTo("main", "companion-show-main", {});
+  }, []);
+
+  /**
+   * After Tauri's startDragging promise resolves, the user has released the
+   * mouse and the window is at its new position. We then (a) optionally
+   * snap to the nearest work-area edge and (b) report the final position
+   * to the main window so it can persist the user's choice across launches.
+   */
+  const handleDragEnd = useCallback(async () => {
+    try {
+      const win = getCurrentWindow();
+      const [outerPos, outerSize, monitor] = await Promise.all([
+        win.outerPosition(),
+        win.outerSize(),
+        primaryMonitor()
+      ]);
+      if (!monitor) return;
+      const snapped = snapToWorkAreaEdge(
+        { x: outerPos.x, y: outerPos.y },
+        { width: outerSize.width, height: outerSize.height },
+        { position: monitor.position, size: monitor.size }
+      );
+      if (snapped) {
+        await win.setPosition(new PhysicalPosition(snapped.x, snapped.y));
+      }
+      const finalPos = snapped ?? { x: outerPos.x, y: outerPos.y };
+      void emitTo("main", "companion-position-changed", finalPos);
+    } catch {
+      // Position queries can fail mid-Space-switch; the only consequence is
+      // we don't persist the new position this drag, which is acceptable.
+    }
+  }, []);
+
+  // === F — pointer-gesture state machine ===
+  // Single short tap → toggle dictation.
+  // Long press (≥600ms, no drag) → show context menu.
+  // Movement past DRAG_THRESHOLD_PX → start a native window drag.
+  // All three live in one onPointerDown so they share start-coords + start-
+  // time and don't conflict with each other.
+  const gestureRef = useRef<{
+    startedAt: number;
+    startX: number;
+    startY: number;
+    longPressTimer: number;
+    consumed: boolean; // true once we've routed to drag / long-press / tap
+  } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const handlePointerDown = (event: React.PointerEvent) => {
+    // Only react to primary mouse button / single-touch. Anything else
+    // (right-click, multi-touch) falls through to the platform.
+    if (event.button !== 0) return;
+    if (event.target instanceof HTMLElement && event.target.closest("[data-no-gesture]")) {
+      // Children opt out (hide button, menu items). They handle their own clicks.
+      return;
+    }
+
+    const longPressTimer = window.setTimeout(() => {
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.consumed) return;
+      gesture.consumed = true;
+      setMenuOpen(true);
+    }, LONG_PRESS_MS);
+
+    gestureRef.current = {
+      startedAt: Date.now(),
+      startX: event.clientX,
+      startY: event.clientY,
+      longPressTimer,
+      consumed: false
+    };
   };
+
+  const handlePointerMove = (event: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.consumed) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return;
+
+    gesture.consumed = true;
+    window.clearTimeout(gesture.longPressTimer);
+    void getCurrentWindow()
+      .startDragging()
+      .then(handleDragEnd)
+      .catch(() => undefined);
+  };
+
+  const handlePointerUp = () => {
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+    window.clearTimeout(gesture.longPressTimer);
+
+    if (!gesture.consumed) {
+      const elapsedMs = Date.now() - gesture.startedAt;
+      if (elapsedMs < TAP_MAX_MS) {
+        // Short tap with no drag, no long-press → toggle recording.
+        void emitTo("main", "companion-toggle-dictation", {});
+      }
+    }
+    gestureRef.current = null;
+  };
+
+  const handlePointerCancel = () => {
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+    window.clearTimeout(gesture.longPressTimer);
+    gestureRef.current = null;
+  };
+
+  // Close the menu on Escape / outside click. We can't rely on the native
+  // <details> element because the menu sits inside a transparent Tauri
+  // window where bubbling can stop at unexpected places.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   return (
     <section
       className={`companion-shell companion-shell--${snapshot.phase}`}
-      onPointerDown={startDragging}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       aria-label="Dictivo floating recording status"
       data-phase={snapshot.phase}
     >
@@ -151,8 +286,8 @@ export function CompanionWindow() {
           type="button"
           title="Hide companion"
           aria-label="Hide companion"
+          data-no-gesture
           onClick={hideCompanion}
-          onPointerDown={(event) => event.stopPropagation()}
         >
           <X size={11} />
         </button>
@@ -168,6 +303,25 @@ export function CompanionWindow() {
         ) : null}
         <div className="companion-sub">{snapshot.detail || snapshot.summary}</div>
       </div>
+
+      {menuOpen ? (
+        <div className="companion-menu" role="menu" data-no-gesture>
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); showMainWindow(); }}>
+            <Eye size={13} /> Show Dictivo
+            <ChevronRight size={12} className="companion-menu-chevron" />
+          </button>
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); openSettings(); }}>
+            <SettingsIcon size={13} /> Settings
+            <ChevronRight size={12} className="companion-menu-chevron" />
+          </button>
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); hideCompanion(); }}>
+            <X size={13} /> Hide companion
+          </button>
+          <button type="button" role="menuitem" className="companion-menu-dismiss" onClick={() => setMenuOpen(false)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

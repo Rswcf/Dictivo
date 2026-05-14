@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, statSync } from "node:fs";
 import { buildCompanionSnapshot } from "../src/lib/companion";
-import { companionWindowPosition } from "../src/lib/companionWindowPosition";
+import {
+  COMPANION_SNAP_THRESHOLD,
+  companionWindowPosition,
+  snapToWorkAreaEdge
+} from "../src/lib/companionWindowPosition";
 
 describe("floating companion state", () => {
   it("summarizes an active recording with the stop hotkey and timer source", () => {
@@ -230,5 +234,55 @@ describe("floating companion window positioning", () => {
         12
       )
     ).toEqual({ x: 678, y: 32 });
+  });
+});
+
+describe("snapToWorkAreaEdge — companion drag-end magnet", () => {
+  const monitor = {
+    position: { x: 0, y: 0 },
+    size: { width: 1440, height: 900 }
+  };
+  const windowSize = { width: 92, height: 92 };
+
+  it("returns null when the window is far from every edge", () => {
+    expect(snapToWorkAreaEdge({ x: 600, y: 400 }, windowSize, monitor)).toBeNull();
+  });
+
+  it("snaps to the left edge when within threshold", () => {
+    const snapped = snapToWorkAreaEdge({ x: 12, y: 400 }, windowSize, monitor);
+    expect(snapped).toEqual({ x: 0, y: 400 });
+  });
+
+  it("snaps to the right edge when within threshold", () => {
+    const snapped = snapToWorkAreaEdge({ x: 1320, y: 400 }, windowSize, monitor);
+    expect(snapped).toEqual({ x: 1348, y: 400 }); // 1440 - 92 = 1348
+  });
+
+  it("snaps to the top edge when within threshold", () => {
+    const snapped = snapToWorkAreaEdge({ x: 600, y: 16 }, windowSize, monitor);
+    expect(snapped).toEqual({ x: 600, y: 0 });
+  });
+
+  it("snaps to the bottom-right corner when both edges are within threshold", () => {
+    const snapped = snapToWorkAreaEdge({ x: 1330, y: 780 }, windowSize, monitor);
+    expect(snapped).toEqual({ x: 1348, y: 808 }); // 1440-92, 900-92
+  });
+
+  it("ignores edges farther than the configurable threshold", () => {
+    const snapped = snapToWorkAreaEdge({ x: 200, y: 400 }, windowSize, monitor, 50);
+    expect(snapped).toBeNull();
+  });
+
+  it("clamps a snapped position to the rightmost valid origin", () => {
+    // Window dragged slightly past the right edge (10 px beyond) — within
+    // threshold, so we snap; the snap target is clamped to maxX so the
+    // window never reports an off-screen origin.
+    const snapped = snapToWorkAreaEdge({ x: 1358, y: 400 }, windowSize, monitor);
+    expect(snapped).toEqual({ x: 1348, y: 400 });
+  });
+
+  it("exposes a sane default threshold", () => {
+    expect(COMPANION_SNAP_THRESHOLD).toBeGreaterThan(0);
+    expect(COMPANION_SNAP_THRESHOLD).toBeLessThanOrEqual(80);
   });
 });

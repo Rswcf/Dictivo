@@ -25,6 +25,17 @@ export type CustomCompanionAvatar = {
   updatedAt: string;
 };
 
+/**
+ * User-chosen on-screen position for the floating companion window. Stored
+ * in physical pixels because Tauri's setPosition + outerPosition both work
+ * in physical pixels on macOS. `null` means "no override; use the default
+ * top-right corner anchor".
+ */
+export type CompanionPosition = {
+  x: number;
+  y: number;
+};
+
 export type HotkeySettings = {
   dictation: string;
   pasteLast: string;
@@ -59,6 +70,7 @@ export type Settings = {
   companionEnabled: boolean;
   companionAvatar: CompanionAvatar;
   customCompanionAvatar: CustomCompanionAvatar | null;
+  companionPosition: CompanionPosition | null;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   dictionary: DictionaryTerm[];
@@ -73,6 +85,7 @@ const DEFAULTS: Settings = {
   companionEnabled: true,
   companionAvatar: "dog",
   customCompanionAvatar: null,
+  companionPosition: null,
   hotkeys: DEFAULT_HOTKEYS,
   localProcessing: DEFAULT_LOCAL_PROCESSING,
   dictionary: [],
@@ -161,6 +174,7 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     companionEnabled: booleanOrDefault(parsed.companionEnabled, DEFAULTS.companionEnabled),
     companionAvatar: companionAvatar === "custom" && !customCompanionAvatar ? DEFAULTS.companionAvatar : companionAvatar,
     customCompanionAvatar,
+    companionPosition: normalizeCompanionPosition(parsed.companionPosition),
     hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
     localProcessing: normalizeLocalProcessing(
       parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
@@ -190,6 +204,18 @@ export function validateCustomCompanionAvatarFile(file: Pick<File, "size" | "typ
   if (!CUSTOM_COMPANION_AVATAR_TYPES.includes(file.type as (typeof CUSTOM_COMPANION_AVATAR_TYPES)[number])) {
     throw new Error("Choose a PNG, JPG, WebP, or GIF image.");
   }
+}
+
+function normalizeCompanionPosition(value: unknown): CompanionPosition | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Record<string, unknown>;
+  const x = typeof parsed.x === "number" && Number.isFinite(parsed.x) ? parsed.x : null;
+  const y = typeof parsed.y === "number" && Number.isFinite(parsed.y) ? parsed.y : null;
+  if (x === null || y === null) return null;
+  // Loosely sanity-check the values so absurd numbers (corrupted storage,
+  // off-screen monitor that no longer exists) fall back to the auto-anchor.
+  if (Math.abs(x) > 20_000 || Math.abs(y) > 20_000) return null;
+  return { x: Math.round(x), y: Math.round(y) };
 }
 
 function normalizeCustomCompanionAvatar(value: unknown): CustomCompanionAvatar | null {

@@ -98,6 +98,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [companionEnabled, setCompanionEnabled] = useState(initialSettings.companionEnabled);
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>(initialSettings.companionAvatar);
   const [customCompanionAvatar, setCustomCompanionAvatar] = useState<CustomCompanionAvatar | null>(initialSettings.customCompanionAvatar);
+  const [companionPosition, setCompanionPosition] = useState(initialSettings.companionPosition);
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(normalizeHotkeys(initialSettings.hotkeys));
   const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(normalizeLocalProcessing(initialSettings.localProcessing));
   const [privateFastStatus, setPrivateFastStatus] = useState<PrivateFastStatus>({
@@ -207,12 +208,13 @@ export function App({ windowLabel = "main" }: AppProps) {
       companionEnabled,
       companionAvatar,
       customCompanionAvatar,
+      companionPosition,
       hotkeys,
       localProcessing,
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
+  }, [companionAvatar, companionEnabled, companionPosition, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -671,7 +673,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       }
 
       if (!companionPositionedRef.current) {
-        await positionCompanionWindow(companion);
+        await positionCompanionWindow(companion, companionPosition);
         companionPositionedRef.current = true;
       }
 
@@ -680,7 +682,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Unable to show floating companion.");
     }
-  }, [companionSnapshot]);
+  }, [companionPosition, companionSnapshot]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -720,22 +722,71 @@ export function App({ windowLabel = "main" }: AppProps) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
 
-    let unlisten: (() => void) | undefined;
     let disposed = false;
-    void listen("companion-hide-requested", () => {
+    const cleanups: Array<() => void> = [];
+    const register = (channel: string, handler: (payload: unknown) => void) => {
+      // Tauri's real listen() passes `{ payload }`. Some test mocks pass the
+      // raw payload (or nothing); accept both shapes so a test-side mock
+      // shape mismatch never crashes the production handler.
+      void listen(channel, (event: unknown) => {
+        if (event && typeof event === "object" && "payload" in event) {
+          handler((event as { payload: unknown }).payload);
+        } else {
+          handler(event);
+        }
+      }).then((cleanup) => {
+        if (disposed) cleanup();
+        else cleanups.push(cleanup);
+      });
+    };
+
+    register("companion-hide-requested", () => {
       setCompanionEnabled(false);
       setStatusMessage("Floating companion hidden. Re-enable it in Settings -> Companion.");
-    }).then((cleanup) => {
-      if (disposed) {
-        cleanup();
-        return;
+    });
+
+    // F — short tap on the companion avatar toggles dictation. The actual
+    // ref is set later in the file; we call through the ref so this listener
+    // doesn't have to be torn down + re-registered every time the callback
+    // identity changes.
+    register("companion-toggle-dictation", () => {
+      const fn = isDictatingRef.current ? stopDictationRef.current : startDictationRef.current;
+      void fn?.();
+    });
+
+    // F — long-press menu actions.
+    register("companion-open-settings", () => {
+      setView("settings");
+      void TauriWindow.getByLabel("main").then((main) => {
+        if (!main) return;
+        void main.show();
+        void main.unminimize();
+        void main.setFocus();
+      }).catch(() => undefined);
+    });
+    register("companion-show-main", () => {
+      void TauriWindow.getByLabel("main").then((main) => {
+        if (!main) return;
+        void main.show();
+        void main.unminimize();
+        void main.setFocus();
+      }).catch(() => undefined);
+    });
+
+    // E — companion just settled at a new position (drag end, possibly with
+    // edge snap applied). Persist it so the next launch reopens the widget
+    // exactly where the user left it.
+    register("companion-position-changed", (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const { x, y } = payload as { x?: unknown; y?: unknown };
+      if (typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y)) {
+        setCompanionPosition({ x: Math.round(x), y: Math.round(y) });
       }
-      unlisten = cleanup;
     });
 
     return () => {
       disposed = true;
-      unlisten?.();
+      cleanups.forEach((fn) => fn());
     };
   }, []);
 
@@ -1147,7 +1198,17 @@ function placeholderRunnableTiers(): RunnableTiers {
   };
 }
 
-async function positionCompanionWindow(window: TauriWindow) {
+async function positionCompanionWindow(window: TauriWindow, override?: { x: number; y: number } | null) {
+  if (override) {
+    // The user explicitly placed the companion on a previous launch; honor
+    // that exact position. We deliberately do not re-clamp here because the
+    // companion-position-changed handler already validates/clamps before
+    // persisting, and re-clamping against a now-different monitor layout
+    // could undo a deliberate placement on a secondary display.
+    await window.setPosition(new PhysicalPosition(override.x, override.y));
+    return;
+  }
+
   const [monitor, size] = await Promise.all([primaryMonitor(), window.outerSize()]);
   if (!monitor) return;
 
