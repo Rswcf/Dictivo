@@ -170,7 +170,7 @@ async fn ls_post(url: &str, form: &[(&str, &str)]) -> Result<serde_json::Value, 
         .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
         .user_agent("Dictivo-License/1.0")
         .build()
-        .map_err(|e| format!("HTTP client init failed: {e}"))?;
+        .map_err(|_| "Unable to start license check. Please restart Dictivo.".to_string())?;
 
     let response = client
         .post(url)
@@ -178,22 +178,57 @@ async fn ls_post(url: &str, form: &[(&str, &str)]) -> Result<serde_json::Value, 
         .form(form)
         .send()
         .await
-        .map_err(|e| format!("Network error contacting license server: {e}"))?;
+        .map_err(|e| friendly_network_error(e))?;
 
     let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Could not parse license server response: {e}"))?;
+    let body: serde_json::Value = response.json().await.map_err(|_| {
+        "Lemon Squeezy returned an unexpected response. Try again in a moment.".to_string()
+    })?;
 
     if !status.is_success() {
-        let message = body
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Activation failed. Please double-check the license key.");
-        return Err(message.to_string());
+        let raw = body.get("error").and_then(|v| v.as_str()).unwrap_or("");
+        return Err(friendly_activation_error(status.as_u16(), raw));
     }
     Ok(body)
+}
+
+/// Map reqwest's verbose network error into something an end user can act on.
+/// We deliberately don't expose the raw `reqwest::Error` text — it's full of
+/// internal terms ("Connection reset", "dns error: failed to lookup address")
+/// that scare users without telling them what to do.
+fn friendly_network_error(error: reqwest::Error) -> String {
+    if error.is_timeout() {
+        "License server didn't respond in time. Check your internet connection and try again."
+            .to_string()
+    } else if error.is_connect() || error.is_request() {
+        "Couldn't reach the license server. Check your internet connection and try again."
+            .to_string()
+    } else {
+        "Network error while contacting the license server. Try again in a moment.".to_string()
+    }
+}
+
+/// Map known Lemon Squeezy error responses to user-friendly text. The full
+/// list of error strings is at https://docs.lemonsqueezy.com/api/license-api ;
+/// we cover the ones a real customer is most likely to hit.
+fn friendly_activation_error(status: u16, raw: &str) -> String {
+    let lowered = raw.to_lowercase();
+    if lowered.contains("license_key_not_found") || lowered.contains("not found") {
+        return "This license key wasn't recognized. Double-check the key in your purchase email, or contact hello@dictivo.app.".to_string();
+    }
+    if lowered.contains("activation_limit") {
+        return "This license is already active on the maximum number of devices. Open Settings → License on one of your other Macs and click 'Remove from this device', then activate here.".to_string();
+    }
+    if lowered.contains("license_key_disabled") || lowered.contains("disabled") {
+        return "This license has been disabled (refunded or revoked). Contact hello@dictivo.app if you believe this is a mistake.".to_string();
+    }
+    if status == 401 || status == 403 {
+        return "Lemon Squeezy rejected this activation request. Please try again or contact hello@dictivo.app.".to_string();
+    }
+    if !raw.is_empty() {
+        return format!("Activation failed: {raw}");
+    }
+    "Activation failed. Please double-check the license key and try again.".to_string()
 }
 
 fn build_license_from_response(
@@ -401,5 +436,31 @@ mod tests {
         });
         let err = build_license_from_response(&response, "BAD").unwrap_err();
         assert!(err.contains("license_key_not_found") || err.contains("verify"));
+    }
+
+    #[test]
+    fn friendly_error_explains_unknown_license_key() {
+        let msg = friendly_activation_error(404, "license_key_not_found");
+        assert!(msg.contains("wasn't recognized"));
+        assert!(msg.contains("hello@dictivo.app"));
+    }
+
+    #[test]
+    fn friendly_error_explains_seat_exhaustion() {
+        let msg = friendly_activation_error(422, "activation_limit");
+        assert!(msg.to_lowercase().contains("maximum number of devices"));
+        assert!(msg.contains("Remove from this device"));
+    }
+
+    #[test]
+    fn friendly_error_explains_revoked_license() {
+        let msg = friendly_activation_error(403, "license_key_disabled");
+        assert!(msg.to_lowercase().contains("disabled"));
+    }
+
+    #[test]
+    fn friendly_error_falls_back_for_unknown_payload() {
+        let msg = friendly_activation_error(500, "");
+        assert!(msg.contains("Activation failed"));
     }
 }
