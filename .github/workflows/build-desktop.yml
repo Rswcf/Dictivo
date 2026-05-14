@@ -98,6 +98,15 @@ jobs:
         run: node scripts/prepare-private-fast-engine.mjs
 
       - name: Build Tauri bundle
+        env:
+          # createUpdaterArtifacts: true in tauri.conf.json means every tauri
+          # build emits a signed updater payload — even from this CI workflow
+          # whose only job is to prove the code compiles. Without the key, the
+          # signing step fails and the entire workflow goes red. The key
+          # itself is identical to the one the release workflow uses; signed
+          # CI artifacts are validation-only and never published.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }} --bundles ${{ matrix.tauri_bundles }}
 
       - name: Upload desktop artifact
