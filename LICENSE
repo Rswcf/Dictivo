@@ -1,0 +1,99 @@
+Functional Source License, Version 1.1, MIT Future License
+
+Abbreviation
+   FSL-1.1-MIT
+
+Notice
+   Copyright 2026 Yijie Ma
+
+   Please read this license carefully before copying, modifying,
+   distributing, or otherwise using this Software. By doing any of those
+   things you agree to be bound by the terms of this license.
+
+   If you do not agree to the terms of this license, do not copy,
+   modify, distribute, or use the Software.
+
+Terms
+
+1. License Grant
+
+   Licensor hereby grants you the right to use, copy, modify, create
+   derivative works, publicly perform, publicly display and redistribute
+   the Software for any Permitted Purpose identified below, subject to
+   the conditions in this license.
+
+2. Permitted Purpose
+
+   A Permitted Purpose is any purpose other than a Competing Use. A
+   Competing Use means making the Software available to others in a
+   commercial product or service that competes with the Software.
+
+   Permitted Purposes specifically include but are not limited to:
+
+   1. internal use and modification by individuals, businesses, or other
+      organizations;
+   2. evaluation and proof-of-concept work;
+   3. academic research and teaching;
+   4. research and personal experimentation;
+   5. charitable and not-for-profit use;
+   6. journalism and security research;
+   7. publishing improvements that are merged back upstream into the
+      original Software.
+
+3. Patents
+
+   To the extent your use of the Software for the Permitted Purpose
+   would necessarily infringe the Licensor's patents, the patent
+   license granted to you under this license includes a license to
+   those patent claims. This patent license does not extend to the
+   Software's combinations with other software or hardware unless the
+   Licensor specifically agrees in writing.
+
+   If you bring or threaten any claim that the Software infringes a
+   patent, then your patent license to the Software ends immediately.
+
+4. Redistribution
+
+   The Permitted Purpose includes redistribution of the Software,
+   modified or unmodified, on the condition that you give every
+   recipient of the Software a copy of this license. This applies
+   whether you redistribute the source code, the compiled output,
+   or both.
+
+5. Disclaimer
+
+   YOU RECEIVE THE SOFTWARE "AS-IS." THE LICENSOR HEREBY DISCLAIMS ALL
+   WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT
+   LIMITATION ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE, OR NON-INFRINGEMENT. THE LICENSOR WILL NOT BE
+   LIABLE TO YOU FOR ANY DAMAGES ARISING OUT OF THIS LICENSE OR YOUR
+   USE OF THE SOFTWARE, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT,
+   INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, EVEN IF
+   THE LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+6. Future Date
+
+   On the second anniversary of the date the Licensor first publishes
+   each version of the Software under this license (the "Change Date"),
+   each version of the Software is additionally licensed under the MIT
+   License — see https://opensource.org/license/mit/ for the standard
+   MIT License text. This Future License applies to that version
+   prospectively from the Change Date and does not retroactively change
+   the terms of your use prior to that date.
+
+7. Definitions
+
+   "Licensor" means Yijie Ma, the author of the Software.
+   "Software" means Dictivo's source code, build scripts, and other
+   files that make up the Dictivo desktop application, as published
+   from time to time by the Licensor at
+   https://github.com/Rswcf/Dictivo .
+
+8. About FSL-1.1-MIT
+
+   The Functional Source License is a non-OSI-approved source-available
+   license maintained by Sentry. The canonical text and rationale live
+   at https://fsl.software/. Dictivo chose this license for its
+   straightforward two-year MIT conversion, which gives both immediate
+   transparency for users auditing the privacy claims and a path to
+   permanent open-sourcing without indefinite commercial restriction.

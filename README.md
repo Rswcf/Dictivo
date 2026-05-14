@@ -236,6 +236,14 @@ If Dictivo saves you from typing up another email, give the repo a star — it's
 
 ---
 
+## License
+
+Dictivo is published under the [**Functional Source License, Version 1.1, MIT Future License**](./LICENSE) (`FSL-1.1-MIT`). You can read every line of the desktop client, audit the privacy claims yourself, run it for personal or internal use, and modify it for your own needs. The only restriction is that you may not ship a competing dictation product built on this code while it is still source-available. **Two years after each release, that version automatically converts to the standard MIT License**, removing the competitive-use restriction entirely.
+
+Third-party components included in the desktop binary are catalogued in [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md). All are permissively licensed (MIT / Apache-2.0 / BSD / ISC) and none impose obligations on Dictivo users.
+
+---
+
 <p align="center">
   Built with Tauri 2, React 19, whisper.cpp, and an irrational love for tiny binaries that respect your privacy.
 </p>
