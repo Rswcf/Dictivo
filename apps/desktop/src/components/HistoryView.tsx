@@ -1,7 +1,13 @@
 import type { LocalSession } from "@dictivo/shared";
 import { useEffect, useState } from "react";
 import { Check, ClipboardPaste, Download, FileText, Search, Trash2 } from "lucide-react";
-import { downloadText, markdownFilenameForSession, sessionToMarkdown } from "../lib/export";
+import {
+  downloadText,
+  exportAllSessionsToMarkdown,
+  historyExportFilename,
+  markdownFilenameForSession,
+  sessionToMarkdown
+} from "../lib/export";
 import { IconButton } from "./IconButton";
 
 type HistoryViewProps = {
@@ -52,6 +58,13 @@ export function HistoryView({
           placeholder="Search local history"
           aria-label="Search local history"
         />
+        <IconButton
+          label="Export all history as Markdown"
+          disabled={sessions.length === 0 || operationInProgress}
+          onClick={() => downloadText(historyExportFilename(), exportAllSessionsToMarkdown(sessions))}
+        >
+          <Download size={18} />
+        </IconButton>
         <IconButton label="Clear local history" tone="danger" disabled={sessions.length === 0 || operationInProgress} onClick={() => setConfirmingClear(true)}>
           <Trash2 size={18} />
         </IconButton>

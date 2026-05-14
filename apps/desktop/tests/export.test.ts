@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LocalSession } from "@dictivo/shared";
-import { downloadText, markdownFilenameForSession, safeDownloadBasename, sessionToMarkdown } from "../src/lib/export";
+import {
+  downloadText,
+  exportAllSessionsToMarkdown,
+  historyExportFilename,
+  markdownFilenameForSession,
+  safeDownloadBasename,
+  sessionToMarkdown
+} from "../src/lib/export";
 
 const session: LocalSession = {
   id: "session_1",
@@ -83,5 +90,35 @@ describe("history export helpers", () => {
     expect(anchor.download).toBe("session.md");
     expect(click).toHaveBeenCalledOnce();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:local-markdown");
+  });
+
+  it("emits an export filename anchored to the local export date", () => {
+    expect(historyExportFilename(new Date("2026-05-14T12:34:56Z"))).toBe("dictivo-history-2026-05-14.md");
+    expect(historyExportFilename(new Date("2027-01-02T00:00:00Z"))).toBe("dictivo-history-2027-01-02.md");
+  });
+
+  it("bundles multiple sessions newest-first with separators and a header", () => {
+    const olderSession: LocalSession = {
+      ...session,
+      id: "session_0",
+      title: "Earlier note",
+      createdAt: "2026-05-10T08:00:00.000Z",
+      text: "Earlier transcript."
+    };
+    const bundle = exportAllSessionsToMarkdown([session, olderSession], new Date("2026-05-14T12:34:56Z"));
+
+    expect(bundle).toMatch(/^# Dictivo history export/);
+    expect(bundle).toContain("Exported: 2026-05-14T12:34:56.000Z");
+    expect(bundle).toContain("Sessions: 2");
+    expect(bundle).toContain("# Local Dictation");
+    expect(bundle).toContain("# Earlier note");
+    expect(bundle.indexOf("Local Dictation")).toBeLessThan(bundle.indexOf("Earlier note"));
+    expect(bundle).toMatch(/\n---\n/);
+  });
+
+  it("includes a friendly message when there is nothing to export", () => {
+    const empty = exportAllSessionsToMarkdown([], new Date("2026-05-14T12:34:56Z"));
+    expect(empty).toContain("Sessions: 0");
+    expect(empty).toContain("_No sessions to export._");
   });
 });
