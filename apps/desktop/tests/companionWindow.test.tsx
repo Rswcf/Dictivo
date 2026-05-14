@@ -108,13 +108,13 @@ describe("CompanionWindow", () => {
     await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
 
     await emitCompanionState({
-      avatar: "bikini",
+      avatar: "iris",
       phase: "processing",
       title: "Transcribing",
       detail: "Local engine is working"
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--processing");
-    expect(screen.getByRole("img", { name: "Bikini companion" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Iris companion" })).toBeTruthy();
     expect(screen.getByText("…").className).toContain("companion-emote--proc");
 
     await emitCompanionState({
@@ -128,14 +128,14 @@ describe("CompanionWindow", () => {
     expect(screen.getByText("✓").className).toContain("companion-emote--done");
 
     await emitCompanionState({
-      avatar: "muscle",
+      avatar: "marcus",
       phase: "blocked",
       title: "Setup needed",
       detail: "",
       summary: "Open Local Engine settings"
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--blocked");
-    expect(screen.getByRole("img", { name: "Muscle companion" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Marcus companion" })).toBeTruthy();
     expect(screen.getByText("Open Local Engine settings")).toBeTruthy();
     expect(screen.getByText("!").className).toContain("companion-emote--err");
   });

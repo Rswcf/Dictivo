@@ -2,8 +2,8 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
-import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
+import irisAvatarImage from "../assets/avatars/iris-companion.png";
+import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import { DEFAULT_HOTKEYS, type CompanionAvatar } from "../lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase, type CompanionSnapshot } from "../lib/companion";
 import { formatShortcutForDisplay } from "../lib/hotkeys";
@@ -127,22 +127,22 @@ function CartoonAvatar({
     );
   }
   if (avatar === "cat") return <CatAvatar phase={phase} />;
-  if (avatar === "bikini") {
+  if (avatar === "iris") {
     return (
       <img
-        className={`companion-avatar companion-avatar--bikini is-${phase}`}
-        src={bikiniAvatarImage}
-        alt="Bikini companion"
+        className={`companion-avatar companion-avatar--iris is-${phase}`}
+        src={irisAvatarImage}
+        alt="Iris companion"
         draggable={false}
       />
     );
   }
-  if (avatar === "muscle") {
+  if (avatar === "marcus") {
     return (
       <img
-        className={`companion-avatar companion-avatar--muscle is-${phase}`}
-        src={muscleAvatarImage}
-        alt="Muscle companion"
+        className={`companion-avatar companion-avatar--marcus is-${phase}`}
+        src={marcusAvatarImage}
+        alt="Marcus companion"
         draggable={false}
       />
     );

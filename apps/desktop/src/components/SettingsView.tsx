@@ -10,8 +10,8 @@ import {
   type LicenseSummary,
   type UpdateCheckResult
 } from "../lib/desktopBridge";
-import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
-import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
+import irisAvatarImage from "../assets/avatars/iris-companion.png";
+import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
 import { shortcutMatches } from "../lib/hotkeys";
 import { readCustomCompanionAvatar, type CompanionAvatar, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings } from "../lib/settingsStore";
@@ -64,8 +64,8 @@ const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> =
 const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode; image?: string }> = [
   { id: "dog", label: "Dog", icon: <Dog size={18} /> },
   { id: "cat", label: "Cat", icon: <Cat size={18} /> },
-  { id: "bikini", label: "Bikini", icon: <Sparkles size={18} />, image: bikiniAvatarImage },
-  { id: "muscle", label: "Muscle", icon: <Sparkles size={18} />, image: muscleAvatarImage }
+  { id: "iris", label: "Iris", icon: <Sparkles size={18} />, image: irisAvatarImage },
+  { id: "marcus", label: "Marcus", icon: <Sparkles size={18} />, image: marcusAvatarImage }
 ];
 
 export const privacyPermissionItems: Array<{

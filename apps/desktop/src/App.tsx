@@ -3,8 +3,8 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Settings, TerminalSquare } from "lucide-react";
-import bikiniAvatarImage from "./assets/avatars/bikini-companion.png";
-import muscleAvatarImage from "./assets/avatars/muscle-companion.png";
+import irisAvatarImage from "./assets/avatars/iris-companion.png";
+import marcusAvatarImage from "./assets/avatars/marcus-companion.png";
 import {
   LANGUAGE_LABELS,
   type DictionaryTerm,
@@ -1072,8 +1072,8 @@ function MascotGlyph({ avatar, customAvatar }: { avatar: CompanionAvatar; custom
       </svg>
     );
   }
-  if (avatar === "bikini") return <img src={bikiniAvatarImage} alt="" draggable={false} />;
-  if (avatar === "muscle") return <img src={muscleAvatarImage} alt="" draggable={false} />;
+  if (avatar === "iris") return <img src={irisAvatarImage} alt="" draggable={false} />;
+  if (avatar === "marcus") return <img src={marcusAvatarImage} alt="" draggable={false} />;
   return (
     <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon dog">
       <circle cx="48" cy="52" r="31" fill="#d89954" />

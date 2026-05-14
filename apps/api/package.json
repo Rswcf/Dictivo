@@ -1,6 +1,6 @@
 {
   "name": "@dictivo/api",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@dictivo/shared": "^0.2.0",
+    "@dictivo/shared": "^0.2.1",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.2",
     "pg": "^8.16.3",

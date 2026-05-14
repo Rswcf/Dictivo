@@ -1,8 +1,8 @@
 import type { SupportedLanguage } from "@dictivo/shared";
 import { Mic, X as XIcon } from "lucide-react";
 import { estimateWordCount } from "@dictivo/shared";
-import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
-import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
+import irisAvatarImage from "../assets/avatars/iris-companion.png";
+import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import type {
   HardwareProfile,
   PrivateFastModel,
@@ -201,8 +201,8 @@ function AvatarGlyph({ avatar, customAvatar }: { avatar: CompanionAvatar; custom
       </svg>
     );
   }
-  if (avatar === "bikini") return <img src={bikiniAvatarImage} alt="Bikini companion" draggable={false} />;
-  if (avatar === "muscle") return <img src={muscleAvatarImage} alt="Muscle companion" draggable={false} />;
+  if (avatar === "iris") return <img src={irisAvatarImage} alt="Iris companion" draggable={false} />;
+  if (avatar === "marcus") return <img src={marcusAvatarImage} alt="Marcus companion" draggable={false} />;
   return (
     <svg viewBox="0 0 96 96" role="img" aria-label="Cartoon dog">
       <circle cx="48" cy="52" r="31" fill="#d89954" />

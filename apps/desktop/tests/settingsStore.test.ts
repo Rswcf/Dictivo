@@ -161,6 +161,28 @@ describe("settingsStore v4 migration", () => {
     });
   });
 
+  it("migrates legacy avatar ids that were renamed in 0.2.1", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({ companionAvatar: "bikini", onboardingCompleted: true })
+    );
+    expect(loadSettings().companionAvatar).toBe("iris");
+
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({ companionAvatar: "muscle", onboardingCompleted: true })
+    );
+    expect(loadSettings().companionAvatar).toBe("marcus");
+  });
+
+  it("falls back to the default avatar when the stored id is unrecognised", () => {
+    localStorage.setItem(
+      "dictivo-settings-v4",
+      JSON.stringify({ companionAvatar: "trump", onboardingCompleted: true })
+    );
+    expect(loadSettings().companionAvatar).toBe("dog");
+  });
+
   it("sanitizes dictionary and snippet arrays from legacy or corrupted settings", () => {
     localStorage.setItem(
       "dictivo-settings-v4",
