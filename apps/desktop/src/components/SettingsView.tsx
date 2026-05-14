@@ -1,4 +1,4 @@
-import { ArrowUp, Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, Receipt, RefreshCw, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from "lucide-react";
+import { ArrowUp, Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, Receipt, RefreshCw, ShieldCheck, Sparkles, Trash2, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   activateLicense,
@@ -10,7 +10,6 @@ import {
   type LicenseSummary,
   type UpdateCheckResult
 } from "../lib/desktopBridge";
-import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
 import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
@@ -62,7 +61,6 @@ const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> =
 const avatars: Array<{ id: CompanionAvatar; label: string; icon: ReactNode; image?: string }> = [
   { id: "dog", label: "Dog", icon: <Dog size={18} /> },
   { id: "cat", label: "Cat", icon: <Cat size={18} /> },
-  { id: "trump", label: "Trump", icon: <UserRound size={18} />, image: trumpAvatarImage },
   { id: "bikini", label: "Bikini", icon: <Sparkles size={18} />, image: bikiniAvatarImage },
   { id: "muscle", label: "Muscle", icon: <Sparkles size={18} />, image: muscleAvatarImage }
 ];

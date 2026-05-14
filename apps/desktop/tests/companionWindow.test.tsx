@@ -118,13 +118,13 @@ describe("CompanionWindow", () => {
     expect(screen.getByText("…").className).toContain("companion-emote--proc");
 
     await emitCompanionState({
-      avatar: "trump",
+      avatar: "cat",
       phase: "complete",
       title: "Ready",
       detail: "8 words copied"
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--complete");
-    expect(screen.getByRole("img", { name: "Cartoon Trump" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Cartoon cat" })).toBeTruthy();
     expect(screen.getByText("✓").className).toContain("companion-emote--done");
 
     await emitCompanionState({

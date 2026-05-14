@@ -3,7 +3,6 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Settings, TerminalSquare } from "lucide-react";
-import trumpAvatarImage from "./assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "./assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "./assets/avatars/muscle-companion.png";
 import {
@@ -1032,7 +1031,6 @@ function MascotGlyph({ avatar, customAvatar }: { avatar: CompanionAvatar; custom
       </svg>
     );
   }
-  if (avatar === "trump") return <img src={trumpAvatarImage} alt="" draggable={false} />;
   if (avatar === "bikini") return <img src={bikiniAvatarImage} alt="" draggable={false} />;
   if (avatar === "muscle") return <img src={muscleAvatarImage} alt="" draggable={false} />;
   return (

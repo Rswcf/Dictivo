@@ -173,14 +173,21 @@ describe("floating companion state", () => {
     expect(builtInSnapshot.customAvatarName).toBeUndefined();
   });
 
-  it("ships the generated Trump companion avatar as a project asset", () => {
-    const asset = statSync("src/assets/avatars/trump-companion.png");
-    const header = readFileSync("src/assets/avatars/trump-companion.png").subarray(0, 8);
-    const componentSource = readFileSync("src/components/CompanionWindow.tsx", "utf8");
-
-    expect(asset.size).toBeGreaterThan(100_000);
-    expect([...header]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
-    expect(componentSource).toContain("trump-companion.png");
+  it("does not ship the discontinued Trump companion avatar", () => {
+    // Removed for v1.0 launch — politically polarizing characters were
+    // incompatible with the serious-product positioning. The migration in
+    // normalizeSettings ensures any user with the legacy "trump" choice
+    // silently falls back to the default "dog" on next load.
+    const componentSources = [
+      readFileSync("src/components/CompanionWindow.tsx", "utf8"),
+      readFileSync("src/components/DictationWorkbench.tsx", "utf8"),
+      readFileSync("src/components/SettingsView.tsx", "utf8"),
+      readFileSync("src/App.tsx", "utf8")
+    ];
+    for (const source of componentSources) {
+      expect(source).not.toContain("trump-companion.png");
+      expect(source).not.toContain("\"trump\"");
+    }
   });
 });
 

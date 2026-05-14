@@ -2,7 +2,6 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import trumpAvatarImage from "../assets/avatars/trump-companion.png";
 import bikiniAvatarImage from "../assets/avatars/bikini-companion.png";
 import muscleAvatarImage from "../assets/avatars/muscle-companion.png";
 import { DEFAULT_HOTKEYS, type CompanionAvatar } from "../lib/settingsStore";
@@ -128,16 +127,6 @@ function CartoonAvatar({
     );
   }
   if (avatar === "cat") return <CatAvatar phase={phase} />;
-  if (avatar === "trump") {
-    return (
-      <img
-        className={`companion-avatar companion-avatar--trump is-${phase}`}
-        src={trumpAvatarImage}
-        alt="Cartoon Trump"
-        draggable={false}
-      />
-    );
-  }
   if (avatar === "bikini") {
     return (
       <img

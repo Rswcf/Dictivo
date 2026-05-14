@@ -4,12 +4,12 @@ const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
 const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
 const SELECTABLE_TIERS = ["fast", "medium", "slow"] as const satisfies readonly Settings["selectedTier"][];
-const COMPANION_AVATARS = ["dog", "cat", "trump", "bikini", "muscle", "custom"] as const satisfies readonly CompanionAvatar[];
+const COMPANION_AVATARS = ["dog", "cat", "bikini", "muscle", "custom"] as const satisfies readonly CompanionAvatar[];
 const LEGACY_CREATED_AT = "1970-01-01T00:00:00.000Z";
 export const CUSTOM_COMPANION_AVATAR_MAX_BYTES = 1_500_000;
 const CUSTOM_COMPANION_AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 
-export type CompanionAvatar = "dog" | "cat" | "trump" | "bikini" | "muscle" | "custom";
+export type CompanionAvatar = "dog" | "cat" | "bikini" | "muscle" | "custom";
 
 export type CustomCompanionAvatar = {
   dataUrl: string;
