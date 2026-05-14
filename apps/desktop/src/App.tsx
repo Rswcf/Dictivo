@@ -299,7 +299,8 @@ export function App({ windowLabel = "main" }: AppProps) {
   const handleOnboardingComplete = useCallback(() => {
     setOnboardingCompleted(true);
     setView("dictation");
-  }, []);
+    void refreshNativeState();
+  }, [refreshNativeState]);
 
   const saveSession = useCallback(async (partial: Omit<LocalSession, "id" | "createdAt">) => {
     const session: LocalSession = {
@@ -337,7 +338,12 @@ export function App({ windowLabel = "main" }: AppProps) {
     setPasteStatus("");
 
     try {
-      const recording = await startAudioRecording("microphone", "wav");
+      // Pipe mic level bands to the companion floating window so it can
+      // render the live waveform. We fire-and-forget the emit; if the
+      // companion is hidden, nothing listens and the event drops.
+      const recording = await startAudioRecording("microphone", "wav", (bands) => {
+        void emitTo("companion", "companion-audio-levels", { bands });
+      });
       recordingSetupPendingRef.current = false;
       dictationRecordingRef.current = recording;
       if (stopAfterRecordingSetupRef.current) {

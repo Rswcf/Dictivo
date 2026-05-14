@@ -12,6 +12,7 @@ const bridge = vi.hoisted(() => ({
   copyText: vi.fn(),
   deleteLocalSession: vi.fn(),
   deletePrivateFastModel: vi.fn(),
+  detectGpu: vi.fn(),
   downloadPrivateFastModel: vi.fn(),
   finalizeCalibration: vi.fn(),
   getClipboardMarker: vi.fn(),
@@ -216,6 +217,7 @@ describe("App startup recovery", () => {
     bridge.getPrivateFastStatus.mockResolvedValue(status);
     bridge.getPrivateFastModels.mockResolvedValue([model]);
     bridge.getHardwareProfile.mockResolvedValue(hardware);
+    bridge.detectGpu.mockResolvedValue([]);
     bridge.requestNativePermissions.mockResolvedValue({
       microphone: "web-preview",
       accessibility: "web-preview",
@@ -848,6 +850,31 @@ describe("App startup recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip setup" }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Private Dictation." })).toBeTruthy());
+  });
+
+  it("refreshes native engine state after first-run setup completes", async () => {
+    seedCompletedSettings({ onboardingCompleted: false });
+    const calibratedTiers: RunnableTiers = {
+      ...tiers,
+      medium: { modelId: "small", realtimeFactor: 0.8, predicted: false, downloaded: true, withinBudget: true },
+      benchmarkedAt: "2026-05-14T00:00:00.000Z"
+    };
+    bridge.getPrivateFastStatus.mockResolvedValueOnce(status).mockResolvedValue(readyStatus);
+    bridge.downloadPrivateFastModel.mockResolvedValue(readyStatus);
+    bridge.benchmarkTier.mockResolvedValue(0.8);
+    bridge.finalizeCalibration.mockResolvedValue(calibratedTiers);
+    bridge.getRunnableTiers.mockResolvedValue(calibratedTiers);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Looking at your computer" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue →" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Download & set up" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Ready" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Start dictating →" }));
+
+    await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+    expect(bridge.getPrivateFastStatus).toHaveBeenCalledTimes(2);
   });
 
   it("deletes a local engine model through the app bridge", async () => {

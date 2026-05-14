@@ -129,8 +129,8 @@ describe("desktop release workflow", () => {
     expect(tauriLib).toContain('let status = quiet_command("powershell")');
 
     expect(privateFastNative).toContain("cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW");
-    expect(privateFastNative).toContain("let mut command = quiet_command(&binary_path)");
-    expect(privateFastNative).toContain("let mut child = quiet_command(&binary_path)");
+    expect(privateFastNative).toContain("let mut command = quiet_command(spec.binary_path)");
+    expect(privateFastNative).toContain("let mut command = quiet_command(binary_path)");
     expect(privateFastNative).toContain('quiet_command("powershell")');
   });
 

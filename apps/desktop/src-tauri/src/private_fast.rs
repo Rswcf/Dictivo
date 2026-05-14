@@ -3,11 +3,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
+use std::io::Read;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Instant;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 /// Builds a `Command` that never flashes a console window on Windows.
@@ -18,6 +20,44 @@ fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     #[cfg(windows)]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     cmd
+}
+
+fn command_output_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+) -> Result<Option<Output>, String> {
+    let start = Instant::now();
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+
+    loop {
+        match child.try_wait().map_err(|error| error.to_string())? {
+            Some(_) => {
+                return child
+                    .wait_with_output()
+                    .map(Some)
+                    .map_err(|error| error.to_string());
+            }
+            None => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Ok(None);
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+fn hardware_probe_output(command: Command) -> Option<Output> {
+    command_output_with_timeout(command, Duration::from_secs(3))
+        .ok()
+        .flatten()
+        .filter(|output| output.status.success())
 }
 
 #[derive(Debug, Serialize)]
@@ -320,6 +360,7 @@ fn tier_budget(tier: Tier) -> f32 {
 
 fn build_runnable_tiers_with_rtfs<F>(
     class: PerformanceClass,
+    measured_medium_model_id: &str,
     measured_medium_rtf: f32,
     fingerprint: &str,
     benchmarked_at: &str,
@@ -328,8 +369,7 @@ fn build_runnable_tiers_with_rtfs<F>(
 where
     F: Fn(&str) -> bool,
 {
-    let medium_model = default_model_for_tier(class, Tier::Medium);
-    let medium_ratio = ratio_of(medium_model);
+    let medium_ratio = ratio_of(measured_medium_model_id);
     let baseline = if medium_ratio > 0.0 {
         measured_medium_rtf / medium_ratio
     } else {
@@ -337,7 +377,12 @@ where
     };
 
     let make_assignment = |tier: Tier| -> TierAssignment {
-        let model_id = default_model_for_tier(class, tier).to_string();
+        let model_id = if matches!(tier, Tier::Medium) {
+            measured_medium_model_id
+        } else {
+            default_model_for_tier(class, tier)
+        }
+        .to_string();
         let rtf = baseline * ratio_of(&model_id);
         let is_medium = matches!(tier, Tier::Medium);
         let within_budget = rtf <= tier_budget(tier);
@@ -545,7 +590,27 @@ pub fn import_private_fast_model(
     fs::create_dir_all(&models_dir).map_err(|error| error.to_string())?;
     let output_path = models_dir.join(format!("ggml-{model_id}.bin"));
     preflight_model_import_space(&model_id, source_metadata.len(), &models_dir)?;
-    fs::copy(&source, output_path).map_err(|error| error.to_string())?;
+    validate_model_file(&model_id, &source)?;
+    let partial_path = output_path.with_extension("bin.partial");
+    let _ = fs::remove_file(&partial_path);
+    fs::copy(&source, &partial_path).map_err(|error| {
+        let _ = fs::remove_file(&partial_path);
+        error.to_string()
+    })?;
+    validate_model_file(&model_id, &partial_path).map_err(|error| {
+        let _ = fs::remove_file(&partial_path);
+        error
+    })?;
+    if output_path.exists() {
+        fs::remove_file(&output_path).map_err(|error| {
+            let _ = fs::remove_file(&partial_path);
+            error.to_string()
+        })?;
+    }
+    fs::rename(&partial_path, output_path).map_err(|error| {
+        let _ = fs::remove_file(&partial_path);
+        error.to_string()
+    })?;
     write_selected_model(&model_id)?;
     Ok(build_private_fast_status(Some(&app)))
 }
@@ -556,7 +621,7 @@ pub fn delete_private_fast_model(
     model_id: String,
 ) -> Result<PrivateFastStatus, String> {
     validate_model_id(&model_id)?;
-    let paths = model_paths_for_id(&model_id);
+    let paths = raw_model_paths_for_id(&model_id);
     if paths.is_empty() {
         return Err(format!("Model {model_id} is not installed."));
     }
@@ -607,63 +672,38 @@ pub fn transcribe_private_fast(
     let quality_mode = profile == "quality";
     let balanced_mode = profile == "balanced";
     let started = Instant::now();
-    let mut command = quiet_command(&binary_path);
-    command
-        .arg("-m")
-        .arg(&model_path)
-        .arg("-f")
-        .arg(&input_path)
-        .arg("-l")
-        .arg(language_arg)
-        .arg("-otxt")
-        .arg("-of")
-        .arg(&output_stem)
-        .arg("-np")
-        .arg("-nt")
-        .arg("--temperature")
-        .arg("0")
-        .arg("--suppress-nst");
+    let run_attempt = |disable_gpu: bool| {
+        run_transcription_command(TranscriptionCommandSpec {
+            binary_path: &binary_path,
+            model_path: &model_path,
+            input_path: &input_path,
+            output_stem: &output_stem,
+            language_arg,
+            prompt: prompt.as_deref(),
+            quality_mode,
+            balanced_mode,
+            disable_gpu,
+        })
+    };
 
-    if quality_mode {
-        command
-            .arg("-bo")
-            .arg("5")
-            .arg("-bs")
-            .arg("5")
-            .arg("-mc")
-            .arg("224")
-            .arg("-sow")
-            .arg("-ml")
-            .arg("96");
-    } else if balanced_mode {
-        command
-            .arg("-bo")
-            .arg("3")
-            .arg("-bs")
-            .arg("3")
-            .arg("-mc")
-            .arg("160")
-            .arg("-sow")
-            .arg("-ml")
-            .arg("80");
-    } else {
-        command.arg("-bo").arg("1").arg("-bs").arg("1");
-    }
-
-    if let Some(prompt) = prompt {
-        command.arg("--prompt").arg(prompt);
-        if quality_mode {
-            command.arg("--carry-initial-prompt");
-        }
-    }
-
-    let output = match command.output() {
+    let mut output = match run_attempt(false) {
         Ok(output) => output,
         Err(error) => {
             cleanup_transcription_artifacts(&input_path, &output_txt);
             return Err(format!("Failed to run whisper.cpp: {error}"));
         }
     };
+
+    if !output.status.success() && whisper_failure_looks_gpu_related(&output) {
+        let _ = fs::remove_file(&output_txt);
+        output = match run_attempt(true) {
+            Ok(output) => output,
+            Err(error) => {
+                cleanup_transcription_artifacts(&input_path, &output_txt);
+                return Err(format!("Failed to run whisper.cpp CPU fallback: {error}"));
+            }
+        };
+    }
 
     if !output.status.success() {
         cleanup_transcription_artifacts(&input_path, &output_txt);
@@ -682,6 +722,106 @@ pub fn transcribe_private_fast(
         binary_path: path_to_string(binary_path),
         model_path: path_to_string(model_path),
     })
+}
+
+struct TranscriptionCommandSpec<'a> {
+    binary_path: &'a Path,
+    model_path: &'a Path,
+    input_path: &'a Path,
+    output_stem: &'a Path,
+    language_arg: &'a str,
+    prompt: Option<&'a str>,
+    quality_mode: bool,
+    balanced_mode: bool,
+    disable_gpu: bool,
+}
+
+fn run_transcription_command(spec: TranscriptionCommandSpec<'_>) -> Result<Output, String> {
+    let mut command = quiet_command(spec.binary_path);
+    command
+        .arg("-m")
+        .arg(spec.model_path)
+        .arg("-f")
+        .arg(spec.input_path)
+        .arg("-l")
+        .arg(spec.language_arg)
+        .arg("-otxt")
+        .arg("-of")
+        .arg(spec.output_stem)
+        .arg("-np")
+        .arg("-nt")
+        .arg("--temperature")
+        .arg("0")
+        .arg("--suppress-nst");
+
+    if spec.disable_gpu {
+        command.arg("-ng");
+    }
+
+    if spec.quality_mode {
+        command
+            .arg("-bo")
+            .arg("5")
+            .arg("-bs")
+            .arg("5")
+            .arg("-mc")
+            .arg("224")
+            .arg("-sow")
+            .arg("-ml")
+            .arg("96");
+    } else if spec.balanced_mode {
+        command
+            .arg("-bo")
+            .arg("3")
+            .arg("-bs")
+            .arg("3")
+            .arg("-mc")
+            .arg("160")
+            .arg("-sow")
+            .arg("-ml")
+            .arg("80");
+    } else {
+        command.arg("-bo").arg("1").arg("-bs").arg("1");
+    }
+
+    if let Some(prompt) = spec.prompt {
+        command.arg("--prompt").arg(prompt);
+        if spec.quality_mode {
+            command.arg("--carry-initial-prompt");
+        }
+    }
+
+    command.output().map_err(|error| error.to_string())
+}
+
+fn whisper_failure_looks_gpu_related(output: &Output) -> bool {
+    if output.status.success() {
+        return false;
+    }
+
+    if output.status.code().is_none() {
+        return true;
+    }
+
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stderr).to_ascii_lowercase());
+    text.push('\n');
+    text.push_str(&String::from_utf8_lossy(&output.stdout).to_ascii_lowercase());
+
+    [
+        "ggml_metal",
+        "metal",
+        "cuda",
+        "cublas",
+        "vulkan",
+        "openvino",
+        "sycl",
+        "rocm",
+        "hipblas",
+        "gpu",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
 }
 
 fn cleanup_transcription_artifacts(input_path: &Path, output_txt: &Path) {
@@ -783,6 +923,13 @@ fn model_path_for_id(model_id: &str) -> Option<PathBuf> {
 }
 
 fn model_paths_for_id(model_id: &str) -> Vec<PathBuf> {
+    raw_model_paths_for_id(model_id)
+        .into_iter()
+        .filter(|path| validate_model_file(model_id, path).is_ok())
+        .collect()
+}
+
+fn raw_model_paths_for_id(model_id: &str) -> Vec<PathBuf> {
     let name = format!("ggml-{model_id}.bin");
     let mut paths = Vec::new();
     for root in private_fast_roots() {
@@ -940,21 +1087,18 @@ fn build_hardware_profile() -> HardwareProfile {
 fn total_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
-        let output = quiet_command("sysctl")
-            .arg("-n")
-            .arg("hw.memsize")
-            .output()
-            .ok()?;
+        let mut command = quiet_command("sysctl");
+        command.arg("-n").arg("hw.memsize");
+        let output = hardware_probe_output(command)?;
         let value = String::from_utf8_lossy(&output.stdout);
         return value.trim().parse::<u64>().ok();
     }
 
     #[cfg(target_os = "windows")]
     {
-        let output = quiet_command("wmic")
-            .args(["computersystem", "get", "TotalPhysicalMemory", "/value"])
-            .output()
-            .ok()?;
+        let mut command = quiet_command("wmic");
+        command.args(["computersystem", "get", "TotalPhysicalMemory", "/value"]);
+        let output = hardware_probe_output(command)?;
         let value = String::from_utf8_lossy(&output.stdout);
         return value
             .lines()
@@ -1005,15 +1149,18 @@ fn detect_accelerators(platform: &str, arch: &str) -> Vec<String> {
 
 #[cfg(target_os = "windows")]
 fn windows_gpu_detected() -> bool {
-    quiet_command("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "(Get-CimInstance Win32_VideoController | Select-Object -First 1 -ExpandProperty Name) -ne $null",
-        ])
-        .output()
-        .ok()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().eq_ignore_ascii_case("true"))
+    let mut command = quiet_command("powershell");
+    command.args([
+        "-NoProfile",
+        "-Command",
+        "(Get-CimInstance Win32_VideoController | Select-Object -First 1 -ExpandProperty Name) -ne $null",
+    ]);
+    hardware_probe_output(command)
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .eq_ignore_ascii_case("true")
+        })
         .unwrap_or(false)
 }
 
@@ -1050,9 +1197,14 @@ fn download_model(model_id: &str) -> Result<(), String> {
     fs::create_dir_all(&models_dir).map_err(|error| error.to_string())?;
     let output_path = models_dir.join(format!("ggml-{model_id}.bin"));
     if output_path.exists() {
-        return Ok(());
+        if validate_model_file(model_id, &output_path).is_ok() {
+            return Ok(());
+        }
+        let _ = fs::remove_file(&output_path);
     }
     preflight_model_download_space(model_id, &models_dir)?;
+    let partial_path = output_path.with_extension("bin.partial");
+    let _ = fs::remove_file(&partial_path);
 
     let whisper_dir = private_fast_whisper_dir()?;
     let download_script = whisper_dir.join("models/download-ggml-model.sh");
@@ -1065,7 +1217,10 @@ fn download_model(model_id: &str) -> Result<(), String> {
             .map_err(|error| format!("Failed to run whisper.cpp model download script: {error}"))?;
 
         if output.status.success() && output_path.exists() {
-            return Ok(());
+            return validate_model_file(model_id, &output_path).map_err(|error| {
+                let _ = fs::remove_file(&output_path);
+                error
+            });
         }
 
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1080,15 +1235,58 @@ fn download_model(model_id: &str) -> Result<(), String> {
         .arg("--fail")
         .arg(url)
         .arg("-o")
-        .arg(&output_path)
+        .arg(&partial_path)
         .output()
         .map_err(|error| format!("curl is required to download Private Fast models: {error}"))?;
 
     if !output.status.success() {
-        let _ = fs::remove_file(&output_path);
+        let _ = fs::remove_file(&partial_path);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(format!("Model download failed.\n{stderr}\n{stdout}"));
+    }
+
+    validate_model_file(model_id, &partial_path).map_err(|error| {
+        let _ = fs::remove_file(&partial_path);
+        error
+    })?;
+    fs::rename(&partial_path, &output_path).map_err(|error| {
+        let _ = fs::remove_file(&partial_path);
+        error.to_string()
+    })?;
+
+    Ok(())
+}
+
+fn validate_model_file(model_id: &str, path: &Path) -> Result<(), String> {
+    let model = model_spec(model_id)
+        .ok_or_else(|| format!("Unsupported Private Fast model: {model_id}"))?;
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("Unable to inspect downloaded model: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Private Fast model path must point to a .bin file.".to_string());
+    }
+
+    let minimum_size = model.download_size_bytes.saturating_mul(3) / 5;
+    if metadata.len() < minimum_size {
+        return Err(format!(
+            "{} model file looks incomplete. Expected at least {}, got {}.",
+            model.label,
+            format_bytes(minimum_size),
+            format_bytes(metadata.len())
+        ));
+    }
+
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("Unable to inspect downloaded model: {error}"))?;
+    let mut magic = [0_u8; 4];
+    file.read_exact(&mut magic)
+        .map_err(|error| format!("Unable to read model header: {error}"))?;
+    if magic != *b"lmgg" {
+        return Err(format!(
+            "{} is not a recognized whisper.cpp GGML model file.",
+            path.display()
+        ));
     }
 
     Ok(())
@@ -1627,10 +1825,14 @@ Graphics/Displays:
     #[test]
     fn build_runnable_tiers_marks_in_budget_when_medium_is_fast() {
         use PerformanceClass::*;
-        let result =
-            build_runnable_tiers_with_rtfs(CpuStrong, 0.8, "fp", "2026-05-12T00:00:00Z", |id| {
-                installed_in_test(id)
-            });
+        let result = build_runnable_tiers_with_rtfs(
+            CpuStrong,
+            "small",
+            0.8,
+            "fp",
+            "2026-05-12T00:00:00Z",
+            |id| installed_in_test(id),
+        );
         assert!(result.fast.within_budget, "fast should be within budget");
         assert!(
             result.medium.within_budget,
@@ -1641,7 +1843,7 @@ Graphics/Displays:
 
     #[test]
     fn finalize_calibration_writes_cache_matching_fingerprint() {
-        let tiers = finalize_calibration_inner(0.8);
+        let tiers = finalize_calibration_inner(0.8, "small");
         assert_eq!(tiers.fingerprint, current_fingerprint());
         assert!(!tiers.benchmarked_at.is_empty());
     }
@@ -1649,7 +1851,7 @@ Graphics/Displays:
     #[test]
     fn build_runnable_tiers_flags_slow_out_of_budget_on_weak_hardware() {
         use PerformanceClass::*;
-        let result = build_runnable_tiers_with_rtfs(CpuWeak, 5.0, "fp", "ts", |_| false);
+        let result = build_runnable_tiers_with_rtfs(CpuWeak, "base", 5.0, "fp", "ts", |_| false);
         // Every tier still has an assignment now — slow is flagged out of budget.
         assert!(
             !result.slow.within_budget,
@@ -1659,6 +1861,60 @@ Graphics/Displays:
             !result.medium.within_budget,
             "medium too on this hypothetical weak machine"
         );
+    }
+
+    #[test]
+    fn runnable_tiers_keep_the_actual_benchmarked_medium_model() {
+        use PerformanceClass::*;
+        let result = build_runnable_tiers_with_rtfs(GpuHigh, "small", 0.7, "fp", "ts", |_| false);
+
+        assert_eq!(result.medium.model_id, "small");
+        assert!(!result.medium.predicted);
+        assert!(
+            (result.slow.realtime_factor - 2.5).abs() < 1e-4,
+            "predictions should be based on the measured small model"
+        );
+    }
+
+    #[test]
+    fn model_validation_rejects_partial_downloads() {
+        let dir =
+            env::temp_dir().join(format!("dictivo-partial-model-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ggml-small.bin");
+        fs::write(&path, b"lmgg").unwrap();
+
+        let error = validate_model_file("small", &path).unwrap_err();
+
+        assert!(error.contains("looks incomplete"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn model_validation_rejects_wrong_magic() {
+        use std::io::{Seek, SeekFrom, Write};
+
+        let dir =
+            env::temp_dir().join(format!("dictivo-invalid-model-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ggml-tiny.bin");
+        let minimum_size = model_spec("tiny")
+            .unwrap()
+            .download_size_bytes
+            .saturating_mul(3)
+            / 5;
+        let mut file = fs::File::create(&path).unwrap();
+        file.set_len(minimum_size).unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(b"nope").unwrap();
+        drop(file);
+
+        let error = validate_model_file("tiny", &path).unwrap_err();
+
+        assert!(error.contains("not a recognized whisper.cpp GGML model"));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1728,6 +1984,28 @@ Graphics/Displays:
         assert!(!message.contains("my private transcript"));
     }
 
+    #[test]
+    fn gpu_related_whisper_failure_requests_cpu_retry() {
+        let output = Output {
+            status: failed_exit_status_for_test(),
+            stdout: Vec::new(),
+            stderr: b"ggml_metal_buffer_init: error: failed to allocate buffer".to_vec(),
+        };
+
+        assert!(whisper_failure_looks_gpu_related(&output));
+    }
+
+    #[test]
+    fn non_gpu_whisper_failure_does_not_request_cpu_retry() {
+        let output = Output {
+            status: failed_exit_status_for_test(),
+            stdout: Vec::new(),
+            stderr: b"invalid model file".to_vec(),
+        };
+
+        assert!(!whisper_failure_looks_gpu_related(&output));
+    }
+
     #[cfg(unix)]
     fn failed_exit_status_for_test() -> std::process::ExitStatus {
         use std::os::unix::process::ExitStatusExt;
@@ -1760,10 +2038,9 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
                 vram_bytes: Some(ram.saturating_div(2).max(8 * 1024 * 1024 * 1024)),
             });
         } else {
-            if let Ok(out) = quiet_command("system_profiler")
-                .arg("SPDisplaysDataType")
-                .output()
-            {
+            let mut command = quiet_command("system_profiler");
+            command.arg("SPDisplaysDataType");
+            if let Some(out) = hardware_probe_output(command) {
                 let text = String::from_utf8_lossy(&out.stdout);
                 gpus.extend(parse_macos_displays(&text).into_iter().filter(|g| {
                     let n = g.name.to_ascii_lowercase();
@@ -1801,11 +2078,6 @@ pub fn detect_gpu() -> Vec<GpuInfo> {
 
 #[tauri::command]
 pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, String> {
-    use std::io::Read;
-    use std::process::Stdio;
-    use std::thread;
-    use std::time::Duration;
-
     validate_model_id(&model_id)?;
     let binary_path =
         resolve_binary_path(Some(&app)).ok_or_else(|| "whisper-cli binary missing".to_string())?;
@@ -1825,64 +2097,115 @@ pub async fn benchmark_tier(app: AppHandle, model_id: String) -> Result<f32, Str
     let output_stem = work_dir.join(format!("benchmark-{model_id}-{timestamp}"));
     let output_txt = output_stem.with_extension("txt");
 
-    let start = std::time::Instant::now();
-    let mut child = quiet_command(&binary_path)
-        .args([
-            "-m",
-            model_path.to_string_lossy().as_ref(),
-            "-f",
-            sample_path.to_string_lossy().as_ref(),
-            "-l",
-            "en",
-            "-otxt",
-            "-of",
-            output_stem.to_string_lossy().as_ref(),
-            "--no-prints",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    let timeout = Duration::from_secs(30);
-    loop {
-        match child.try_wait().map_err(|e| e.to_string())? {
-            Some(status) => {
-                let elapsed = start.elapsed().as_secs_f32();
-                if !status.success() {
-                    let mut stderr = String::new();
-                    if let Some(mut s) = child.stderr.take() {
-                        let _ = s.read_to_string(&mut stderr);
-                    }
-                    let _ = fs::remove_file(&output_txt);
-                    return Err(format!("whisper-cli exited {}: {}", status, stderr));
-                }
-                let _ = fs::remove_file(&output_txt);
-                let audio_secs = 5.0_f32;
-                return Ok(elapsed / audio_secs);
+    match run_benchmark_attempt(
+        &binary_path,
+        &model_path,
+        &sample_path,
+        &output_stem,
+        &output_txt,
+        false,
+    ) {
+        Ok(rtf) => Ok(rtf),
+        Err(first_error) => {
+            let should_retry_cpu = first_error
+                .output
+                .as_ref()
+                .map_or(false, whisper_failure_looks_gpu_related);
+            if !should_retry_cpu {
+                return Err(first_error.message);
             }
-            None => {
-                if start.elapsed() > timeout {
-                    let _ = child.kill();
-                    let _ = fs::remove_file(&output_txt);
-                    return Err("Benchmark timed out after 30 s".to_string());
-                }
-                thread::sleep(Duration::from_millis(200));
+
+            match run_benchmark_attempt(
+                &binary_path,
+                &model_path,
+                &sample_path,
+                &output_stem,
+                &output_txt,
+                true,
+            ) {
+                Ok(rtf) => Ok(rtf),
+                Err(second_error) => Err(format!(
+                    "GPU benchmark failed ({}); CPU fallback failed ({})",
+                    first_error.message, second_error.message
+                )),
             }
         }
     }
 }
 
+struct BenchmarkAttemptError {
+    output: Option<Output>,
+    message: String,
+}
+
+fn run_benchmark_attempt(
+    binary_path: &Path,
+    model_path: &Path,
+    sample_path: &Path,
+    output_stem: &Path,
+    output_txt: &Path,
+    disable_gpu: bool,
+) -> Result<f32, BenchmarkAttemptError> {
+    let start = Instant::now();
+    let mut command = quiet_command(binary_path);
+    command
+        .arg("-m")
+        .arg(model_path)
+        .arg("-f")
+        .arg(sample_path)
+        .arg("-l")
+        .arg("en")
+        .arg("-otxt")
+        .arg("-of")
+        .arg(output_stem)
+        .arg("--no-prints");
+
+    if disable_gpu {
+        command.arg("-ng");
+    }
+
+    let output = match command_output_with_timeout(command, Duration::from_secs(30)) {
+        Ok(Some(output)) => output,
+        Ok(None) => {
+            let _ = fs::remove_file(output_txt);
+            return Err(BenchmarkAttemptError {
+                output: None,
+                message: "Benchmark timed out after 30 s".to_string(),
+            });
+        }
+        Err(error) => {
+            let _ = fs::remove_file(output_txt);
+            return Err(BenchmarkAttemptError {
+                output: None,
+                message: error,
+            });
+        }
+    };
+
+    let elapsed = start.elapsed().as_secs_f32();
+    let _ = fs::remove_file(output_txt);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message = format!("whisper-cli exited {}: {}", output.status, stderr);
+        return Err(BenchmarkAttemptError {
+            output: Some(output),
+            message,
+        });
+    }
+
+    Ok(elapsed / 5.0_f32)
+}
+
 #[cfg(target_os = "windows")]
 fn windows_primary_gpu() -> Option<GpuInfo> {
-    let output = quiet_command("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress",
-        ])
-        .output()
-        .ok()?;
+    let mut command = quiet_command("powershell");
+    command.args([
+        "-NoProfile",
+        "-Command",
+        "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress",
+    ]);
+    let output = hardware_probe_output(command)?;
     let text = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
     let first = if parsed.is_array() {
@@ -1900,16 +2223,12 @@ fn windows_primary_gpu() -> Option<GpuInfo> {
 
 #[cfg(target_os = "linux")]
 fn linux_nvidia_gpu() -> Option<GpuInfo> {
-    let output = quiet_command("nvidia-smi")
-        .args([
-            "--query-gpu=name,memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
+    let mut command = quiet_command("nvidia-smi");
+    command.args([
+        "--query-gpu=name,memory.total",
+        "--format=csv,noheader,nounits",
+    ]);
+    let output = hardware_probe_output(command)?;
     let text = String::from_utf8_lossy(&output.stdout);
     let first = text.lines().next()?;
     let parts: Vec<&str> = first.split(',').map(str::trim).collect();
@@ -1926,13 +2245,9 @@ fn linux_nvidia_gpu() -> Option<GpuInfo> {
 
 #[cfg(target_os = "linux")]
 fn linux_amd_gpu() -> Option<GpuInfo> {
-    let output = quiet_command("rocm-smi")
-        .args(["--showmeminfo", "vram", "--csv"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
+    let mut command = quiet_command("rocm-smi");
+    command.args(["--showmeminfo", "vram", "--csv"]);
+    let output = hardware_probe_output(command)?;
     let text = String::from_utf8_lossy(&output.stdout);
     let line = text.lines().nth(1)?;
     let parts: Vec<&str> = line.split(',').collect();
@@ -1962,10 +2277,9 @@ fn current_fingerprint() -> String {
 fn sysctl_cpu_brand() -> String {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(out) = quiet_command("sysctl")
-            .args(["-n", "machdep.cpu.brand_string"])
-            .output()
-        {
+        let mut command = quiet_command("sysctl");
+        command.args(["-n", "machdep.cpu.brand_string"]);
+        if let Some(out) = hardware_probe_output(command) {
             return String::from_utf8_lossy(&out.stdout).trim().to_string();
         }
     }
@@ -1981,14 +2295,13 @@ fn sysctl_cpu_brand() -> String {
     }
     #[cfg(target_os = "windows")]
     {
-        if let Ok(out) = quiet_command("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name",
-            ])
-            .output()
-        {
+        let mut command = quiet_command("powershell");
+        command.args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name",
+        ]);
+        if let Some(out) = hardware_probe_output(command) {
             return String::from_utf8_lossy(&out.stdout).trim().to_string();
         }
     }
@@ -2052,18 +2365,28 @@ pub fn write_runnable_tiers(app: AppHandle, tiers: RunnableTiers) -> Result<(), 
     fs::write(&path, text).map_err(|e| e.to_string())
 }
 
-pub(crate) fn finalize_calibration_inner(measured_medium_rtf: f32) -> RunnableTiers {
+pub(crate) fn finalize_calibration_inner(
+    measured_medium_rtf: f32,
+    medium_model_id: &str,
+) -> RunnableTiers {
     let class = current_performance_class();
     let fingerprint = current_fingerprint();
     let now = chrono_like_now_iso();
 
     let models_dir = private_fast_models_dir().ok();
-    build_runnable_tiers_with_rtfs(class, measured_medium_rtf, &fingerprint, &now, |id| {
-        models_dir
-            .as_ref()
-            .map(|dir| dir.join(format!("ggml-{id}.bin")).exists())
-            .unwrap_or(false)
-    })
+    build_runnable_tiers_with_rtfs(
+        class,
+        medium_model_id,
+        measured_medium_rtf,
+        &fingerprint,
+        &now,
+        |id| {
+            models_dir
+                .as_ref()
+                .map(|dir| dir.join(format!("ggml-{id}.bin")).exists())
+                .unwrap_or(false)
+        },
+    )
 }
 
 #[tauri::command]
@@ -2072,8 +2395,8 @@ pub fn finalize_calibration(
     measured_medium_rtf: f32,
     medium_model_id: String,
 ) -> Result<RunnableTiers, String> {
-    let _ = medium_model_id; // Reserved for future "force Medium to specific model" override; currently the class already determines it.
-    let tiers = finalize_calibration_inner(measured_medium_rtf);
+    validate_model_id(&medium_model_id)?;
+    let tiers = finalize_calibration_inner(measured_medium_rtf, &medium_model_id);
 
     // Persist the cache so subsequent `runnable_tiers()` calls return it.
     let path = benchmark_cache_path(&app)?;

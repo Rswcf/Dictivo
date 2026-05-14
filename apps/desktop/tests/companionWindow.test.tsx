@@ -14,7 +14,8 @@ const tauri = vi.hoisted(() => {
       listeners.set(eventName, handler);
       return Promise.resolve(() => listeners.delete(eventName));
     }),
-    startDragging: vi.fn().mockResolvedValue(undefined)
+    startDragging: vi.fn().mockResolvedValue(undefined),
+    setSize: vi.fn().mockResolvedValue(undefined)
   };
 });
 
@@ -26,8 +27,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     hide: tauri.hide,
-    startDragging: tauri.startDragging
-  })
+    startDragging: tauri.startDragging,
+    setSize: tauri.setSize
+  }),
+  // Tests don't care about real logical-pixel math; a passthrough stub is
+  // enough for the companion to call `new LogicalSize(w, h)` without throwing.
+  LogicalSize: class LogicalSize {
+    constructor(public width: number, public height: number) {}
+  }
 }));
 
 afterEach(() => {
@@ -38,6 +45,7 @@ afterEach(() => {
   tauri.hide.mockClear();
   tauri.listen.mockClear();
   tauri.startDragging.mockClear();
+  tauri.setSize.mockClear();
 });
 
 describe("CompanionWindow", () => {
@@ -100,7 +108,10 @@ describe("CompanionWindow", () => {
     expect(screen.getByText("Listening")).toBeTruthy();
     expect(screen.getByText("CommandOrControl+Shift+Space to stop")).toBeTruthy();
     expect(screen.getByText(/^01:0[4-6]$/)).toBeTruthy();
-    expect(screen.getByText("●").className).toContain("companion-emote--rec");
+    // The state halo replaces the old emote badge; the recording-state aria
+    // label on the avatar wrap is what assistive tech (and this test) now
+    // reads to confirm the recording phase is reflected visually.
+    expect(screen.getByLabelText("Dictivo is recording")).toBeTruthy();
   });
 
   it("renders processing, complete, and blocked/error visual states", async () => {
@@ -115,7 +126,7 @@ describe("CompanionWindow", () => {
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--processing");
     expect(screen.getByRole("img", { name: "Iris companion" })).toBeTruthy();
-    expect(screen.getByText("…").className).toContain("companion-emote--proc");
+    expect(screen.getByLabelText("Dictivo is transcribing")).toBeTruthy();
 
     await emitCompanionState({
       avatar: "cat",
@@ -125,7 +136,7 @@ describe("CompanionWindow", () => {
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--complete");
     expect(screen.getByRole("img", { name: "Cartoon cat" })).toBeTruthy();
-    expect(screen.getByText("✓").className).toContain("companion-emote--done");
+    expect(screen.getByLabelText("Dictivo finished — transcript copied")).toBeTruthy();
 
     await emitCompanionState({
       avatar: "marcus",
@@ -137,7 +148,7 @@ describe("CompanionWindow", () => {
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--blocked");
     expect(screen.getByRole("img", { name: "Marcus companion" })).toBeTruthy();
     expect(screen.getByText("Open Local Engine settings")).toBeTruthy();
-    expect(screen.getByText("!").className).toContain("companion-emote--err");
+    expect(screen.getByLabelText("Dictivo needs setup")).toBeTruthy();
   });
 
   it("renders a custom avatar image from companion state", async () => {

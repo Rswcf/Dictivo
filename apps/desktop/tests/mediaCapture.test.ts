@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { encodeWav, startAudioRecording } from "../src/lib/mediaCapture";
+import { computeBands, encodeWav, startAudioRecording } from "../src/lib/mediaCapture";
 
 async function readWav(blob: Blob) {
   const buffer = await blob.arrayBuffer();
@@ -243,5 +243,40 @@ describe("media capture recording controller", () => {
     const context = FakeAudioContext.instances[0]!;
     expect(context.close).toHaveBeenCalledTimes(1);
     expect(microphone.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("computeBands — companion waveform driver", () => {
+  it("returns the requested number of bands", () => {
+    const data = new Uint8Array(128).fill(100);
+    expect(computeBands(data, 7)).toHaveLength(7);
+    expect(computeBands(data, 5)).toHaveLength(5);
+  });
+
+  it("returns an empty array when zero bands are requested", () => {
+    expect(computeBands(new Uint8Array(128), 0)).toEqual([]);
+  });
+
+  it("normalises each band to the [0, 1] range", () => {
+    const data = new Uint8Array(128).fill(255);
+    for (const band of computeBands(data, 7)) {
+      expect(band).toBeGreaterThanOrEqual(0);
+      expect(band).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("reports zero across all bands for a silent spectrum", () => {
+    const data = new Uint8Array(128).fill(0);
+    expect(computeBands(data, 7).every((band) => band === 0)).toBe(true);
+  });
+
+  it("reports a high level on the bands where energy is concentrated", () => {
+    const data = new Uint8Array(128);
+    // Energy peak in the low band (voice fundamental range).
+    for (let i = 1; i < 20; i += 1) data[i] = 230;
+    const bands = computeBands(data, 7);
+    expect(bands[0]).toBeGreaterThan(0.6);
+    // Bands beyond the energetic range stay near zero.
+    expect(bands[6]).toBeLessThan(0.1);
   });
 });
