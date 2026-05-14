@@ -78,11 +78,20 @@ GET https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-*.bin
 
 The model files are public. The request carries no identifier.
 
-### 4. Crash reporting — none
+### 4. Crash reporting — none, by design
 
-Dictivo ships without any crash reporter, analytics SDK, or telemetry
-library. If the app crashes on your Mac, you are the only one who
-knows.
+Dictivo ships without **any** crash reporter, analytics SDK, or
+telemetry library. There is no Sentry, no Crashlytics, no PostHog, no
+Datadog, no Segment, no in-house metrics endpoint. If the app crashes
+on your Mac, you are the only person who knows about it — and the only
+way we ever learn is if you email us with the symptom.
+
+This is a deliberate trade-off. A real crash reporter would make our
+job of fixing bugs faster, but we'd be exchanging your privacy
+guarantee for our convenience. Other privacy-positioned apps offer an
+opt-in crash reporter; we chose the cleaner promise of "no exfiltration,
+no opt-ins to think about." Re-evaluate at v2 if community demand
+shifts.
 
 ## What Lemon Squeezy stores
 

@@ -67,6 +67,25 @@ DICTIVO_WHISPER_MODEL=/path/to/model.bin
 - Tests or docs were updated for user-facing behavior changes.
 - `npm run typecheck` and `npm run test` pass locally, or the PR explains why they were not run.
 - UI text is concise and clear for non-developer users.
+- **Version was bumped** per `docs/release/versioning.md` if the change ships in the running app. Doc-only changes leave the version alone.
+
+## Versioning
+
+Every push that ships a code change bumps the version. The detailed rule and the full list of files that must be touched together live in [`docs/release/versioning.md`](docs/release/versioning.md). Short version:
+
+- **Patch** (`x.y.Z`) — default for bug fixes, small features, UI polish
+- **Minor** (`x.Y.0`) — new top-level features or significant refactors
+- **Major** (`X.0.0`) — only the project lead bumps this
+
+Doc-only commits (any change confined to `docs/` or `*.md` not read at runtime) do not bump.
+
+## License
+
+By contributing, your changes are licensed under [FSL-1.1-MIT](LICENSE), the same license as the rest of the project. There is no CLA — your commit is the agreement.
+
+## Reporting security issues
+
+Do not file public issues with security details. Email `security@dictivo.app` with a description and (where possible) a proof-of-concept. Acknowledged within 72 hours.
 
 ## Translations
 

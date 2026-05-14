@@ -300,6 +300,26 @@ LS pays in USD. Options:
 
 Choose during LS onboarding; can be changed later.
 
+### 10.4a Crash reporting — none (positioned as a feature)
+
+Dictivo ships zero crash-reporting and zero telemetry libraries. No
+Sentry, no Crashlytics, no PostHog. The trade-off is real — we'll
+debug user-reported crashes with less context — but it's part of the
+brand promise: "Dictivo never sends any data off your Mac, full stop,
+no opt-ins to remember."
+
+Operational consequence: every reported crash is handled by the user
+emailing `hello@dictivo.app` with a description. Reply within 24h. If
+reproducible, fix; if not, ask for more context. Track these manually
+in a `crash-reports/` notes folder until volume forces something
+better. Re-evaluate at v2 — if real-world support load makes this
+untenable, the move would be to add an explicitly opt-in (disabled
+by default) crash reporter, with the privacy page updated accordingly.
+
+Marketing copy treats this as a positive selling point — "no crash
+reporter to disable, no analytics SDK to audit" — both on the pricing
+page and on `dictivo.app/where-your-data-lives`.
+
 ### 10.4 Target customer — explicit positioning
 
 The pricing, copy, and feature priorities all assume the same buyer profile:
