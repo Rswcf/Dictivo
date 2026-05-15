@@ -15,6 +15,7 @@ import {
 } from "@dictivo/shared";
 import { createId } from "./lib/id";
 import { startAudioRecording, type RecordingController } from "./lib/mediaCapture";
+import { playRecordingStartSound } from "./lib/sounds";
 import { runLocalDictation } from "./lib/localDictationEngine";
 import {
   benchmarkTier,
@@ -338,6 +339,11 @@ export function App({ windowLabel = "main" }: AppProps) {
     setLiveText("Recording locally. Stop to transcribe with the on-device engine.");
     setStatusMessage("");
     setPasteStatus("");
+
+    // Auditory "the mic is open" confirmation. Fires before the actual
+    // recording starts so the user hears it during the brief gap while
+    // the mic stream is being constructed (~50-150 ms).
+    playRecordingStartSound();
 
     try {
       // Pipe mic level bands to the companion floating window so it can

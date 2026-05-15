@@ -1,4 +1,5 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, primaryMonitor } from "@tauri-apps/api/window";
 import { ChevronRight, Eye, Settings as SettingsIcon, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -64,6 +65,20 @@ export function CompanionWindow() {
       disposed = true;
       unlisten?.();
     };
+  }, []);
+
+  // Defence-in-depth: re-apply the FullScreenAuxiliary collection-behavior
+  // bit from the React side on mount. setup-time apply in lib.rs covers the
+  // first app launch, but recent macOS occasionally rebuilds the NSWindow
+  // when the user transitions between Stage Manager / fullscreen / Spaces
+  // and our setup bit gets dropped on the floor. Calling the command here
+  // every time the companion mounts keeps the bit sticky. Failure is
+  // logged but ignored — losing this just means the companion behaves
+  // like pre-0.2.5 (vanishes in fullscreen).
+  useEffect(() => {
+    void invoke<string>("companion_apply_fullscreen_aux")
+      .then((report) => console.info("[companion]", report))
+      .catch((error) => console.warn("[companion] fullscreen-aux apply failed", error));
   }, []);
 
   // Live waveform feed — fired from the main window's recording loop every

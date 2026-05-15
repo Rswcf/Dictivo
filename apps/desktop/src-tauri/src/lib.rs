@@ -346,8 +346,11 @@ pub fn run() {
             // companion_macos.rs for the why). We log + swallow the error
             // because the persistence is a polish feature — a setup failure
             // shouldn't take down the whole app launch.
-            if let Err(error) = companion_macos::apply_companion_collection_behavior(app.handle()) {
-                eprintln!("companion collection behavior setup failed: {error}");
+            match companion_macos::apply_companion_collection_behavior(app.handle()) {
+                Ok(report) => eprintln!("[companion] setup-time {report}"),
+                Err(error) => {
+                    eprintln!("[companion] setup-time collection behavior failed: {error}")
+                }
             }
             schedule_initial_update_check(app.handle().clone());
             Ok(())
@@ -395,7 +398,8 @@ pub fn run() {
             license::license_refresh,
             license::license_deactivate,
             updater::updater_check_now,
-            updater::updater_install
+            updater::updater_install,
+            companion_macos::companion_apply_fullscreen_aux
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dictivo");

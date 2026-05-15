@@ -16,7 +16,7 @@
 //! do this; without it our "always available" widget promise is broken.
 
 #[cfg(target_os = "macos")]
-pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<(), String> {
+pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<String, String> {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use tauri::Manager;
@@ -41,20 +41,43 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
     // The CanJoinAllSpaces bit is already set by Tauri because we have
     // `visibleOnAllWorkspaces: true` in tauri.conf.json. We OR in the missing
     // FullScreenAuxiliary bit, leaving any other bits Tauri set untouched.
+    const CAN_JOIN_ALL_SPACES: u64 = 1 << 0;
     const FULL_SCREEN_AUXILIARY: u64 = 1 << 8;
+    const NEEDED_FLAGS: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY;
 
-    unsafe {
-        let current: u64 = msg_send![ns_window, collectionBehavior];
-        let updated = current | FULL_SCREEN_AUXILIARY;
-        let _: () = msg_send![ns_window, setCollectionBehavior: updated];
-    }
+    let (before, after) = unsafe {
+        let before: u64 = msg_send![ns_window, collectionBehavior];
+        // Ensure BOTH bits are set — defensive in case Tauri's
+        // visibleOnAllWorkspaces hasn't been applied yet (timing dependent
+        // on macOS / Tauri version).
+        let after = before | NEEDED_FLAGS;
+        let _: () = msg_send![ns_window, setCollectionBehavior: after];
+        // Read back the value so we know the OS accepted the write.
+        let observed: u64 = msg_send![ns_window, collectionBehavior];
+        (before, observed)
+    };
 
-    Ok(())
+    let report = format!(
+        "companion NSWindow collectionBehavior: before=0x{before:x} after=0x{after:x} (CanJoinAllSpaces={} FullScreenAuxiliary={})",
+        (after & CAN_JOIN_ALL_SPACES) != 0,
+        (after & FULL_SCREEN_AUXILIARY) != 0
+    );
+    eprintln!("{report}");
+    Ok(report)
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn apply_companion_collection_behavior(_handle: &tauri::AppHandle) -> Result<(), String> {
+pub fn apply_companion_collection_behavior(_handle: &tauri::AppHandle) -> Result<String, String> {
     // No-op on Windows/Linux — those platforms don't have the macOS Spaces /
     // fullscreen-aux concept, and Tauri's plain alwaysOnTop handles them.
-    Ok(())
+    Ok("non-macOS — no-op".to_string())
+}
+
+/// Tauri command — the React side calls this from the companion's mount
+/// effect so the FullScreenAuxiliary bit gets re-applied if macOS rebuilt
+/// the NSWindow object after our setup-time call (Spaces / Stage Manager
+/// transitions sometimes do this on recent macOS).
+#[tauri::command]
+pub async fn companion_apply_fullscreen_aux(app: tauri::AppHandle) -> Result<String, String> {
+    apply_companion_collection_behavior(&app)
 }
