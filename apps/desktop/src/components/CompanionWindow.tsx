@@ -110,7 +110,12 @@ export function CompanionWindow() {
     const target = phase === "idle" ? IDLE_WINDOW_SIZE : EXPANDED_WINDOW_SIZE;
     void getCurrentWindow()
       .setSize(new LogicalSize(target.width, target.height))
-      .catch(() => undefined);
+      .catch((error) => {
+        // Surface this — it almost always means a missing Tauri capability
+        // (e.g. `core:window:allow-set-size` not added to capabilities).
+        // Swallowed previously, which hid the v0.2.3 resize regression.
+        console.warn("CompanionWindow: setSize failed", error);
+      });
   }, [snapshot.phase]);
 
   useEffect(() => {
