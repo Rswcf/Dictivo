@@ -33,34 +33,57 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
     }
     let ns_window = ns_window_ptr as *mut AnyObject;
 
-    // From <AppKit/NSWindow.h> NSWindowCollectionBehavior bit flags:
+    // ────────────────────────────────────────────────────────────────────
+    // Layer 1: collection behavior — tell macOS the window is allowed to
+    // coexist with fullscreen apps and join every Space.
+    //
+    // NSWindowCollectionBehavior bit flags (from <AppKit/NSWindow.h>):
     //   NSWindowCollectionBehaviorCanJoinAllSpaces    = 1 << 0  = 1
     //   NSWindowCollectionBehaviorStationary          = 1 << 4  = 16
     //   NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8  = 256
-    //
-    // The CanJoinAllSpaces bit is already set by Tauri because we have
-    // `visibleOnAllWorkspaces: true` in tauri.conf.json. We OR in the missing
-    // FullScreenAuxiliary bit, leaving any other bits Tauri set untouched.
+    // ────────────────────────────────────────────────────────────────────
     const CAN_JOIN_ALL_SPACES: u64 = 1 << 0;
     const FULL_SCREEN_AUXILIARY: u64 = 1 << 8;
     const NEEDED_FLAGS: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY;
 
-    let (before, after) = unsafe {
-        let before: u64 = msg_send![ns_window, collectionBehavior];
-        // Ensure BOTH bits are set — defensive in case Tauri's
-        // visibleOnAllWorkspaces hasn't been applied yet (timing dependent
-        // on macOS / Tauri version).
-        let after = before | NEEDED_FLAGS;
-        let _: () = msg_send![ns_window, setCollectionBehavior: after];
-        // Read back the value so we know the OS accepted the write.
-        let observed: u64 = msg_send![ns_window, collectionBehavior];
-        (before, observed)
+    // ────────────────────────────────────────────────────────────────────
+    // Layer 2: window level — Tauri's `alwaysOnTop: true` sets level 3
+    // (NSFloatingWindowLevel), but fullscreen apps render at a level
+    // *above* that, so a level-3 window gets covered.
+    //
+    // NSStatusWindowLevel (25) is the level the macOS menu bar lives at;
+    // floating widgets like Raycast / Maccy / 1Password mini use it for
+    // exactly this "stay above everything including fullscreen apps"
+    // requirement. Higher levels (popUpMenu=101, screenSaver=1000) exist
+    // but would also stomp on system overlays.
+    // ────────────────────────────────────────────────────────────────────
+    const NS_STATUS_WINDOW_LEVEL: i64 = 25;
+
+    let (before_behavior, after_behavior, before_level, after_level) = unsafe {
+        let before_behavior: u64 = msg_send![ns_window, collectionBehavior];
+        let after_behavior = before_behavior | NEEDED_FLAGS;
+        let _: () = msg_send![ns_window, setCollectionBehavior: after_behavior];
+
+        let before_level: i64 = msg_send![ns_window, level];
+        let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
+        let after_level: i64 = msg_send![ns_window, level];
+
+        // Read collectionBehavior back AFTER the level change in case
+        // anything weird happens between the writes.
+        let observed_behavior: u64 = msg_send![ns_window, collectionBehavior];
+        (
+            before_behavior,
+            observed_behavior,
+            before_level,
+            after_level,
+        )
     };
 
     let report = format!(
-        "companion NSWindow collectionBehavior: before=0x{before:x} after=0x{after:x} (CanJoinAllSpaces={} FullScreenAuxiliary={})",
-        (after & CAN_JOIN_ALL_SPACES) != 0,
-        (after & FULL_SCREEN_AUXILIARY) != 0
+        "companion NSWindow: behavior before=0x{before_behavior:x} after=0x{after_behavior:x} \
+         (CanJoinAllSpaces={} FullScreenAuxiliary={}) | level before={before_level} after={after_level}",
+        (after_behavior & CAN_JOIN_ALL_SPACES) != 0,
+        (after_behavior & FULL_SCREEN_AUXILIARY) != 0
     );
     eprintln!("{report}");
     Ok(report)

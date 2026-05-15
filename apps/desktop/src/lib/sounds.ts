@@ -10,7 +10,9 @@
 
 export type StartSoundId = "soft" | "strong" | "triple" | "sharp" | "harmony";
 
-export const DEFAULT_START_SOUND: StartSoundId = "strong";
+// User-tested in 0.2.7 across 5 candidates; "Triple beep" had the best
+// "I noticed it without being annoying" balance.
+export const DEFAULT_START_SOUND: StartSoundId = "triple";
 
 let sharedContext: AudioContext | null = null;
 
