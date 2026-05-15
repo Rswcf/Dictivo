@@ -15,7 +15,7 @@ import {
 } from "@dictivo/shared";
 import { createId } from "./lib/id";
 import { startAudioRecording, type RecordingController } from "./lib/mediaCapture";
-import { playRecordingStartSound } from "./lib/sounds";
+import { playStartSound } from "./lib/sounds";
 import { runLocalDictation } from "./lib/localDictationEngine";
 import {
   benchmarkTier,
@@ -100,6 +100,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>(initialSettings.companionAvatar);
   const [customCompanionAvatar, setCustomCompanionAvatar] = useState<CustomCompanionAvatar | null>(initialSettings.customCompanionAvatar);
   const [companionPosition, setCompanionPosition] = useState(initialSettings.companionPosition);
+  const [startSound, setStartSound] = useState(initialSettings.startSound);
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(normalizeHotkeys(initialSettings.hotkeys));
   const [localProcessing, setLocalProcessing] = useState<LocalProcessingSettings>(normalizeLocalProcessing(initialSettings.localProcessing));
   const [privateFastStatus, setPrivateFastStatus] = useState<PrivateFastStatus>({
@@ -210,12 +211,13 @@ export function App({ windowLabel = "main" }: AppProps) {
       companionAvatar,
       customCompanionAvatar,
       companionPosition,
+      startSound,
       hotkeys,
       localProcessing,
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, companionPosition, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets]);
+  }, [companionAvatar, companionEnabled, companionPosition, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets, startSound]);
 
   useEffect(() => {
     let cancelled = false;
@@ -342,8 +344,9 @@ export function App({ windowLabel = "main" }: AppProps) {
 
     // Auditory "the mic is open" confirmation. Fires before the actual
     // recording starts so the user hears it during the brief gap while
-    // the mic stream is being constructed (~50-150 ms).
-    playRecordingStartSound();
+    // the mic stream is being constructed (~50-150 ms). The user picks
+    // which sound they want in Settings → Companion → Start sound.
+    playStartSound(startSound);
 
     try {
       // Pipe mic level bands to the companion floating window so it can
@@ -1073,6 +1076,8 @@ export function App({ windowLabel = "main" }: AppProps) {
             onCompanionEnabledChange={setCompanionEnabled}
             onCompanionAvatarChange={setCompanionAvatar}
             onCustomCompanionAvatarChange={updateCustomCompanionAvatar}
+            startSound={startSound}
+            onStartSoundChange={setStartSound}
             onModelAction={(action, modelId) => void runPrivateFastModelAction(action, modelId)}
             onImportModel={(modelId, sourcePath) => void runImportModel(modelId, sourcePath)}
             onRefreshNative={() => void refreshNativeState()}

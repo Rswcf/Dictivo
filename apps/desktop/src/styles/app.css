@@ -1596,6 +1596,87 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .companion-shell:hover .companion-hide-button { opacity: 1; }
 
+/* ========================================================
+ * START SOUND PICKER (Settings → Companion)
+ * ====================================================== */
+.start-sound-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: 6px;
+  border-top: 1px solid var(--hairline-2);
+}
+.start-sound-heading strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--ink);
+}
+.start-sound-heading span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.start-sound-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.start-sound-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.start-sound-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.start-sound-row.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.start-sound-row input[type="radio"] {
+  accent-color: var(--accent);
+}
+.start-sound-meta strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.start-sound-meta span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.start-sound-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.start-sound-preview:hover {
+  background: var(--hairline-2);
+}
+
 /* === F — long-press context menu ===
  * Floats below the companion shell on long-press. Visually it picks up the
  * same frosted-glass language as the bubble so the two surfaces feel like

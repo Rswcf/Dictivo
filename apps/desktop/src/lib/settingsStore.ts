@@ -1,4 +1,5 @@
 import { SUPPORTED_LANGUAGES, type DictionaryTerm, type InputMode, type Snippet, type SupportedLanguage } from "@dictivo/shared";
+import { DEFAULT_START_SOUND, type StartSoundId } from "./sounds";
 
 const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
@@ -71,6 +72,7 @@ export type Settings = {
   companionAvatar: CompanionAvatar;
   customCompanionAvatar: CustomCompanionAvatar | null;
   companionPosition: CompanionPosition | null;
+  startSound: StartSoundId;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   dictionary: DictionaryTerm[];
@@ -86,6 +88,7 @@ const DEFAULTS: Settings = {
   companionAvatar: "dog",
   customCompanionAvatar: null,
   companionPosition: null,
+  startSound: DEFAULT_START_SOUND,
   hotkeys: DEFAULT_HOTKEYS,
   localProcessing: DEFAULT_LOCAL_PROCESSING,
   dictionary: [],
@@ -165,6 +168,10 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
       ? parsed.companionAvatar
       : DEFAULTS.companionAvatar);
 
+  const startSound = isOneOf(parsed.startSound, ["soft", "strong", "triple", "sharp", "harmony"] as const)
+    ? parsed.startSound
+    : DEFAULTS.startSound;
+
   return {
     ...DEFAULTS,
     language,
@@ -175,6 +182,7 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     companionAvatar: companionAvatar === "custom" && !customCompanionAvatar ? DEFAULTS.companionAvatar : companionAvatar,
     customCompanionAvatar,
     companionPosition: normalizeCompanionPosition(parsed.companionPosition),
+    startSound,
     hotkeys: normalizeHotkeys(parsed.hotkeys as Partial<HotkeySettings> | undefined),
     localProcessing: normalizeLocalProcessing(
       parsed.localProcessing as Partial<LocalProcessingSettings> | undefined

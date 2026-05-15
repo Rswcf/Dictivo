@@ -15,6 +15,7 @@ import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
 import { shortcutMatches } from "../lib/hotkeys";
 import { readCustomCompanionAvatar, type CompanionAvatar, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings } from "../lib/settingsStore";
+import { playStartSound, START_SOUND_VARIANTS, type StartSoundId } from "../lib/sounds";
 import { ModelManager } from "./ModelManager";
 
 type SettingsSection = "engine" | "hotkeys" | "companion" | "license" | "privacy";
@@ -37,6 +38,8 @@ type SettingsViewProps = {
   onCompanionEnabledChange: (enabled: boolean) => void;
   onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
   onCustomCompanionAvatarChange: (avatar: CustomCompanionAvatar | null) => void;
+  startSound: StartSoundId;
+  onStartSoundChange: (sound: StartSoundId) => void;
   onModelAction: (action: "select" | "download" | "delete", modelId: string) => void;
   onImportModel: (modelId: string, sourcePath: string) => void;
   onRefreshNative: () => void;
@@ -117,6 +120,8 @@ export function SettingsView({
   onCompanionEnabledChange,
   onCompanionAvatarChange,
   onCustomCompanionAvatarChange,
+  startSound,
+  onStartSoundChange,
   onModelAction,
   onImportModel,
   onRefreshNative,
@@ -284,6 +289,40 @@ export function SettingsView({
             {avatarUploadError && (
               <div className="settings-inline-error" role="alert">{avatarUploadError}</div>
             )}
+
+            <div className="start-sound-block">
+              <div className="start-sound-heading">
+                <strong>Start sound</strong>
+                <span>Plays when you press the hotkey to confirm the mic is open.</span>
+              </div>
+              <div className="start-sound-list" role="radiogroup" aria-label="Start sound">
+                {START_SOUND_VARIANTS.map((variant) => (
+                  <label key={variant.id} className={`start-sound-row ${startSound === variant.id ? "is-selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="start-sound"
+                      value={variant.id}
+                      checked={startSound === variant.id}
+                      onChange={() => onStartSoundChange(variant.id)}
+                    />
+                    <div className="start-sound-meta">
+                      <strong>{variant.label}</strong>
+                      <span>{variant.description}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="start-sound-preview"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        playStartSound(variant.id);
+                      }}
+                    >
+                      Preview
+                    </button>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
