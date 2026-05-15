@@ -619,13 +619,14 @@ dependencies = [
 
 [[package]]
 name = "dictivo"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "arboard",
  "base64 0.22.1",
  "dirs",
  "fs2",
  "global-hotkey",
+ "objc2",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

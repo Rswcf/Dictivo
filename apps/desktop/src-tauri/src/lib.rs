@@ -1,3 +1,4 @@
+mod companion_macos;
 mod license;
 mod private_fast;
 mod storage;
@@ -341,6 +342,13 @@ pub fn run() {
         .setup(|app| {
             storage::init_database().map_err(Box::<dyn std::error::Error>::from)?;
             configure_tray(app).map_err(Box::<dyn std::error::Error>::from)?;
+            // Make the companion window survive fullscreen apps (see
+            // companion_macos.rs for the why). We log + swallow the error
+            // because the persistence is a polish feature — a setup failure
+            // shouldn't take down the whole app launch.
+            if let Err(error) = companion_macos::apply_companion_collection_behavior(app.handle()) {
+                eprintln!("companion collection behavior setup failed: {error}");
+            }
             schedule_initial_update_check(app.handle().clone());
             Ok(())
         })

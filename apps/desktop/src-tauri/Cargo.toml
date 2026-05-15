@@ -1,6 +1,6 @@
 [package]
 name = "dictivo"
-version = "0.2.4"
+version = "0.2.5"
 description = "Local-first desktop dictation"
 authors = ["Dictivo"]
 edition = "2021"
@@ -30,6 +30,14 @@ tokio = { version = "1", features = ["time", "rt"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 thiserror = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Used only for the FullScreenAuxiliary collection-behavior fix on the
+# companion window (Tauri's visibleOnAllWorkspaces only sets CanJoinAllSpaces,
+# which leaves the companion stuck in its origin Space whenever the user
+# enters a fullscreen app). objc2 is already a transitive dep via tauri/wry;
+# we just need a direct entry to call msg_send! ourselves.
+objc2 = "0.6"
 
 [dev-dependencies]
 global-hotkey = "0.7"
