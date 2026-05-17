@@ -11,9 +11,10 @@
 
 # Where Your Data Lives
 
-Dictivo runs entirely on your Mac. This page is a complete map of every
-piece of data the app touches, where it is stored, and what — if
-anything — ever leaves the device.
+Dictivo is local by default. This page is a complete map of every piece
+of data the app touches, where it is stored, and what — if anything —
+ever leaves the device. Local keeps audio on this device. Cloud Fast
+uploads audio to cloud transcription providers for faster results.
 
 ## Files Dictivo creates on your Mac
 
@@ -21,7 +22,8 @@ anything — ever leaves the device.
 |---|---|---|
 | `~/Library/Application Support/Dictivo/local.sqlite3` | Your transcript history, dictionary entries, snippets. Plain SQLite — open it with any tool. | First time you dictate anything. |
 | `~/Library/Application Support/Dictivo/license.json` | Your activated license key + the cached customer info Lemon Squeezy returned at activation (your email and name, the order ID). | First time you activate a paid license. |
-| `~/Library/Application Support/Dictivo/private-fast/` | Whisper transcription models you have downloaded. Each is a single `.bin` file from the GGML / whisper.cpp project. | When you choose a tier in Settings → Local Engine and click Download. |
+| `~/Library/Application Support/Dictivo/cloud-fast-license.json` | Your activated Cloud Fast license key + instance ID. Kept separate from the Local license so Cloud Fast can be removed without touching Local. | First time you activate Cloud Fast. |
+| `~/Library/Application Support/Dictivo/private-fast/` | Whisper transcription models you have downloaded. Each is a single `.bin` file from the GGML / whisper.cpp project. | When you choose a tier in Settings → Engine and click Download. |
 | `~/Library/Preferences/com.dictivo.desktop.plist` | macOS-managed app preferences (window position, last-used view). Standard preference plist. | Continuously, as you use the app. |
 | `~/Library/HTTPStorages/com.dictivo.desktop/` | Webview state for the Tauri runtime. Currently unused by Dictivo. | Created empty by macOS. |
 | `~/Library/WebKit/com.dictivo.desktop/` | WebKit cache the Tauri webview maintains. No remote sites are loaded; the cache is for the in-app UI assets only. | Continuously, as you use the app. |
@@ -44,19 +46,16 @@ The full list, in plain language:
 ```
 GET https://github.com/Rswcf/Dictivo/releases/latest/download/latest.json
 User-Agent: Dictivo-Updater/1.0
-Authorization: Bearer <your license token, if you have one>
 ```
 
 What it sends:
 - The fact that a Dictivo client is asking
 - Your OS + architecture (so the right installer is offered)
-- Your license token, if any (so the response knows whether to surface
-  builds released after your update window)
+- The app version needed by the updater to compare releases
 
 What it does **not** send:
 - Audio, transcripts, settings, dictionary entries, your IP-derived
-  location, an installation UUID, or any usage data
-- Anything if you turn off "Automatically check for updates" in Settings → License & Updates
+  location, an installation UUID, usage data, or a license token
 
 ### 2. License activation — once, the moment you paste your key
 
@@ -78,7 +77,29 @@ GET https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-*.bin
 
 The model files are public. The request carries no identifier.
 
-### 4. Crash reporting — none, by design
+### 4. Cloud Fast transcription — only when you choose Cloud Fast
+
+```
+POST https://api.dictivo.app/v1/cloud-fast/transcribe
+```
+
+What it sends:
+- The current recording audio.
+- Requested language (`auto` by default), duration, app version, platform, and a client session ID.
+- Account or entitlement information needed to verify the $6.99/month Cloud Fast subscription and monthly minute quota.
+
+What it does **not** send:
+- Your local dictionary entries.
+- Your snippets.
+- Your local transcript history.
+- A user-selected provider preference; Cloud Fast has no provider picker.
+
+The Dictivo Cloudflare Worker proxy checks D1 entitlement and quota data,
+then routes the request to cloud transcription providers with one fast
+primary route and one backup route. The desktop app receives the final
+transcript and a generic backup-route success state.
+
+### 5. Crash reporting — none, by design
 
 Dictivo ships without **any** crash reporter, analytics SDK, or
 telemetry library. There is no Sentry, no Crashlytics, no PostHog, no
@@ -109,7 +130,7 @@ We retain this for the lifetime of your license plus 7 years
 
 ## Exporting everything
 
-Settings → Local Engine → keep this app forever, even offline.
+Local history is stored in `local.sqlite3` and remains readable even when offline.
 
 Workbench → History tab → top-right Export icon → bundles every
 session into a single Markdown file in your Downloads folder. You can

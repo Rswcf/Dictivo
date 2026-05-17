@@ -1,16 +1,16 @@
 <h1 align="center">🎙 Dictivo</h1>
 
 <p align="center">
-  <strong>Private voice dictation that runs entirely on your laptop.</strong><br/>
-  Whisper-grade transcription, zero cloud, one hotkey to paste anywhere.
+  <strong>Local-first voice dictation with an optional fast cloud path.</strong><br/>
+  Whisper-grade transcription, one hotkey, and clear privacy controls.
 </p>
 
 <p align="center">
   <a href="https://github.com/Rswcf/Dictivo/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Rswcf/Dictivo/build-desktop.yml?branch=main&label=build&style=flat-square"></a>
   <a href="https://github.com/Rswcf/Dictivo/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Rswcf/Dictivo?style=flat-square"></a>
   <a href="https://github.com/Rswcf/Dictivo/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Rswcf/Dictivo?style=flat-square"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/macOS%20%7C%20Windows-supported-success?style=flat-square">
-  <img alt="100% Local" src="https://img.shields.io/badge/🔒_100%25-local-blue?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/macOS_beta%20%7C%20Windows_planned-success?style=flat-square">
+  <img alt="Local by default" src="https://img.shields.io/badge/🔒_local_by_default-blue?style=flat-square">
 </p>
 
 <p align="center">
@@ -18,9 +18,9 @@
 </p>
 
 <p align="center">
-  🔒 <strong>Audio never leaves your Mac/PC</strong> &nbsp;·&nbsp;
+  🔒 <strong>Local mode keeps audio on your Mac</strong> &nbsp;·&nbsp;
   ⚡ <strong>30-second setup, one hotkey</strong> &nbsp;·&nbsp;
-  🖥 <strong>Auto-picks the right model for your hardware</strong>
+  ☁️ <strong>Optional Cloud Fast at $6.99/mo</strong>
 </p>
 
 <p align="center">
@@ -33,17 +33,18 @@
 
 ## Why Dictivo
 
-Most dictation apps make you choose between speed, accuracy, and privacy. Dictivo picks **all three** — by running [`whisper.cpp`](https://github.com/ggml-org/whisper.cpp) on-device with a model tuned to your specific machine.
+Most dictation apps make you choose between speed, accuracy, and privacy. Dictivo keeps Local mode as the default by running [`whisper.cpp`](https://github.com/ggml-org/whisper.cpp) on-device with a model tuned to your specific machine, then adds Cloud Fast only when you explicitly choose faster cloud transcription.
 
 |  | Dictivo | Wispr Flow | Superwhisper | Otter.ai | macOS Dictation |
 |---|:---:|:---:|:---:|:---:|:---:|
-| 🔒 100% on-device | ✅ | ❌ cloud | ✅ | ❌ cloud | ✅ |
+| 🔒 Local mode on-device | ✅ | ❌ cloud | ✅ | ❌ cloud | ✅ |
+| ☁️ Optional fast cloud mode | ✅ | ✅ | partial | ✅ | ❌ |
 | 🖥 Auto-tunes to your hardware | ✅ | ❌ | ❌ | — | ❌ |
 | ⚡ Global hotkey + paste-to-active-app | ✅ | ✅ | ✅ | ❌ | partial |
 | 🎯 Local polish + snippets | ✅ | ✅ | partial | ❌ | ❌ |
 | 📖 Local dictionary + snippets | ✅ | partial | ✅ | ❌ | ❌ |
-| 🌍 macOS **and** Windows | ✅ | ✅ | macOS only | ✅ | macOS only |
-| 💰 Free, open source | ✅ MIT | ❌ paid | ❌ paid | ❌ paid | ✅ bundled |
+| 🌍 macOS first, Windows planned | ✅ | ✅ | macOS only | ✅ | macOS only |
+| 🔎 Source-auditable client | ✅ FSL-1.1-MIT | ❌ proprietary | ❌ proprietary | ❌ proprietary | ✅ bundled |
 
 ---
 
@@ -68,7 +69,7 @@ Out-of-budget tiers (⚠) are still clickable — you get a warning confirm with
 **Install a release build** (recommended)
 
 ```text
-1. Download the latest Dictivo.dmg (macOS), .exe current-user installer (Windows), or .msi for managed deployment from Releases
+1. Download the latest Dictivo `.dmg` from Releases
 2. Open Dictivo
 3. The setup wizard scans your hardware → downloads one recommended model → measures speed
 4. Press `CommandOrControl+Shift+Space`, speak, press the same shortcut again. Done.
@@ -82,7 +83,7 @@ npm install
 npm run tauri:dev -w @dictivo/desktop
 ```
 
-Requirements: Node 20+, Rust stable, macOS or Windows.
+Requirements: Node 20+, Rust stable, and macOS for the current dogfood build. Windows packaging is in the repo but is planned for a later release after the Mac path is stable.
 
 ---
 
@@ -102,13 +103,17 @@ Requirements: Node 20+, Rust stable, macOS or Windows.
                                             └──────────────────────┘
 ```
 
-Nothing in this loop ever talks to a cloud API. Audio, transcript, dictionary, snippets, history — all stay on disk.
+In Local mode, this loop never sends audio to a cloud API. Audio, transcript, dictionary, snippets, and history stay on disk.
+
+Cloud Fast is a separate optional mode. When selected, Dictivo uploads the current recording to a Dictivo-owned Cloudflare Worker proxy for faster transcription, then applies dictionary/snippet polish locally. The UI always shows only two choices: **Local** and **Cloud Fast**.
 
 ---
 
 ## 🐶 The floating companion
 
-A 360 × 100 px transparent window that sits in the corner of your screen, animated by a cartoon mascot. Pick **dog**, **cat**, **Trump**, **bikini**, or **muscle** — drop your own 96 × 96 PNG into `apps/desktop/src/assets/avatars/` to add a sixth.
+Dictivo ships with a compact status card companion by default. It appears for recording, processing, completion, blocked, and error states, then keeps the last completion information visible until you hide it or start the next dictation.
+
+If you want a more playful surface, Settings -> Companion can switch the companion to **Animated pet** mode. Pick **Dog**, **Cat**, **Iris**, **Marcus**, or upload a custom local image.
 
 <p align="center">
   <em>[ companion screenshot — drop at <code>docs/assets/companion.png</code> ]</em>
@@ -125,21 +130,26 @@ It's silly. People share it. We're keeping it.
 
 ## Features
 
-- **🎙 Smart local polish** — punctuation cleanup, filler removal, capitalization, dictionary terms, and snippets, all configurable with Processing toggles in Settings.
+- **🎙 Smart local polish** — punctuation cleanup, filler removal, capitalization, dictionary terms, and snippets, all configurable with Text cleanup in Settings.
 - **🔥 Global hotkeys** — `CommandOrControl+Shift+Space` to dictate, `CommandOrControl+Shift+V` to paste the last transcript anywhere.
 - **📖 Local dictionary & snippets** — Teach Dictivo proper nouns and trigger phrases. Zero round-trip to a server.
-- **🧠 7-language transcription** — English, 中文, Español, 日本語, Français, Deutsch, Tiếng Việt (and any other Whisper-supported tongue at the engine level).
+- **☁️ Cloud Fast** — Optional $6.99/month fast transcription with 1,500 minutes/month. Provider choice stays automatic and hidden.
+- **🧠 Auto language detection** — input is detected automatically and output stays in the spoken language. The app keeps CJK character counts and history metadata aligned with the detected result.
 - **🪟 Floating companion window** — Always-on-top, transparent, draggable, dismissible.
-- **🛠 Power user escape hatch** — Settings → Local Engine → Advanced exposes the full 7-model `whisper.cpp` catalog if you don't want auto-pick.
+- **🛠 Power user escape hatch** — Settings → Engine → Advanced exposes the full 7-model `whisper.cpp` catalog if you don't want auto-pick.
 - **🔄 Snappy hot reload** — Tauri 2 + Vite + React 19 + TypeScript. The UI repaints instantly.
 
 ---
 
 ## Privacy contract
 
-The desktop app **never** sends audio, transcripts, snippets, dictionary terms, or any user content to a remote service.
+Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.
 
-The optional metadata backend (`apps/api`) accepts only: local session ID, provider name, privacy mode, duration in seconds, and word count. The privacy guard rejects anything else at the type and runtime level — see [`packages/shared/src/privacy.ts`](packages/shared/src/privacy.ts) and the API privacy tests.
+In Local mode, the desktop app never sends audio, transcripts, snippets, dictionary terms, or any user content to a remote service.
+
+Cloud Fast requests go through a Dictivo-owned Cloudflare Worker + D1 backend. The desktop uploads only the recording and request metadata; dictionary terms and snippets are kept local and applied after the cloud transcript returns. Provider routing is automatic and internal; provider details are logged only server-side.
+
+The metadata backend (`apps/api`) still rejects transcript-like content on metadata routes at the type and runtime level — see [`packages/shared/src/privacy.ts`](packages/shared/src/privacy.ts) and the API privacy tests.
 
 ---
 
@@ -148,7 +158,7 @@ The optional metadata backend (`apps/api`) accepts only: local session ID, provi
 
 ```text
 apps/
-  api/          Fastify metadata API (no transcripts ever)
+  api/          Cloudflare Worker + D1 API for metadata, billing, and Cloud Fast
   desktop/      Tauri + React desktop app
 packages/
   shared/       Privacy contract + shared types
@@ -186,7 +196,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 | Problem | Fix |
 | --- | --- |
 | Nothing records | Grant Microphone permission, restart Dictivo |
-| No tiers visible | Re-run setup from Settings → Local Engine → Re-run setup |
+| No tiers visible | Re-run setup from Settings → Engine → Re-run setup |
 | Transcript copies but doesn't paste | Grant Accessibility permission on macOS, focus a text field, `⌘+V` |
 | Global hotkey ignored | Another app claimed it — change in Settings → Hotkeys |
 | First transcription is slow | Switch to Fast tier; it auto-uses a smaller model |
@@ -208,9 +218,9 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 ## Roadmap
 
-**Near-term:** Signed macOS + Windows release artifacts · screenshots + demo GIFs in README · expanded native E2E around real microphone permissions and global hotkeys · more community translations.
+**Near-term:** signed macOS release artifacts · screenshots + demo GIFs in README · expanded native E2E around real microphone permissions and global hotkeys · Windows release path after the Mac launch is stable · more community translations.
 
-**Out of scope** (by design, for now): meeting transcription · speaker diarization · meeting summaries · system-audio capture · any cloud-AI execution path.
+**Out of scope** (by design, for now): meeting transcription · speaker diarization · meeting summaries · system-audio capture · user-selectable cloud providers.
 
 ---
 

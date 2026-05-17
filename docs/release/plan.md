@@ -4,15 +4,28 @@
 
 
 
-> Solo natural-person seller. No legal entity yet. Goal: ship Dictivo at $49 one-time + optional $24/yr renewal, earn pocket money, stay compliant, keep risk floor as low as possible. The entire backend is **Lemon Squeezy + GitHub + a static page on Cloudflare**.
+> Solo natural-person seller. No legal entity yet. Goal: ship Dictivo Local at $49 one-time + optional $24/yr renewal, with Dictivo Cloud Fast as an optional $6.99/mo subscription. Earn pocket money, stay compliant, keep risk floor as low as possible. The v1 local backend is **Lemon Squeezy + GitHub + a static page on Cloudflare**; Cloud Fast is the narrow exception and runs through a Cloudflare Worker + D1 proxy.
 
 ## 1. Locked decisions (unchanged from earlier discussion)
 
 | | |
 |---|---|
 | Business model | $49 buy-once + 12-month update window + $24 renewal + perpetual fallback |
+| Cloud Fast add-on | Optional $6.99/mo subscription, sold separately from Local. Users can buy Local, Cloud Fast, or both. |
+| Cloud Fast model route | One user-facing cloud option only. Primary provider: Groq `whisper-large-v3`; fallback provider: ElevenLabs `Scribe v2`. |
 | Distribution | Dual-track: own site (Lemon Squeezy) + Mac App Store (deferred to v1.1) |
 | Update notifications | Menubar dot + non-blocking banner + Settings. "Install on quit." Never modal during work. |
+
+### 1.1 Cloud Fast commercial boundary
+
+Cloud Fast does **not** replace the local privacy product. It is a separate paid path for users who want faster results and accept that audio is uploaded to cloud transcription providers.
+
+- Price: **$6.99/month**.
+- Default planning quota: **1,500 transcribed minutes/month**. Do not promise unlimited usage.
+- UI: show only `Local` and `Cloud Fast`; never ask users to pick Groq, ElevenLabs, or any other vendor.
+- Privacy copy: `Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.`
+- Provider routing: primary Groq `whisper-large-v3`; fallback ElevenLabs `Scribe v2` on 429/5xx/timeouts, empty result, or obvious transcript validity failure.
+- Backend requirement: Cloud Fast must go through a Dictivo-owned Cloudflare Worker + D1 proxy so API keys, metering, fallback, quota enforcement, and privacy logging stay under product control.
 
 ## 2. The entire stack (everything you need to operate)
 
@@ -28,11 +41,12 @@
 | Update manifest hosting | GitHub Releases (asset on each release) | Free |
 | Updater signature | Tauri minisign (Ed25519) | Free |
 | Model weights hosting | Hugging Face (current) → R2 only if HF rate-limits | $0 |
+| Cloud Fast API | Cloudflare Worker + D1 at `api.dictivo.app` | $0 early usage, then Workers/D1 usage |
 | Site analytics (post-launch) | Plausible | Skip at launch |
 
 **v1.0 recurring (Mac-only): ~$115/yr. Breakeven: ~3 sales/year.**
 
-**Zero custom backend code.** No Workers, no databases, no auth, no email infrastructure to maintain. Lemon Squeezy is doing the actual work of issuing licenses and emails; you write none of that.
+**Local v1 has zero custom backend code.** Cloud Fast is the exception: it adds a narrow Cloudflare Worker + D1 proxy for provider keys, entitlement checks, quota, and fallback routing.
 
 ## 3. Architecture — one diagram
 
@@ -88,7 +102,7 @@
    └──────────────────────────────────────────┘
 ```
 
-Three repos, zero custom backend code. Marketing site, desktop app, and the LS dashboard are the entire operational surface.
+Three repos plus one narrow Cloud Fast Worker. Marketing site, desktop app, Lemon Squeezy, and the Cloudflare Worker/D1 deployment are the operational surface.
 
 ## 4. Why this is dramatically simpler than v1
 
@@ -266,7 +280,7 @@ There is **no high-likelihood, high-impact risk** in this stack that isn't alrea
 | 2 | **Free tier exists** = `tiny` model, unlimited dictation; Paid $49 = all models + 12-mo update window | ✅ Locked |
 | 3 | `dictivo.app` registered, will be consolidated to Cloudflare DNS | ✅ Locked |
 | 4 | **Lemon Squeezy** as MoR, payouts via SEPA or Wise — global approach, seller's local tax handled offline | ✅ Locked |
-| 5 | **Target customer: US + Western Europe**, affluent, privacy-conscious. English-only at launch. USD-primary pricing. | ✅ Locked |
+| 5 | **Target customer: US + Western Europe**, affluent, privacy-conscious. English-first product and support at launch, with automatic transcription language detection in the app. USD-primary pricing. | ✅ Locked |
 
 ### 10.1 Payment + Merchant of Record — Lemon Squeezy, locked
 
@@ -326,7 +340,7 @@ The pricing, copy, and feature priorities all assume the same buyer profile:
 
 - **Geography**: US + Western Europe (UK, DE, FR, NL, SE, CH, AT, BE, IE).
 - **Income / role**: knowledge workers, writers, researchers, developers, students at well-funded institutions — anyone whose 30 minutes of typing time per day is worth $5+.
-- **Disposition**: privacy-conscious enough that "100% local, no cloud" is a *headline*, not a footnote. Already heard of Whisper / runs models locally / has opinions about subscriptions.
+- **Disposition**: privacy-conscious enough that "100% local by default" is a *headline*, not a footnote. Already heard of Whisper / runs models locally / has opinions about subscriptions.
 - **Currency**: USD-primary on the pricing page; LS auto-displays EUR/GBP based on buyer IP.
 - **Language**: English only at v1.0. Localization (DE/FR) is a v1.2+ consideration.
 - **Channels**: Hacker News, r/macapps, Product Hunt, Twitter/X dev community, niche newsletters (Apple Insider, Six Colors, MacStories). **Not** general consumer ads.
@@ -363,21 +377,22 @@ Breakeven: ~3 sales/year.
 
 | Version | Adds |
 |---|---|
-| 1.0 | Mac-only or Mac+Windows, the lean stack above |
-| 1.1 (~3 months later, if revenue justifies) | Windows (if launched Mac-only) **or** Mac App Store listing **or** student discount via discount codes |
+| 1.0 | Mac-only public launch, the lean stack above |
+| 1.1 (~3 months later, if revenue justifies) | Windows **or** Mac App Store listing **or** student discount via discount codes |
 | 1.2 (~6 months later) | Team licenses; first new Whisper-family model integration to vindicate the renewal value |
 | 1.3 + | New languages, polish, accessibility, whatever the user feedback prioritizes |
 
 Major version 2.0 is at least **18 months** away. Don't think about it until then.
 
-## 13. The four sentences you put on the pricing page
+## 13. The core sentences you put on the pricing page
 
-> Dictivo turns speech into polished text on your laptop — 100% offline.
+> Dictivo Local turns speech into polished text on your laptop — 100% offline.
 > $49 once, yours forever. The first 12 months of new versions and models are included.
 > After that, the version you have keeps working forever — renew for $24 anytime to get the next 12 months.
-> No subscription, no cloud, no telemetry. 14-day full refund.
+> Cloud Fast is optional at $6.99/month when you want faster cloud transcription.
+> Local has no subscription, no cloud, no telemetry. Cloud Fast uploads audio to cloud transcription providers only when you choose it. 14-day full refund.
 
-If you can't agree with every word of those four sentences, the plan is wrong. If you can, the plan is right.
+If you can't agree with every word of those sentences, the plan is wrong. If you can, the plan is right.
 
 ---
 

@@ -49,7 +49,8 @@ Items below were not auto-fixed; do them by hand before v1.0:
 - [ ] `strings Dictivo.app/Contents/MacOS/dictivo | grep -iE "sentry|crashlytics|posthog|amplitude|mixpanel|segment|google-analytics|datadog"` returns **nothing**
 - [ ] `nm Dictivo.app/Contents/MacOS/dictivo | grep -i sentry` returns nothing
 - [ ] `Dictivo.app/Contents/Info.plist` has no unexpected `NSAppTransportSecurity` exception domains
-- [ ] When the app is running, `lsof -p $(pgrep dictivo) -i TCP` should show **zero** outbound connections until the user clicks "Check for updates" or activates a license
+- [ ] In Local mode, `lsof -p $(pgrep dictivo) -i TCP` should show **zero** outbound dictation connections until the user clicks "Check for updates", activates a license, downloads a model, or explicitly uses Cloud Fast
+- [ ] Cloud Fast mode clearly shows the privacy copy: `Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.`
 
 If any of these surface a third-party tracker the codebase forgot to remove, **block the release** until cleaned.
 
@@ -60,8 +61,8 @@ If any of these surface a third-party tracker the codebase forgot to remove, **b
 
 ## 7. SQLite forward-compat
 
-- [ ] Open an older `local.sqlite3` from a previous internal build (rename a working DB to mimic 0.2.0) → open 0.2.1 app → app opens cleanly, no migration errors logged, all sessions visible
-- [ ] Add a session in 0.2.1 → open the same DB in 0.2.0 (downgrade test) → app at least opens, even if new column is unread. See `docs/release/sqlite-migration-plan.md` for the migration policy.
+- [ ] Open an older `local.sqlite3` from a previous internal build → open the current release candidate → app opens cleanly, no migration errors logged, all sessions visible
+- [ ] Add a session in the current release candidate → open the same DB in the previous internal build kept for downgrade testing → app at least opens, even if new columns are unread. See `docs/release/sqlite-migration-plan.md` for the migration policy.
 
 ## 8. The avatars
 
@@ -77,6 +78,7 @@ If any of these surface a third-party tracker the codebase forgot to remove, **b
 ## 10. Smoke the four canned support scenarios
 
 - [ ] Activate a license, then `rm -f ~/Library/Application\ Support/Dictivo/license.json` → app behaves as if unactivated; re-pasting same key re-activates
+- [ ] Activate Cloud Fast, then `rm -f ~/Library/Application\ Support/Dictivo/cloud-fast-license.json` → Local license remains active, Cloud Fast returns to the locked state, and re-pasting the Cloud Fast key re-activates only Cloud Fast
 - [ ] Network off → manual "Check for updates" surfaces a friendly "Couldn't reach update server" toast, **not** an error stack
 - [ ] LS API down (mock by editing `/etc/hosts` to point `api.lemonsqueezy.com` at `127.0.0.1`) → activation fails with the friendly network error from `license.rs::friendly_network_error`, **not** a raw reqwest message
 - [ ] Two-device test: activate on Mac A, attempt activation on Mac B → succeeds (2-seat limit). Attempt activation on a third Mac → LS returns activation_limit, the friendly error renders, suggests removing from a device first
@@ -85,4 +87,4 @@ If any of these surface a third-party tracker the codebase forgot to remove, **b
 
 The minimum bar for tagging `v1.0.0` is: every item in sections 1, 2, 3, 5, 6, 8, 9, 10 passes. Section 4 (a11y) and 7 (sqlite migration probing) are highly recommended but not blocking — defer them only if they would push the launch past the Apple Developer approval window.
 
-Each unchecked failure goes into a fresh patch release (`v0.2.x`) and re-runs the affected sections. When the patch chain is green twice in a row, tag the actual `v1.0.0`.
+Each unchecked failure goes into a fresh patch release (`v0.x.y`) and re-runs the affected sections. When the patch chain is green twice in a row, tag the actual `v1.0.0`.

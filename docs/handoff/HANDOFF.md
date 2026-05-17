@@ -1,6 +1,6 @@
-# Dictivo Handoff — 2026-05-15
+# Dictivo Handoff — 2026-05-18
 
-For the engineer (Codex or otherwise) picking this codebase up at v0.2.8. The previous engineer (this Claude session) hit a wall on a specific macOS bug; the rest of the work is well-shaped and ready to continue.
+For the engineer (Codex or otherwise) picking this codebase up at v0.3.4. The previous engineer (this Claude session) hit a wall on a specific macOS bug; the rest of the work is well-shaped and ready to continue.
 
 This document is self-contained. Read top to bottom and you have everything you need.
 
@@ -9,9 +9,9 @@ This document is self-contained. Read top to bottom and you have everything you 
 ## 1. Where we are right now
 
 - **Repo**: `Rswcf/Dictivo` (this repo), marketing site lives separately at `Rswcf/Dictivo-site` (local clone at `/Users/mayijie/Projects/Code/034_Dictivo_Site`).
-- **Current shipped version**: **0.2.8** (commit `69b588b`).
-- **Installed locally**: `/Applications/Dictivo.app` = 0.2.8.
-- **Tests**: 225 frontend (vitest) + 55 Rust (cargo) + 12 e2e (Playwright). All green on main.
+- **Current dogfood version**: **0.3.4**.
+- **Installed locally**: `/Applications/Dictivo.app` = 0.3.4.
+- **Latest local verification**: `npm run typecheck`, focused desktop Vitest 76, focused API Cloud Fast Vitest 17, `cargo check`, Rust unit tests 63, Tauri build, local install/sign/open. Docs refresh also passed `npm exec -w @dictivo/desktop -- vitest run tests/docsConsistency.test.ts`. All passed for 0.3.4.
 - **CI**: `.github/workflows/build-desktop.yml` runs on every push; latest green.
 - **Release workflow**: `.github/workflows/release-desktop.yml` tag-driven, dormant until Apple Developer secrets are added.
 
@@ -89,6 +89,8 @@ If the diagnostic line is missing, the user is running a stale binary — `pkill
 
 This is the gating issue for the entire v1.0 launch promise of "always available." Plan C1 → C3 → C4. Do not move on without this fixed.
 
+**2026-05-15 Codex update**: C1 has been implemented locally by adding the `NSWindowStyleMaskNonactivatingPanel` bit and logging whether it sticks. The React companion also reapplies the fullscreen-aux command on mount. Typecheck, Vitest, `cargo check`, Rust unit tests, and desktop production build pass. Manual dogfood over a real fullscreen Safari / VS Code Space is still the final confirmation.
+
 ### S2. Voicy-style information architecture for the bubble
 
 The previous engineer surveyed Voicy's floating widget and identified 4 specific improvements. The user explicitly asked for them and they were deferred behind the fullscreen fix.
@@ -102,13 +104,17 @@ The previous engineer surveyed Voicy's floating widget and identified 4 specific
 
 Source of inspiration: see screenshots referenced in the chat history; the bubble layout we want roughly matches Voicy's stacked-pill design while keeping our avatar on the left and the live waveform during recording.
 
+**2026-05-15 Codex update**: Implemented as two display modes. The default is a Voicy-style status card with title pill, cheer/stat pill, waveform while recording, hotkey hint, and explicit Hide button. The animated avatar is now an optional "Animated pet" mode in Settings -> Companion and keeps the avatar, waveform, hotkey hint, and Hide affordance.
+
 ### S3. Verify and stabilize companion expand/collapse
 
 The 0.2.4 dogfood showed the companion window staying at 92×92 because the `core:window:allow-set-size` Tauri capability was missing. That was fixed in 0.2.4. **Spot-check** in 0.2.8+ that the window actually grows to 360×100 in non-idle phases. If it doesn't, the capability fix may have regressed silently.
 
+**2026-05-15 Codex update**: Covered by `companionWindow.test.tsx`. Default card starts at 300×104; Animated pet resizes from 120×120 idle to 360×118 active and 220×230 menu. The capability allow-list still includes `core:window:allow-set-size`.
+
 ### S4. Auto-revert phase from `complete` back to `idle`
 
-Currently after a dictation finishes, the companion shows the "complete" state indefinitely until the next phase transition. The original design said the green halo settle animation should fade and the bubble should auto-collapse back to idle after ~2 seconds. Verify whether this is happening; if not, add a `setTimeout` in `App.tsx`'s post-dictation flow that flips `dictationPhase` back to `"idle"` after 2s.
+**Superseded by product decision on 2026-05-15. Do not implement.** The user explicitly chose the current behavior: after transcription finishes, the companion remains visible and keeps showing the just-transcribed completion information. It should not auto-disappear or auto-revert to idle. Hide only hides the current instance; the next hotkey-triggered recording automatically shows the companion again.
 
 ### S5. Make Iris and Marcus avatar PNGs match the new "serious product" positioning
 
@@ -119,12 +125,13 @@ Both avatars are cartoon characters in beach attire. While the user explicitly a
 
 Discuss with the user before acting; this is a brand decision, not a tech decision.
 
+**2026-05-15 Codex update**: Human/cartoon avatars are no longer the default floating-window presentation. They live behind the optional Animated pet mode. Still discuss before replacing or retiring the assets.
+
 ### S6. Sound design polish
 
-The 0.2.7 sound picker has 5 variants. User chose `triple` (Triple beep). Acceptable for v1.0. Consider:
+The start-sound picker has 5 variants. User chose `triple` (Triple beep). A falling stop tone is now played once when the user stops recording and processing begins. Consider:
 
 - Adding a "no sound" option for users who find any chime distracting.
-- Adding a separate **stop sound** (falling tone) — currently only the start has audio feedback.
 
 ### S7. Build a real CI release pipeline test
 
@@ -139,9 +146,9 @@ In rough order of urgency:
 ### External-blocked
 
 - **Apple Developer enrollment** — currently stuck at "Deine Identität konnte nicht bestätigt werden" identity-verification screen at `appleid.apple.com`. User should retry every 24h; if 3+ weeks pass, contact Apple Developer Support.
-- **Lemon Squeezy KYC** — submitted, awaiting approval (~24-72h was the expectation; if not approved by 2026-05-18 user should follow up).
+- **Lemon Squeezy KYC** — **Pending** as of 2026-05-16. Dashboard is still in Test mode. User should continue setup and test purchases in Test mode; do not switch launch copy or marketing Buy buttons to live checkout until KYC is approved.
 - **`dictivo.app` Cloudflare DNS** — already done.
-- **Marketing site** (`Rswcf/Dictivo-site` / local `034_Dictivo_Site`) — deployed via its own workflow. The Buy buttons currently have `REPLACE_WITH_LEMON_SQUEEZY_CHECKOUT_URL` placeholders that need real URLs once LS clears.
+- **Marketing site** (`Rswcf/Dictivo-site` / local `034_Dictivo_Site`) — deployed via its own workflow. Cloud Fast has a dedicated `/cloud-fast` page. Its CTA points to `/checkout/cloud-fast`, which is wired to the Lemon Squeezy **Test mode** checkout URL `https://dictivo.lemonsqueezy.com/checkout/buy/36ca20c8-026c-4692-bf42-c95d66b909d2`; replace that `_redirects` target with the live URL after KYC clears.
 
 ### Product decisions to make (with the user)
 
@@ -173,9 +180,12 @@ In rough order of urgency:
 | Business model | $49 one-time purchase + 12-month update window + $24/yr optional renewal + **perpetual fallback** (the version you have keeps working forever, offline, no server check) |
 | Launch price | **$49 USD** |
 | Renewal price | **$24/yr** |
+| Optional Cloud Fast add-on | **$6.99/mo** subscription. Separate from the local perpetual license; users may buy Cloud Fast alone or alongside Local. No unlimited promise; default planning quota is 1,500 minutes/month until real usage data says otherwise. |
+| Cloud Fast model routing | User sees one mode: **Cloud Fast**. Internally route primary traffic to Groq `whisper-large-v3`; fail over to ElevenLabs `Scribe v2` on provider errors, timeouts, empty/invalid transcripts, or obvious audio/text mismatch. Do not expose provider choice in UI. |
+| Cloud Fast privacy copy | Must state clearly that Local keeps audio on-device, while Cloud Fast uploads audio to cloud transcription providers for faster results. |
 | Refund window | 14 days, full, no questions |
 | Distribution | Dual-track: own site (Lemon Squeezy as MoR) primary, Mac App Store deferred to v1.1 |
-| Target market | US + Western Europe knowledge workers, English-only at launch, USD-primary pricing |
+| Target market | US + Western Europe knowledge workers, English-first product/support at launch, automatic transcription language detection in-app, USD-primary pricing |
 | Free tier | Yes — `tiny` model unlimited, no time limit |
 | Payment processor | Lemon Squeezy (Merchant of Record, handles global tax) |
 | License model (code) | FSL-1.1-MIT, source-available, auto-converts to MIT after 2 years per release |
@@ -184,6 +194,18 @@ In rough order of urgency:
 | Seller | Solo natural-person indie (user is in Germany; no legal entity at launch; LS handles cross-border tax) |
 
 Source of truth: `docs/release/plan.md`. Don't make decisions without reading that.
+
+### Cloud Fast implementation status
+
+- Desktop now exposes only `Local` and `Cloud Fast` modes; provider choice is not visible in UI.
+- Local remains the default. Local mode uses the on-device engine and does not upload dictation audio.
+- Cloud Fast upload goes through `apps/api` `/v1/cloud-fast/transcribe`; production target is Cloudflare Workers + D1. Provider API keys belong in Worker secrets, never in the desktop app.
+- Production Cloud Fast requires a short-lived signed Bearer token from `/v1/cloud-fast/session`; the Worker validates the desktop's cached Lemon Squeezy license key + instance ID before issuing it. Do not reintroduce trust in bare `x-user-id`.
+- Backend primary route is Groq `whisper-large-v3`; fallback is ElevenLabs `Scribe v2` on 429, 5xx, timeout, network failure, empty result, or clearly invalid transcript.
+- Cloud Fast entitlement response is user-facing and includes price/quota/privacy copy, but not provider details.
+- Desktop stores Cloud Fast activation separately from the Local license: Local uses `license.json`; Cloud Fast uses `cloud-fast-license.json`. Do not collapse them back into one cache.
+- Desktop keeps dictionary and snippets local for Cloud Fast; they are applied after the returned transcript.
+- Deployment runbook: `docs/cloud-fast-deploy.md`.
 
 ---
 

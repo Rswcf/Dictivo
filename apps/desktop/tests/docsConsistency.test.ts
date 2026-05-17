@@ -32,31 +32,48 @@ describe("user-facing documentation", () => {
     expect(readme).toContain("CommandOrControl+Shift+V");
     expect(readme).not.toContain("⌥+Space");
     expect(readme).toContain("Smart local polish");
-    expect(readme).toContain("Processing toggles");
+    expect(readme).toContain("Text cleanup");
   });
 
-  it("documents both Windows installer tracks in user-facing docs", () => {
+  it("documents the current macOS-first platform boundary in user-facing docs", () => {
     const expectations = [
       {
         path: "../../README.md",
-        snippets: [".exe current-user installer", ".msi", "managed deployment"]
+        snippets: ["macOS first, Windows planned", "Windows packaging is in the repo but is planned for a later release"]
       },
       {
         path: "../../docs/README.zh-CN.md",
-        snippets: ["`.exe` 当前用户安装包", "`.msi`", "公司统一部署"]
+        snippets: ["macOS 优先", "Windows 打包路径已在仓库中"]
       },
       {
         path: "../../docs/README.ja.md",
-        snippets: ["`.exe` の現在ユーザー向けインストーラー", "`.msi`", "管理配布"]
+        snippets: ["macOS から提供", "Windows のパッケージング経路はリポジトリ内にあります"]
       },
       {
         path: "../../docs/README.es.md",
-        snippets: ["`.exe` para el usuario actual", "`.msi`", "despliegues administrados"]
+        snippets: ["empieza por macOS", "El empaquetado para Windows existe en el repo"]
       }
     ];
 
     for (const { path, snippets } of expectations) {
       const content = readFileSync(path, "utf8");
+      for (const snippet of snippets) {
+        expect(content, `${path} should document ${snippet}`).toContain(snippet);
+      }
+    }
+  });
+
+  it("documents automatic language detection instead of a Speaking in selector", () => {
+    const expectations = [
+      { path: "../../README.md", snippets: ["Auto language detection", "output stays in the spoken language"] },
+      { path: "../../docs/README.zh-CN.md", snippets: ["默认自动检测输入语言", "不再要求用户提前选择"] },
+      { path: "../../docs/README.ja.md", snippets: ["入力言語を自動検出", "事前に \"Speaking in\" を選ぶ必要はありません"] },
+      { path: "../../docs/README.es.md", snippets: ["detecta automáticamente el idioma", "ya no hace falta elegir \"Speaking in\""] }
+    ];
+
+    for (const { path, snippets } of expectations) {
+      const content = readFileSync(path, "utf8");
+      expect(content, `${path} should not advertise the old Speaking in selector`).not.toContain("Speaking in ·");
       for (const snippet of snippets) {
         expect(content, `${path} should document ${snippet}`).toContain(snippet);
       }
