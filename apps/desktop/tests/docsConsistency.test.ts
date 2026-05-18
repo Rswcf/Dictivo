@@ -108,13 +108,14 @@ describe("user-facing documentation", () => {
     }
     expect(plan).toContain("windows-parity-audit.md");
     expect(audit).toContain("Not complete");
-    expect(audit).toContain("Installed Dictivo.exe ProductVersion 0.3.5");
+    expect(audit).toContain("Installed Dictivo.exe ProductVersion <current app version>");
+    expect(audit).toContain("gh run list --workflow \"Build desktop apps\"");
     expect(audit).toContain("WIN-PARITY-001");
     expect(audit).toContain("WIN-PARITY-020");
     expect(audit).toContain("real Windows 11");
     expect(nativePlan).toContain("windows-parity-test-plan.md");
     expect(nativePlan).toContain("Windows installer/version smoke");
-    expect(nativePlan).toContain("ProductVersion 0.3.5");
+    expect(nativePlan).toContain("ProductVersion");
     expect(windowsSmokeScript).toContain("Dictivo_${version}_x64-setup.exe");
     expect(windowsSmokeScript).toContain("Installed Dictivo.exe ProductVersion");
     expect(windowsSmokeScript).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");

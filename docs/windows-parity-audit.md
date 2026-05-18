@@ -31,10 +31,10 @@ real Windows 11 pass through `docs/windows-parity-test-plan.md`.
 | Requirement | Evidence | Status |
 | --- | --- | --- |
 | Keep Windows in GitHub Actions for testing | `.github/workflows/build-desktop.yml` includes `Windows x64`, `x86_64-pc-windows-msvc`, and `msi,nsis`; `apps/desktop/tests/releaseWorkflow.test.ts` locks this. | Automated pass |
-| Do not leave old Windows artifacts as the visible build | GitHub artifact list currently keeps only `Dictivo-Windows-x64-installers` and `Dictivo-macOS-universal` from run `26040535241`. | Automated/admin pass |
-| Windows artifact version must match app version | Run `26040535241`, Windows job `76550586807`, smoke log: `Installed Dictivo.exe ProductVersion 0.3.5`. | Automated pass |
-| Windows installed app must launch | Same smoke log: `Launch smoke found running Dictivo process 6308`. | Automated pass |
-| Latest Windows artifact contents are current | Downloaded artifact contains `Dictivo_0.3.5_x64-setup.exe`, `.sig`, `Dictivo_0.3.5_x64_en-US.msi`, and `.sig`. | Automated pass |
+| Do not leave old Windows artifacts as the visible build | GitHub artifact list must keep only `Dictivo-Windows-x64-installers` and `Dictivo-macOS-universal` from the latest completed `Build desktop apps` run on `main`. | Automated/admin pass |
+| Windows artifact version must match app version | Windows `Windows installer smoke` log must include `Installed Dictivo.exe ProductVersion <current app version>`. | Automated pass |
+| Windows installed app must launch | Windows `Windows installer smoke` log must include `Launch smoke found running Dictivo process`. | Automated pass |
+| Latest Windows artifact contents are current | Downloaded artifact must contain `Dictivo_<version>_x64-setup.exe`, `.sig`, `Dictivo_<version>_x64_en-US.msi`, and `.sig`. | Automated pass |
 | Local / Cloud Fast mode surfaces are present | `componentsStatic.test.tsx`, `componentsInteraction.test.tsx`, `desktopBridge.test.ts`, and `cloudFastEngine.test.ts` run in CI on Windows. | Automated contract pass |
 | Hotkey, paste, clipboard, companion, tray, recorder, and privacy behavior match macOS | `docs/windows-parity-test-plan.md` rows `WIN-PARITY-006` through `WIN-PARITY-020`. | Needs real Windows 11 |
 | Local mode does not upload audio; Cloud Fast uploads only after user chooses it | `WIN-PARITY-020`, plus local/cloud code contracts. | Needs real Windows 11 network spot check |
@@ -42,20 +42,24 @@ real Windows 11 pass through `docs/windows-parity-test-plan.md`.
 
 ## Current Automated Evidence
 
-Latest verified commit: `16daa3e`
+Read the current automated evidence from GitHub Actions instead of pinning
+volatile run IDs in this file:
 
-GitHub Actions:
+```bash
+gh run list --workflow "Build desktop apps" --branch main --limit 1 --json databaseId,headSha,status,conclusion,createdAt,displayTitle
+gh run view <run_id> --json status,conclusion,jobs
+gh api repos/Rswcf/Dictivo/actions/artifacts --paginate --jq '.artifacts[] | [.id, .name, .created_at, .expired, .size_in_bytes, .workflow_run.id] | @tsv' | head -20
+gh run view --job <windows_job_id> --log | rg "Installed |ProductVersion|Launch smoke|Upload desktop artifact"
+```
 
-- Workflow: `Build desktop apps`
-- Run: `26040535241`
-- Windows job: `76550586807`
-- macOS job: `76550586885`
-- Result: success on both jobs
+Required current evidence:
 
-Latest retained artifacts:
-
-- `7061253268` - `Dictivo-Windows-x64-installers`
-- `7061183069` - `Dictivo-macOS-universal`
+- Latest `Build desktop apps` run on `main` is green for both `macOS universal`
+  and `Windows x64`.
+- The Windows smoke log includes installed `Dictivo.exe` size,
+  `ProductVersion`, and a successful launch-smoke process.
+- Retained artifacts include exactly the latest `Dictivo-Windows-x64-installers`
+  and `Dictivo-macOS-universal` artifacts.
 
 Local verification for the latest audit/doc guard:
 
