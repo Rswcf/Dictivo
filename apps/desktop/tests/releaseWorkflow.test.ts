@@ -70,6 +70,7 @@ describe("desktop release workflow", () => {
       "- name: Whitespace check",
       "- name: Prepare Private Fast engine",
       "- name: Build Tauri bundle",
+      "- name: Windows installer smoke",
       "- name: Upload desktop artifact"
     ];
 
@@ -79,6 +80,23 @@ describe("desktop release workflow", () => {
     expect(workflow).toContain("npm audit --audit-level=moderate");
     expect(workflow).toContain("cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check");
     expect(workflow).toContain("git diff --check");
+  });
+
+  it("smoke tests the Windows installer before uploading validation artifacts", () => {
+    const smokeStart = workflow.indexOf("- name: Windows installer smoke");
+    const uploadStart = workflow.indexOf("- name: Upload desktop artifact");
+    const smokeStep = workflow.slice(smokeStart, uploadStart);
+
+    expect(smokeStart).toBeGreaterThan(workflow.indexOf("- name: Build Tauri bundle"));
+    expect(uploadStart).toBeGreaterThan(smokeStart);
+    expect(smokeStep).toContain("if: ${{ matrix.os == 'windows-2025-vs2026' }}");
+    expect(smokeStep).toContain("ConvertFrom-Json");
+    expect(smokeStep).toContain("Dictivo_*_x64-setup.exe");
+    expect(smokeStep).toContain("Dictivo_*_x64_en-US.msi");
+    expect(smokeStep).toContain(".sig");
+    expect(smokeStep).toContain('Start-Process -FilePath $nsis.FullName -ArgumentList "/S"');
+    expect(smokeStep).toContain("Dictivo.exe");
+    expect(smokeStep).toContain("NSIS silent install did not create Dictivo.exe");
   });
 
   it("keeps the interactive global hotkey probe opt-in for manual workflow runs", () => {

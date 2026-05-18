@@ -111,6 +111,80 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }} --bundles ${{ matrix.tauri_bundles }}
 
+      - name: Windows installer smoke
+        if: ${{ matrix.os == 'windows-2025-vs2026' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $bundleRoot = "${{ matrix.bundle_path }}"
+          $config = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $version = $config.version
+          $nsisPattern = "^Dictivo_" + [regex]::Escape($version) + "_x64-setup\.exe$"
+          $msiPattern = "^Dictivo_" + [regex]::Escape($version) + "_x64_en-US\.msi$"
+
+          $nsis = Get-ChildItem -Path (Join-Path $bundleRoot "nsis") -Filter "Dictivo_*_x64-setup.exe" -File | Select-Object -First 1
+          if (-not $nsis) {
+            throw "Missing NSIS setup executable in $bundleRoot"
+          }
+          if ($nsis.Name -notmatch $nsisPattern) {
+            throw "NSIS setup name '$($nsis.Name)' does not match app version $version"
+          }
+
+          $msi = Get-ChildItem -Path (Join-Path $bundleRoot "msi") -Filter "Dictivo_*_x64_en-US.msi" -File | Select-Object -First 1
+          if (-not $msi) {
+            throw "Missing MSI installer in $bundleRoot"
+          }
+          if ($msi.Name -notmatch $msiPattern) {
+            throw "MSI name '$($msi.Name)' does not match app version $version"
+          }
+
+          foreach ($signature in @("$($nsis.FullName).sig", "$($msi.FullName).sig")) {
+            if (-not (Test-Path $signature)) {
+              throw "Missing updater signature $signature"
+            }
+          }
+
+          $process = Start-Process -FilePath $nsis.FullName -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "NSIS silent install failed with exit code $($process.ExitCode)"
+          }
+
+          $installRoots = @(
+            (Join-Path $env:LOCALAPPDATA "Programs\Dictivo"),
+            (Join-Path $env:LOCALAPPDATA "Dictivo"),
+            (Join-Path $env:ProgramFiles "Dictivo")
+          )
+          $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+          if ($programFilesX86) {
+            $installRoots += (Join-Path $programFilesX86 "Dictivo")
+          }
+
+          $installedExe = $null
+          foreach ($root in $installRoots) {
+            $candidate = Join-Path $root "Dictivo.exe"
+            if (Test-Path $candidate) {
+              $installedExe = Get-Item $candidate
+              break
+            }
+          }
+
+          if (-not $installedExe) {
+            $programsRoot = Join-Path $env:LOCALAPPDATA "Programs"
+            if (Test-Path $programsRoot) {
+              $installedExe = Get-ChildItem -Path $programsRoot -Filter "Dictivo.exe" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+          }
+
+          if (-not $installedExe) {
+            throw "NSIS silent install did not create Dictivo.exe"
+          }
+          if ($installedExe.Length -le 0) {
+            throw "Installed Dictivo.exe is empty"
+          }
+
+          Write-Host "Installed $($installedExe.FullName) ($($installedExe.Length) bytes)"
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7
         with:
