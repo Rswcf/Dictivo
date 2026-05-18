@@ -2,7 +2,8 @@ name: Release desktop
 
 # Tag-driven release: push a vX.Y.Z tag, get signed + notarized macOS builds
 # uploaded to a GitHub Release plus a latest.json manifest the in-app updater
-# can read. Windows is intentionally deferred to v1.1 (see docs/release/plan.md).
+# can read. Windows public release waits for signing and manual QA; Windows
+# validation builds stay in build-desktop.yml and must remain feature-aligned.
 #
 # Required GitHub secrets (set in repo Settings → Secrets and variables → Actions):
 #   APPLE_ID                            — Apple Developer account email

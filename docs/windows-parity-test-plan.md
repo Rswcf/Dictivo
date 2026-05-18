@@ -19,6 +19,11 @@ macOS feature set.
 
 Use this section as a checklist before starting manual Windows QA.
 
+The most recent automated audit is recorded in
+[`docs/windows-parity-audit.md`](windows-parity-audit.md). That file captures
+the current run IDs, artifact IDs, installed `ProductVersion`, and the remaining
+manual gate.
+
 | Evidence | Command or source | Required result |
 | --- | --- | --- |
 | Source is clean and pushed | `git status --short`; `git log --oneline -3` | No local changes. Latest commit is on `main`. |

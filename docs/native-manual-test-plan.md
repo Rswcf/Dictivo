@@ -72,5 +72,6 @@ git diff --check
 | NATIVE-001 | macOS | 0.3.4 | Codex | Pass | 2026-05-18: `/Applications/Dictivo.app` installed from the current Tauri build, `CFBundleShortVersionString` and `CFBundleVersion` both read `0.3.4`, codesign verification passed, and the app launched from `/Applications/Dictivo.app/Contents/MacOS/dictivo`. |
 | NATIVE-005 | macOS | 0.3.4 | Codex | Partial automated | App/shared tests now cover Auto language default, CJK character counts, Cloud Fast `language: auto`, detected language persisted in history, and old Cloud Fast services rejecting Auto with an actionable error. Real spoken CJK/German/Spanish audio still needs manual execution. |
 | Layout regression | macOS | 0.3.4 | Codex | Automated | `componentsStatic.test.tsx` locks stable Local/Cloud Fast workbench layout slots so switching modes cannot remove the local tier slot and shift the mic vertically. |
+| Windows installer/version smoke | Windows | 0.3.5 | GitHub Actions | Automated | 2026-05-18: `Build desktop apps` run `26040535241`, Windows job `76550586807`, installed `Dictivo.exe` reported `ProductVersion 0.3.5` and stayed running during launch smoke. This is not a replacement for `WIN-PARITY-001..020`. |
 
-Older 0.2.x execution notes were historical dogfood evidence and should not be treated as current release proof. Re-run this table on each release candidate.
+Older 0.2.x and 0.3.4 execution notes are historical dogfood evidence and should not be treated as current release proof. Re-run this table on each release candidate.

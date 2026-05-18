@@ -82,6 +82,7 @@ describe("user-facing documentation", () => {
 
   it("keeps the Windows parity test plan tied to the current feature set", () => {
     const plan = readFileSync("../../docs/windows-parity-test-plan.md", "utf8");
+    const audit = readFileSync("../../docs/windows-parity-audit.md", "utf8");
     const nativePlan = readFileSync("../../docs/native-manual-test-plan.md", "utf8");
     const windowsSmokeScript = readFileSync("../../scripts/windows-parity-smoke.ps1", "utf8");
     const requiredSnippets = [
@@ -105,7 +106,15 @@ describe("user-facing documentation", () => {
     for (const snippet of requiredSnippets) {
       expect(plan, `windows parity plan should include ${snippet}`).toContain(snippet);
     }
+    expect(plan).toContain("windows-parity-audit.md");
+    expect(audit).toContain("Not complete");
+    expect(audit).toContain("Installed Dictivo.exe ProductVersion 0.3.5");
+    expect(audit).toContain("WIN-PARITY-001");
+    expect(audit).toContain("WIN-PARITY-020");
+    expect(audit).toContain("real Windows 11");
     expect(nativePlan).toContain("windows-parity-test-plan.md");
+    expect(nativePlan).toContain("Windows installer/version smoke");
+    expect(nativePlan).toContain("ProductVersion 0.3.5");
     expect(windowsSmokeScript).toContain("Dictivo_${version}_x64-setup.exe");
     expect(windowsSmokeScript).toContain("Installed Dictivo.exe ProductVersion");
     expect(windowsSmokeScript).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");
