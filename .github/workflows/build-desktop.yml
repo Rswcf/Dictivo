@@ -185,6 +185,22 @@ jobs:
 
           Write-Host "Installed $($installedExe.FullName) ($($installedExe.Length) bytes)"
 
+          Get-Process -Name "Dictivo" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $launched = $null
+          try {
+            $launched = Start-Process -FilePath $installedExe.FullName -PassThru
+            Start-Sleep -Seconds 8
+            $running = Get-Process -Name "Dictivo" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $running) {
+              $exitDetail = if ($launched.HasExited) { " It exited with code $($launched.ExitCode)." } else { "" }
+              throw "Installed Dictivo.exe did not remain running during launch smoke.$exitDetail"
+            }
+
+            Write-Host "Launch smoke found running Dictivo process $($running.Id)"
+          } finally {
+            Get-Process -Name "Dictivo" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7
         with:

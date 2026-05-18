@@ -97,6 +97,11 @@ describe("desktop release workflow", () => {
     expect(smokeStep).toContain('Start-Process -FilePath $nsis.FullName -ArgumentList "/S"');
     expect(smokeStep).toContain("Dictivo.exe");
     expect(smokeStep).toContain("NSIS silent install did not create Dictivo.exe");
+    expect(smokeStep).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");
+    expect(smokeStep).toContain("Start-Sleep -Seconds 8");
+    expect(smokeStep).toContain('Get-Process -Name "Dictivo"');
+    expect(smokeStep).toContain("Installed Dictivo.exe did not remain running during launch smoke");
+    expect(smokeStep).toContain("Launch smoke found running Dictivo process");
   });
 
   it("keeps the interactive global hotkey probe opt-in for manual workflow runs", () => {
