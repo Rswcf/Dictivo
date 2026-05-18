@@ -83,8 +83,10 @@ describe("user-facing documentation", () => {
   it("keeps the Windows parity test plan tied to the current feature set", () => {
     const plan = readFileSync("../../docs/windows-parity-test-plan.md", "utf8");
     const nativePlan = readFileSync("../../docs/native-manual-test-plan.md", "utf8");
+    const windowsSmokeScript = readFileSync("../../scripts/windows-parity-smoke.ps1", "utf8");
     const requiredSnippets = [
       "Dictivo-Windows-x64-installers",
+      "windows-parity-smoke.ps1",
       "WIN-PARITY-003",
       "WIN-PARITY-004",
       "WIN-PARITY-006",
@@ -96,6 +98,7 @@ describe("user-facing documentation", () => {
       "Cloud Fast",
       "Private Local",
       "Paste Last",
+      "CI installer + launch smoke",
       "Do not mark Windows parity complete from CI alone"
     ];
 
@@ -103,5 +106,8 @@ describe("user-facing documentation", () => {
       expect(plan, `windows parity plan should include ${snippet}`).toContain(snippet);
     }
     expect(nativePlan).toContain("windows-parity-test-plan.md");
+    expect(windowsSmokeScript).toContain("Dictivo_${version}_x64-setup.exe");
+    expect(windowsSmokeScript).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");
+    expect(windowsSmokeScript).toContain("Continue with WIN-PARITY-002 through WIN-PARITY-020");
   });
 });

@@ -25,10 +25,27 @@ Use this section as a checklist before starting manual Windows QA.
 | Windows artifact exists | `gh api repos/Rswcf/Dictivo/actions/artifacts --paginate` | Latest artifact includes `Dictivo-Windows-x64-installers`. |
 | Workflow parity target exists | `.github/workflows/build-desktop.yml` | Matrix includes `Windows x64`, `x86_64-pc-windows-msvc`, and `msi,nsis`. |
 | Workflow contract test | `npm exec -w @dictivo/desktop -- vitest run tests/releaseWorkflow.test.ts` | macOS and Windows validation target tests pass. |
+| CI installer + launch smoke | `build-desktop.yml` Windows `Windows installer smoke` step | The NSIS installer installs silently, `Dictivo.exe` is present and non-empty, and the installed app stays running during the launch smoke. |
 | Desktop render contracts | `npm exec -w @dictivo/desktop -- vitest run tests/componentsStatic.test.tsx tests/componentsInteraction.test.tsx` | Local / Cloud Fast, companion, settings, and layout contracts pass. |
 | Desktop bridge contracts | `npm exec -w @dictivo/desktop -- vitest run tests/desktopBridge.test.ts tests/cloudFastEngine.test.ts` | Cloud Fast session, native bridge, clipboard, and fallback paths pass. |
 | Native Rust contracts | `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` | Windows command helpers, native recorder, license slots, and private-fast tests pass. |
 | Browser E2E | `npm run e2e` | Main workflows, settings, companion upload, onboarding, and tier UI pass. |
+
+## Windows Preflight Script
+
+Before running the manual matrix, download the latest
+`Dictivo-Windows-x64-installers` artifact, unzip it, and run this from
+PowerShell on Windows:
+
+```powershell
+.\scripts\windows-parity-smoke.ps1 -InstallerPath .\nsis\Dictivo_<version>_x64-setup.exe
+```
+
+The script validates the current-version installer name, requires the adjacent
+`.sig` file, installs the NSIS package silently, finds the installed
+`Dictivo.exe`, launches it, and confirms the process stays alive. It leaves the
+app running by default so the tester can continue with `WIN-PARITY-002`; add
+`-StopAfterLaunch` when you only want the preflight result.
 
 ## Windows Feature Matrix
 
