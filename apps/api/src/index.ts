@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { billingRoutes } from "./routes/billing.js";
+import { cloudFastRoutes } from "./routes/cloudFast.js";
 import { entitlementsRoutes } from "./routes/entitlements.js";
 import { transcriptionRoutes } from "./routes/transcription.js";
 import { usageRoutes } from "./routes/usage.js";
@@ -60,6 +61,7 @@ export function buildServer() {
 
     routes.register(entitlementsRoutes);
     routes.register(transcriptionRoutes);
+    routes.register(cloudFastRoutes);
     routes.register(usageRoutes);
     routes.register(billingRoutes);
   });

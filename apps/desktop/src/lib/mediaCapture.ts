@@ -1,3 +1,5 @@
+import { invoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
+
 export type RecordingController = {
   startedAt: number;
   format: RecordingFormat;
@@ -15,6 +17,19 @@ export const COMPANION_WAVEFORM_BANDS = 7;
 export type AudioLevelsCallback = (bands: number[]) => void;
 
 const LEVEL_SAMPLE_INTERVAL_MS = 80; // ≈12 frames/sec — smooth enough, IPC cheap
+const MICROPHONE_SETUP_TIMEOUT_MS = 10_000;
+
+type NativeRecordingStarted = {
+  startedAt: number;
+  sampleRate: number;
+};
+
+type NativeRecordingStopped = {
+  audioBase64: string;
+  mimeType: string;
+  startedAt: number;
+  durationMs: number;
+};
 
 /** Aggregate FFT bin data into N logarithmically-spaced bands. Voice energy
  * concentrates in the lower half of the spectrum, so we only sample bins up
@@ -59,10 +74,40 @@ export async function startAudioRecording(
   format: RecordingFormat = "compressed",
   onAudioLevels?: AudioLevelsCallback
 ): Promise<RecordingController> {
+  if (isDesktopRuntime()) {
+    return startNativeAudioRecording(source);
+  }
+
   const capture = await createMicrophoneStream();
   return format === "wav"
     ? startWavRecording(source, capture, onAudioLevels)
     : startCompressedRecording(source, capture, onAudioLevels);
+}
+
+async function startNativeAudioRecording(source: RecordingController["source"]): Promise<RecordingController> {
+  const started = await invoke<NativeRecordingStarted>("start_native_recording");
+  return {
+    startedAt: started.startedAt || Date.now(),
+    format: "wav",
+    source,
+    stop: async () => {
+      const stopped = await invoke<NativeRecordingStopped>("stop_native_recording");
+      return new Blob([base64ToBytes(stopped.audioBase64)], { type: stopped.mimeType || "audio/wav" });
+    }
+  };
+}
+
+function isDesktopRuntime() {
+  return tauriIsTauri() || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
+}
+
+function base64ToBytes(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 /** Plumb an AnalyserNode into a recording's audio graph and start emitting
@@ -210,7 +255,7 @@ async function startWavRecording(
 }
 
 async function createMicrophoneStream(): Promise<CapturedStream> {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  const streamRequest = navigator.mediaDevices.getUserMedia({
     audio: {
       autoGainControl: true,
       channelCount: 1,
@@ -218,6 +263,26 @@ async function createMicrophoneStream(): Promise<CapturedStream> {
       noiseSuppression: true
     }
   });
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<MediaStream>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("Microphone setup timed out. Open Dictivo, allow microphone access, and try again."));
+    }, MICROPHONE_SETUP_TIMEOUT_MS);
+  });
+
+  let stream: MediaStream;
+  try {
+    stream = await Promise.race([streamRequest, timeout]);
+  } catch (error) {
+    void streamRequest
+      .then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()))
+      .catch(() => undefined);
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
   return {
     stream,
     cleanup: () => {

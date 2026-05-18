@@ -122,13 +122,12 @@ describe("release version metadata", () => {
     });
 
     const companionWindow = tauriConfig.app.windows.find((window) => window.label === "companion");
-    // 0.2.x: companion window starts at the idle 92×92 footprint and expands
-    // to 360×100 dynamically from the React side on the first non-idle phase
-    // (see CompanionWindow.tsx → IDLE/EXPANDED_WINDOW_SIZE constants).
+    // 0.2.x: companion window starts in a compact status-card footprint and
+    // can shrink/expand dynamically when the user selects Animated pet mode.
     expect(companionWindow).toMatchObject({
       title: "Dictivo Companion",
-      width: 92,
-      height: 92,
+      width: 300,
+      height: 104,
       minWidth: 92,
       minHeight: 92,
       resizable: false,
@@ -146,6 +145,7 @@ describe("release version metadata", () => {
     expect(capability.permissions).toEqual([
       "core:default",
       "core:window:allow-hide",
+      "core:window:allow-available-monitors",
       "core:window:allow-set-position",
       "core:window:allow-set-size",
       "core:window:allow-set-focus",

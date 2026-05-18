@@ -19,16 +19,16 @@ After posting, **do not** ask friends to upvote (HN detects and shadowbans). Do 
 
 Best candidates ranked by what HN actually rewards (specific, contrarian, useful):
 
-1. **`Show HN: Dictivo – Voice dictation that never leaves your laptop ($49 once)`**
-   - Specific (price). Implicit position vs subscriptions. 64 chars.
-2. **`Show HN: Whisper-grade voice dictation, fully offline, no subscription`**
-   - Capability + the two things HN privacy crowd cares about. 70 chars.
+1. **`Show HN: Dictivo – Local voice dictation for $49 once`**
+   - Specific (price). Implicit position vs subscriptions. Leaves room for the optional Cloud Fast add-on.
+2. **`Show HN: Whisper-grade local dictation, no subscription`**
+   - Capability + the buy-once local positioning. 58 chars.
 3. **`Show HN: I built a buy-once voice dictation app to replace Wispr Flow`**
    - Names the competitor; some risk, but instant context. Drops "Wispr" if you'd rather not.
 4. **`Show HN: Dictivo – Local Whisper dictation in a single hotkey`**
    - Mechanic + tech stack hint. 60 chars.
 
-**Recommend #1.** Includes the price (signals real product, not toy), names the product, says the two contrarian things ("never leaves" + "once"). The dollar sign survives HN's title hygiene.
+**Recommend #1.** Includes the price (signals real product, not toy), names the product, and centers the local buy-once product. The dollar sign survives HN's title hygiene.
 
 Do not use: marketing fluff, emoji, ALL CAPS, exclamations, "introducing".
 
@@ -41,8 +41,8 @@ HN's first comment from the OP is read by everyone who clicks through. It sets c
 ```
 Hi HN — I'm the (solo) maker of Dictivo. It's a Mac voice-dictation app
 that runs whisper.cpp locally. Hold a hotkey, talk, release, and the
-polished text lands wherever your cursor is. Nothing about your audio,
-your transcripts, or your dictionary ever leaves the laptop.
+polished text lands wherever your cursor is. In Local mode, your audio,
+transcripts, and dictionary stay on the laptop.
 
 There are two reasons it exists. (1) The subscription-priced voice
 keyboards (Wispr Flow, Superwhisper Lifetime) keep getting more
@@ -54,12 +54,17 @@ hotkey in 60 seconds.
 Pricing: $49 once. The first 12 months of new versions + new
 transcription models are included. After that, the version you have
 keeps working forever — you can optionally renew for $24 to keep
-getting new models. No subscription, no telemetry, no cloud round-trip.
+getting new models. Local mode has no subscription, no telemetry, no cloud round-trip.
+
+There's also an optional Cloud Fast add-on at $6.99/mo for people who
+want faster cloud transcription and accept the upload. It stays a
+separate switch from Local mode.
 
 Free tier with the `tiny` Whisper model if you want to try first.
 
 Happy to answer anything about the architecture, model picks, the
-"buy-once but make it sustainable" pricing math, or why I chose Tauri.
+"buy-once but make it sustainable" pricing math, Cloud Fast, or why I
+chose Tauri.
 ```
 
 Customizations before posting:
@@ -78,8 +83,8 @@ Pre-write these so you respond in 60 seconds at the top of the thread, when it m
 > Because I want to ship the next 12 months of updates without a side
 > job. whisper.cpp itself is MIT and stays MIT. The Tauri client around
 > it is closed; I am open to revisiting that once revenue clears my
-> bills. Nothing about the privacy story depends on the client being
-> open — your audio never leaves the laptop regardless, and the binary
+> bills. Nothing about the Local-mode privacy story depends on the
+> client being open — Local keeps audio on the laptop, and the binary
 > ships signed + notarized so you can verify what you run.
 
 ### "How is it different from MacWhisper / Aiko / Superwhisper?"
@@ -115,6 +120,10 @@ Pre-write these so you respond in 60 seconds at the top of the thread, when it m
 > - Once on first activation: one POST to Lemon Squeezy to validate the
 >   license key. After that the cached license is trusted offline
 >   forever.
+> - Only if you switch to Cloud Fast: one POST to Dictivo's proxy with
+>   the current recording audio for cloud transcription. The UI says this
+>   explicitly: "Local keeps audio on this device. Cloud Fast uploads
+>   audio to cloud transcription providers for faster results."
 >
 > Source-of-truth: https://dictivo.app/privacy
 

@@ -1,10 +1,10 @@
-import type { FinalizeTranscriptOptions, Snippet, SupportedLanguage } from "@dictivo/shared";
+import { resolveTranscriptLanguage, type FinalizeTranscriptOptions, type Snippet, type SupportedLanguage, type TranscriptionLanguage } from "@dictivo/shared";
 import { transcribePrivateFast, type PrivateFastProfile } from "./desktopBridge";
 import { polishLocalTranscript } from "./localPolish";
 import { DEFAULT_LOCAL_PROCESSING, type LocalProcessingSettings } from "./settingsStore";
 
 export type LocalDictationOptions = {
-  language: SupportedLanguage;
+  language: TranscriptionLanguage;
   dictionary: string[];
   snippets: Array<Pick<Snippet, "trigger" | "replacement">>;
   mode: FinalizeTranscriptOptions["mode"];
@@ -15,6 +15,7 @@ export type LocalDictationOptions = {
 export type LocalDictationResult = {
   rawText: string;
   finalizedText: string;
+  language: SupportedLanguage;
   profileUsed: PrivateFastProfile;
   fallbackUsed: boolean;
   slowWarning?: string;
@@ -22,8 +23,9 @@ export type LocalDictationResult = {
 
 export async function runLocalDictation(audio: Blob, options: LocalDictationOptions): Promise<LocalDictationResult> {
   const rawResult = await transcribeWithProfileFallback(audio, options);
+  const language = resolveTranscriptLanguage(options.language, rawResult.text);
   const finalizedText = polishLocalTranscript(rawResult.text, {
-    language: options.language,
+    language,
     mode: options.mode,
     dictionary: options.dictionary,
     snippets: options.snippets,
@@ -33,6 +35,7 @@ export async function runLocalDictation(audio: Blob, options: LocalDictationOpti
   return {
     rawText: rawResult.text,
     finalizedText,
+    language,
     profileUsed: rawResult.profileUsed,
     fallbackUsed: rawResult.fallbackUsed,
     slowWarning: rawResult.slowWarning

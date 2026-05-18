@@ -7,24 +7,35 @@ import { DEFAULT_LOCAL_PROCESSING } from "../src/lib/settingsStore";
 import type { HardwareProfile, PrivateFastModel, PrivateFastStatus, RunnableTiers } from "../src/lib/desktopBridge";
 
 const bridge = vi.hoisted(() => ({
+  activateCloudFastLicense: vi.fn(),
+  activateLicense: vi.fn(),
   benchmarkTier: vi.fn(),
+  checkForUpdate: vi.fn(),
   clearLocalSessions: vi.fn(),
   copyText: vi.fn(),
+  deactivateCloudFastLicense: vi.fn(),
+  deactivateLicense: vi.fn(),
   deleteLocalSession: vi.fn(),
   deletePrivateFastModel: vi.fn(),
   detectGpu: vi.fn(),
   downloadPrivateFastModel: vi.fn(),
   finalizeCalibration: vi.fn(),
   getClipboardMarker: vi.fn(),
+  getCloudFastLicense: vi.fn(),
   getHardwareProfile: vi.fn(),
+  getLicense: vi.fn(),
   getPrivateFastModels: vi.fn(),
   getPrivateFastStatus: vi.fn(),
   getRunnableTiers: vi.fn(),
   importPrivateFastModel: vi.fn(),
+  installUpdate: vi.fn(),
   isTauriRuntime: vi.fn(),
   listLocalSessions: vi.fn(),
+  openExternalUrl: vi.fn(),
   openPermissionSettings: vi.fn(),
   pasteText: vi.fn(),
+  refreshCloudFastLicense: vi.fn(),
+  refreshLicense: vi.fn(),
   requestNativePermissions: vi.fn(),
   rerunBenchmark: vi.fn(),
   saveLocalSession: vi.fn(),
@@ -47,6 +58,16 @@ const localDictation = vi.hoisted(() => ({
   runLocalDictation: vi.fn()
 }));
 
+const cloudFast = vi.hoisted(() => ({
+  getCloudFastEntitlement: vi.fn(),
+  runCloudFastDictation: vi.fn()
+}));
+
+const sounds = vi.hoisted(() => ({
+  playRecordingStopSound: vi.fn(),
+  playStartSound: vi.fn()
+}));
+
 const tauriEvents = vi.hoisted(() => ({
   emitTo: vi.fn().mockResolvedValue(undefined),
   listen: vi.fn().mockResolvedValue(() => undefined)
@@ -54,10 +75,11 @@ const tauriEvents = vi.hoisted(() => ({
 
 const tauriWindow = vi.hoisted(() => ({
   getByLabel: vi.fn(),
+  availableMonitors: vi.fn(),
   primaryMonitor: vi.fn(),
   companion: {
     hide: vi.fn().mockResolvedValue(undefined),
-    outerSize: vi.fn().mockResolvedValue({ width: 360, height: 100 }),
+    outerSize: vi.fn().mockResolvedValue({ width: 300, height: 104 }),
     setPosition: vi.fn().mockResolvedValue(undefined),
     show: vi.fn().mockResolvedValue(undefined)
   }
@@ -74,6 +96,21 @@ vi.mock("../src/lib/mediaCapture", () => ({
 vi.mock("../src/lib/localDictationEngine", () => ({
   runLocalDictation: localDictation.runLocalDictation
 }));
+
+vi.mock("../src/lib/cloudFastEngine", () => ({
+  clearCloudFastSessionCache: vi.fn(),
+  getCloudFastEntitlement: cloudFast.getCloudFastEntitlement,
+  runCloudFastDictation: cloudFast.runCloudFastDictation
+}));
+
+vi.mock("../src/lib/sounds", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/sounds")>("../src/lib/sounds");
+  return {
+    ...actual,
+    playRecordingStopSound: sounds.playRecordingStopSound,
+    playStartSound: sounds.playStartSound
+  };
+});
 
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn().mockResolvedValue("0.2.0")
@@ -96,6 +133,7 @@ vi.mock("@tauri-apps/api/window", () => ({
     setFocus = vi.fn().mockResolvedValue(undefined);
     setPosition = vi.fn().mockResolvedValue(undefined);
   },
+  availableMonitors: tauriWindow.availableMonitors,
   primaryMonitor: tauriWindow.primaryMonitor
 }));
 
@@ -152,6 +190,24 @@ const tiers: RunnableTiers = {
   benchmarkedAt: "2026-05-13T00:00:00.000Z"
 };
 
+const unavailableCloudFastEntitlement = {
+  available: false,
+  plan: "unknown",
+  priceUsdMonthly: "6.99",
+  monthlySecondsLimit: 90_000,
+  monthlySecondsUsed: 0,
+  renewsAt: null,
+  upgradeUrl: "https://dictivo.app/cloud-fast",
+  privacyNotice: "Cloud Fast uploads audio to cloud transcription providers for faster results."
+};
+
+const availableCloudFastEntitlement = {
+  ...unavailableCloudFastEntitlement,
+  available: true,
+  plan: "cloud-fast-monthly",
+  monthlySecondsUsed: 120
+};
+
 const session = {
   id: "session_1",
   title: "Message 10:30",
@@ -194,6 +250,7 @@ function seedCompletedSettings(overrides: Record<string, unknown> = {}) {
       selectedTier: "medium",
       onboardingCompleted: true,
       companionEnabled: false,
+      companionDisplayMode: "card",
       companionAvatar: "dog",
       hotkeys: {
         dictation: "CommandOrControl+Shift+Space",
@@ -201,6 +258,7 @@ function seedCompletedSettings(overrides: Record<string, unknown> = {}) {
         activationMode: "toggle"
       },
       localProcessing: DEFAULT_LOCAL_PROCESSING,
+      transcriptionMode: "local",
       dictionary: [],
       snippets: [],
       ...overrides
@@ -225,13 +283,33 @@ describe("App startup recovery", () => {
     });
     bridge.getRunnableTiers.mockResolvedValue(tiers);
     bridge.getClipboardMarker.mockResolvedValue(null);
+    bridge.getLicense.mockResolvedValue({
+      present: false,
+      email: "",
+      productName: "",
+      createdAt: "",
+      updatesUntil: "",
+      daysRemaining: 0,
+      status: "absent"
+    });
+    bridge.getCloudFastLicense.mockResolvedValue({
+      present: false,
+      email: "",
+      productName: "",
+      createdAt: "",
+      updatesUntil: "",
+      daysRemaining: 0,
+      status: "absent"
+    });
     bridge.pasteText.mockResolvedValue({ pasted: false, copied: true, method: "clipboard" });
+    bridge.copyText.mockResolvedValue({ copied: true, method: "clipboard" });
     bridge.saveLocalSession.mockResolvedValue(undefined);
     bridge.writeRunnableTiers.mockResolvedValue(undefined);
     tauriWindow.getByLabel.mockResolvedValue(null);
+    tauriWindow.availableMonitors.mockResolvedValue([]);
     tauriWindow.primaryMonitor.mockResolvedValue(null);
     tauriWindow.companion.hide.mockResolvedValue(undefined);
-    tauriWindow.companion.outerSize.mockResolvedValue({ width: 360, height: 100 });
+    tauriWindow.companion.outerSize.mockResolvedValue({ width: 300, height: 104 });
     tauriWindow.companion.setPosition.mockResolvedValue(undefined);
     tauriWindow.companion.show.mockResolvedValue(undefined);
     tauriEvents.emitTo.mockResolvedValue(undefined);
@@ -248,6 +326,12 @@ describe("App startup recovery", () => {
       profileUsed: "balanced",
       fallbackUsed: false
     });
+    cloudFast.getCloudFastEntitlement.mockResolvedValue(unavailableCloudFastEntitlement);
+    cloudFast.runCloudFastDictation.mockResolvedValue({
+      rawText: "Cloud raw transcript",
+      finalizedText: "Cloud transcript.",
+      fallbackUsed: false
+    });
     shortcut.isRegistered.mockResolvedValue(false);
     shortcut.register.mockResolvedValue(undefined);
     shortcut.unregister.mockResolvedValue(undefined);
@@ -255,6 +339,7 @@ describe("App startup recovery", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -305,7 +390,8 @@ describe("App startup recovery", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Private Dictation." })).toBeTruthy());
-    expect(screen.getByLabelText("Dictation language")).toBeTruthy();
+    expect(screen.queryByLabelText("Dictation language")).toBeNull();
+    expect(screen.getByText("Auto language")).toBeTruthy();
   });
 
   it("updates main workbench hotkey chips after changing shortcuts in Settings", async () => {
@@ -366,7 +452,7 @@ describe("App startup recovery", () => {
     expect(screen.getByText("last transcript")).toBeTruthy();
   });
 
-  it("uses CJK character counts and persists the selected dictation language", async () => {
+  it("auto-detects CJK character counts and persists the detected transcript language", async () => {
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
     localDictation.runLocalDictation.mockResolvedValueOnce({
       rawText: "你好世界",
@@ -378,7 +464,6 @@ describe("App startup recovery", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("Dictation language"), { target: { value: "zh" } });
     fireEvent.change(screen.getByLabelText("Live dictation text"), { target: { value: "你好世界" } });
 
     expect(screen.getByText(/4 characters/)).toBeTruthy();
@@ -386,8 +471,9 @@ describe("App startup recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
     await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+    await waitFor(() => expect(sounds.playRecordingStopSound).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => expect(localDictation.runLocalDictation).toHaveBeenCalledWith(expect.any(Blob), expect.objectContaining({ language: "zh" })));
+    await waitFor(() => expect(localDictation.runLocalDictation).toHaveBeenCalledWith(expect.any(Blob), expect.objectContaining({ language: "auto" })));
     await waitFor(() =>
       expect(bridge.saveLocalSession).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -399,13 +485,13 @@ describe("App startup recovery", () => {
     );
   });
 
-  it("passes Processing toggle changes from Settings into local dictation", async () => {
+  it("passes Text cleanup changes from Settings into local dictation", async () => {
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
 
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.click(screen.getByText("Processing toggles"));
+    fireEvent.click(screen.getByText("Text cleanup"));
     fireEvent.click(screen.getByLabelText("Auto polish"));
     fireEvent.click(screen.getByRole("button", { name: "Dictation" }));
 
@@ -424,6 +510,103 @@ describe("App startup recovery", () => {
     );
   });
 
+  it("blocks Cloud Fast dictation when the user has no subscription", async () => {
+    seedCompletedSettings({ transcriptionMode: "cloud-fast" });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Cloud Fast subscription required")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Cloud Fast requires an active $6.99/month subscription. Local mode keeps working on this device.")).toBeTruthy()
+    );
+    expect(media.startAudioRecording).not.toHaveBeenCalled();
+    expect(localDictation.runLocalDictation).not.toHaveBeenCalled();
+    expect(cloudFast.runCloudFastDictation).not.toHaveBeenCalled();
+  });
+
+  it("uses Cloud Fast proxy transcription for subscribed users and keeps history, paste, and privacy metadata", async () => {
+    seedCompletedSettings({ transcriptionMode: "cloud-fast" });
+    cloudFast.getCloudFastEntitlement.mockResolvedValue(availableCloudFastEntitlement);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("Cloud Fast ready").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText("Live dictation text")).toHaveProperty(
+      "value",
+      "Recording for Cloud Fast. Stop to upload this audio for faster transcription."
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    await waitFor(() => expect(cloudFast.runCloudFastDictation).toHaveBeenCalledWith(
+      expect.any(Blob),
+      expect.objectContaining({
+        language: "auto",
+        mode: "message",
+        durationSeconds: expect.any(Number),
+        localProcessing: DEFAULT_LOCAL_PROCESSING
+      })
+    ));
+    expect(localDictation.runLocalDictation).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(bridge.saveLocalSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          privacyMode: "cloud-fast",
+          provider: "cloud-fast",
+          rawText: "Cloud raw transcript",
+          text: "Cloud transcript."
+        })
+      )
+    );
+    expect(bridge.pasteText).toHaveBeenCalledWith("Cloud transcript.", null);
+    await waitFor(() => expect(screen.getByText("Cloud Fast transcription completed.")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    await waitFor(() => expect(screen.getByText("Cloud transcript.")).toBeTruthy());
+    expect(screen.getByText(/cloud-fast/)).toBeTruthy();
+  });
+
+  it("shows Cloud Fast backup-route success when provider fallback is used", async () => {
+    seedCompletedSettings({ transcriptionMode: "cloud-fast" });
+    cloudFast.getCloudFastEntitlement.mockResolvedValue(availableCloudFastEntitlement);
+    cloudFast.runCloudFastDictation.mockResolvedValueOnce({
+      rawText: "Cloud backup raw",
+      finalizedText: "Cloud backup transcript.",
+      fallbackUsed: true
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("Cloud Fast ready").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    await waitFor(() => expect(cloudFast.runCloudFastDictation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("Cloud Fast completed through the backup route.")).toBeTruthy());
+  });
+
+  it("clears Cloud Fast recording placeholder and shows the real error when transcription fails", async () => {
+    seedCompletedSettings({ transcriptionMode: "cloud-fast" });
+    cloudFast.getCloudFastEntitlement.mockResolvedValue(availableCloudFastEntitlement);
+    cloudFast.runCloudFastDictation.mockRejectedValueOnce(new Error("Cloud Fast service rejected automatic language detection."));
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("Cloud Fast ready").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    await waitFor(() => expect(screen.getByText("Cloud Fast service rejected automatic language detection.")).toBeTruthy());
+    expect(screen.getByLabelText("Live dictation text")).toHaveProperty("value", "");
+    expect(bridge.saveLocalSession).not.toHaveBeenCalled();
+  });
+
   it("shows microphone denial without saving an empty history item", async () => {
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
     media.startAudioRecording.mockRejectedValueOnce(new Error("Microphone permission denied"));
@@ -435,6 +618,7 @@ describe("App startup recovery", () => {
 
     await waitFor(() => expect(screen.getByText("Microphone permission denied")).toBeTruthy());
     expect(screen.getByLabelText("Live dictation text")).toHaveProperty("value", "");
+    expect(sounds.playRecordingStopSound).not.toHaveBeenCalled();
     expect(localDictation.runLocalDictation).not.toHaveBeenCalled();
     expect(bridge.saveLocalSession).not.toHaveBeenCalled();
   });
@@ -457,6 +641,7 @@ describe("App startup recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
 
     expect(screen.getByText("Stopping recording as soon as the microphone is ready...")).toBeTruthy();
+    expect(sounds.playRecordingStopSound).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveRecording?.({
@@ -469,6 +654,7 @@ describe("App startup recovery", () => {
 
     await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(localDictation.runLocalDictation).toHaveBeenCalledTimes(1));
+    expect(sounds.playRecordingStopSound).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("No active recording was found.")).toBeNull();
   });
 
@@ -584,7 +770,7 @@ describe("App startup recovery", () => {
     expect(screen.getByText("No local snippets yet.")).toBeTruthy();
   });
 
-  it("filters dictionary and snippets by the selected language before dictation", async () => {
+  it("uses all dictionary terms and snippets when language input is auto-detected", async () => {
     seedCompletedSettings({
       language: "en",
       dictionary: [
@@ -602,15 +788,9 @@ describe("App startup recovery", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Dictionary" }));
     expect(screen.getByRole("button", { name: "Remove dictionary term Dictivo" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove dictionary term Worterbuch" })).toBeNull();
-    expect(screen.getByText("https://en.example/calendar")).toBeTruthy();
-    expect(screen.queryByText("https://de.example/kalender")).toBeNull();
-
-    fireEvent.change(screen.getByLabelText("Dictation language"), { target: { value: "de" } });
     expect(screen.getByRole("button", { name: "Remove dictionary term Worterbuch" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove dictionary term Dictivo" })).toBeNull();
+    expect(screen.getByText("https://en.example/calendar")).toBeTruthy();
     expect(screen.getByText("https://de.example/kalender")).toBeTruthy();
-    expect(screen.queryByText("https://en.example/calendar")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Dictation" }));
     await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
@@ -622,9 +802,12 @@ describe("App startup recovery", () => {
       expect(localDictation.runLocalDictation).toHaveBeenCalledWith(
         expect.any(Blob),
         expect.objectContaining({
-          language: "de",
-          dictionary: ["Worterbuch"],
-          snippets: [{ trigger: "kalender", replacement: "https://de.example/kalender" }]
+          language: "auto",
+          dictionary: ["Dictivo", "Worterbuch"],
+          snippets: [
+            { trigger: "calendar", replacement: "https://en.example/calendar" },
+            { trigger: "kalender", replacement: "https://de.example/kalender" }
+          ]
         })
       )
     );
@@ -838,7 +1021,7 @@ describe("App startup recovery", () => {
     expect(bridge.finalizeCalibration).toHaveBeenCalledWith(0.72, "small");
   });
 
-  it("opens the setup wizard from Local Engine settings and returns to dictation after skipping", async () => {
+  it("opens the setup wizard from Engine settings and returns to dictation after skipping", async () => {
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
 
     render(<App />);
@@ -946,12 +1129,13 @@ describe("App startup recovery", () => {
     await waitFor(() => expect(tauriWindow.companion.show).toHaveBeenCalled());
     expect(tauriWindow.getByLabel).toHaveBeenCalledWith("companion");
     expect(tauriWindow.companion.outerSize).toHaveBeenCalled();
-    expect(tauriWindow.companion.setPosition).toHaveBeenCalledWith(expect.objectContaining({ x: 1056, y: 24 }));
+    expect(tauriWindow.companion.setPosition).toHaveBeenCalledWith(expect.objectContaining({ x: 1116, y: 24 }));
     expect(tauriEvents.emitTo).toHaveBeenCalledWith(
       "companion",
       "companion-state",
       expect.objectContaining({
         enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "idle",
         title: "Standing by"
@@ -999,6 +1183,64 @@ describe("App startup recovery", () => {
     );
   });
 
+  it("auto-opens the native companion at a saved secondary-screen position when it is still visible", async () => {
+    seedCompletedSettings({
+      companionEnabled: true,
+      companionPosition: { x: -384, y: 104 }
+    });
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriWindow.getByLabel.mockResolvedValue(tauriWindow.companion);
+    tauriWindow.availableMonitors.mockResolvedValue([
+      {
+        workArea: {
+          position: { x: -1280, y: 80 },
+          size: { width: 1280, height: 720 }
+        }
+      },
+      {
+        workArea: {
+          position: { x: 0, y: 0 },
+          size: { width: 1440, height: 900 }
+        }
+      }
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => expect(tauriWindow.companion.show).toHaveBeenCalled());
+    expect(tauriWindow.companion.setPosition).toHaveBeenCalledWith(expect.objectContaining({ x: -384, y: 104 }));
+  });
+
+  it("falls back to the primary-screen anchor when a saved companion position is now off-screen", async () => {
+    seedCompletedSettings({
+      companionEnabled: true,
+      companionPosition: { x: -1280, y: 104 }
+    });
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriWindow.getByLabel.mockResolvedValue(tauriWindow.companion);
+    tauriWindow.availableMonitors.mockResolvedValue([
+      {
+        workArea: {
+          position: { x: 0, y: 0 },
+          size: { width: 1440, height: 900 }
+        }
+      }
+    ]);
+    tauriWindow.primaryMonitor.mockResolvedValue({
+      workArea: {
+        position: { x: 0, y: 0 },
+        size: { width: 1440, height: 900 }
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(tauriWindow.companion.show).toHaveBeenCalled());
+    expect(tauriWindow.companion.setPosition).toHaveBeenCalledWith(expect.objectContaining({ x: 1116, y: 24 }));
+  });
+
   it("shows a readable status when the native companion window is unavailable", async () => {
     bridge.isTauriRuntime.mockReturnValue(true);
     bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
@@ -1027,11 +1269,42 @@ describe("App startup recovery", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Show floating companion" }));
     await waitFor(() => expect(hideHandler).toBeTruthy());
+    expect(tauriEvents.listen).not.toHaveBeenCalledWith("companion-toggle-dictation", expect.any(Function));
 
     hideHandler?.();
 
-    await waitFor(() => expect(screen.getByText("Floating companion hidden. Re-enable it in Settings -> Companion.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Floating companion hidden until the next dictation.")).toBeTruthy());
     await waitFor(() => expect(tauriWindow.companion.hide).toHaveBeenCalled());
+  });
+
+  it("hotkey recording re-enables and shows the native companion even after an older hide persisted disabled state", async () => {
+    let hotkeyHandler: ((event: { shortcut: string; state: "Pressed" | "Released" }) => void) | undefined;
+    seedCompletedSettings({ companionEnabled: false });
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriWindow.getByLabel.mockResolvedValue(tauriWindow.companion);
+    shortcut.isRegistered.mockResolvedValue(true);
+    shortcut.register.mockImplementation((_shortcuts, handler) => {
+      hotkeyHandler = handler;
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(hotkeyHandler).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+    hotkeyHandler?.({ shortcut: "Command+Shift+Space", state: "Pressed" });
+
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalled());
+    await waitFor(() => expect(tauriWindow.companion.show).toHaveBeenCalled());
+    expect(tauriEvents.emitTo).toHaveBeenCalledWith(
+      "companion",
+      "companion-state",
+      expect.objectContaining({
+        enabled: true,
+        phase: "recording"
+      })
+    );
   });
 
   it("unsubscribes companion hide requests if the app unmounts before the native listener resolves", async () => {
@@ -1143,6 +1416,7 @@ describe("App startup recovery", () => {
 
     await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(localDictation.runLocalDictation).toHaveBeenCalledTimes(1));
+    expect(sounds.playRecordingStopSound).toHaveBeenCalledTimes(1);
   });
 
   it("pastes the latest history message when paste-last hotkey succeeds", async () => {
@@ -1215,7 +1489,38 @@ describe("App startup recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
 
     await waitFor(() => expect(screen.getByLabelText("Live dictation text")).toHaveProperty("value", "Recovered transcript."));
-    expect(screen.getByText(/could not be pasted or copied: Clipboard blocked/i)).toBeTruthy();
-    expect(screen.getByText(/Transcript kept in Dictivo/i)).toBeTruthy();
+    await waitFor(() => expect(bridge.copyText).toHaveBeenCalledWith("Recovered transcript."));
+    expect(screen.getByText(/Auto paste failed \(Clipboard blocked\), so Dictivo copied the transcript to the clipboard/i)).toBeTruthy();
+    expect(screen.getByText(/Copied to clipboard/i)).toBeTruthy();
   });
+
+  it("keeps the native companion on the completed transcript until the next dictation", async () => {
+    seedCompletedSettings({ companionEnabled: true });
+    bridge.isTauriRuntime.mockReturnValue(true);
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    tauriWindow.getByLabel.mockResolvedValue(tauriWindow.companion);
+    tauriWindow.primaryMonitor.mockResolvedValue({
+      workArea: {
+        position: { x: 0, y: 0 },
+        size: { width: 1440, height: 900 }
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    await waitFor(() => {
+      expect(tauriEvents.emitTo.mock.calls.some((call) =>
+        call[0] === "companion" &&
+        call[1] === "companion-state" &&
+        call[2]?.phase === "complete" &&
+        call[2]?.title === "Transcript copied to clipboard" &&
+        call[2]?.displayMode === "card"
+      )).toBe(true);
+    });
+  }, 8000);
 });

@@ -22,6 +22,8 @@ describe("settingsStore v4 migration", () => {
     const s = loadSettings();
     expect(s.selectedTier).toBe("medium");
     expect(s.onboardingCompleted).toBe(false);
+    expect(s.companionDisplayMode).toBe("card");
+    expect(s.transcriptionMode).toBe("local");
   });
 
   it("migrates v3 privateFastProfile=balanced to selectedTier=medium", () => {
@@ -31,7 +33,7 @@ describe("settingsStore v4 migration", () => {
     );
     const s = loadSettings();
     expect(s.selectedTier).toBe("medium");
-    expect(s.language).toBe("en");
+    expect(s.language).toBe("auto");
   });
 
   it("migrates v3 privateFastProfile=fast to selectedTier=fast", () => {
@@ -54,18 +56,24 @@ describe("settingsStore v4 migration", () => {
     saveSettings({
       language: "en",
       selectedMode: "message",
+      transcriptionMode: "cloud-fast",
       selectedTier: "fast",
       onboardingCompleted: true,
       companionEnabled: true,
+      companionDisplayMode: "pet",
       companionAvatar: "cat",
       customCompanionAvatar: null,
+      companionPosition: null,
+      startSound: "soft",
       hotkeys: { dictation: "CommandOrControl+Shift+Space", pasteLast: "", activationMode: "toggle" },
       localProcessing: { autoPolish: true, spokenPunctuation: true, fillerWords: true, smartCapitalization: true },
       dictionary: [],
       snippets: []
     });
     expect(loadSettings().selectedTier).toBe("fast");
+    expect(loadSettings().transcriptionMode).toBe("cloud-fast");
     expect(loadSettings().onboardingCompleted).toBe(true);
+    expect(loadSettings().companionDisplayMode).toBe("pet");
   });
 
   it("round-trips a local custom companion avatar", () => {
@@ -78,11 +86,15 @@ describe("settingsStore v4 migration", () => {
     saveSettings({
       language: "en",
       selectedMode: "message",
+      transcriptionMode: "local",
       selectedTier: "medium",
       onboardingCompleted: true,
       companionEnabled: true,
+      companionDisplayMode: "card",
       companionAvatar: "custom",
       customCompanionAvatar,
+      companionPosition: null,
+      startSound: "soft",
       hotkeys: { dictation: "CommandOrControl+Shift+Space", pasteLast: "CommandOrControl+Shift+V", activationMode: "toggle" },
       localProcessing: { autoPolish: true, spokenPunctuation: true, fillerWords: true, smartCapitalization: true },
       dictionary: [],
@@ -123,6 +135,7 @@ describe("settingsStore v4 migration", () => {
         selectedTier: "large",
         onboardingCompleted: "yes",
         companionEnabled: "false",
+        companionDisplayMode: "hologram",
         companionAvatar: "spaceship",
         hotkeys: { dictation: 123, pasteLast: null, activationMode: "press" },
         localProcessing: {
@@ -139,11 +152,13 @@ describe("settingsStore v4 migration", () => {
     const settings = loadSettings();
 
     expect(settings).toMatchObject({
-      language: "en",
+      language: "auto",
       selectedMode: "message",
+      transcriptionMode: "local",
       selectedTier: "medium",
       onboardingCompleted: false,
       companionEnabled: true,
+      companionDisplayMode: "card",
       companionAvatar: "dog",
       hotkeys: {
         dictation: "CommandOrControl+Shift+Space",

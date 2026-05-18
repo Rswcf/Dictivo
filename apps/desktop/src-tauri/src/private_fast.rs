@@ -1432,6 +1432,7 @@ fn which_any(binaries: &[&str]) -> Option<PathBuf> {
 
 fn whisper_language(language: &str) -> &str {
     match language {
+        "auto" => "auto",
         "zh" => "zh",
         "ja" => "ja",
         "es" => "es",
@@ -1463,6 +1464,10 @@ fn build_initial_prompt(
     source: &str,
     prompt_terms: &[String],
 ) -> Option<String> {
+    if language == "auto" {
+        return None;
+    }
+
     let mut terms = prompt_terms
         .iter()
         .map(|term| term.trim())
@@ -1941,6 +1946,11 @@ Graphics/Displays:
     #[test]
     fn vietnamese_language_maps_to_vi() {
         assert_eq!(whisper_language("vi"), "vi");
+    }
+
+    #[test]
+    fn auto_language_maps_to_whisper_auto() {
+        assert_eq!(whisper_language("auto"), "auto");
     }
 
     #[test]

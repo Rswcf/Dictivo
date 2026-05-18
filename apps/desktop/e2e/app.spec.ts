@@ -60,7 +60,7 @@ test("navigates core screens and handles the blocked dictation path", async ({ p
   await page.getByRole("button", { name: "Start dictation" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.locator(".status-banner")).toContainText("Private Fast requires the desktop app runtime.");
-  await expect(page.getByRole("heading", { name: "Local Engine" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Engine" })).toBeVisible();
 
   await page.getByRole("button", { name: "Dictation" }).click();
   await expect(page.getByLabel("Live dictation text")).toHaveValue("Long draft with symbols !@#$%^&*() and CJK 本地优先");
@@ -140,7 +140,7 @@ test("exercises forms, repeated clicks, keyboard recording, and responsive wiref
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Hotkeys" }).click();
 
-  for (const section of ["Companion", "Privacy", "Local Engine", "Hotkeys"]) {
+  for (const section of ["Companion", "Privacy", "Engine", "Hotkeys"]) {
     await page.getByRole("button", { name: section, exact: true }).click();
   }
   await expect(page.getByText("Paste Last")).toBeVisible();
@@ -261,9 +261,7 @@ test("removing a custom companion avatar preserves the selected built-in avatar"
 
 test("keeps keyboard focus visible across main workflows and inline confirmations", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Dictation language").focus();
-
-  await tabUntilFocused(page, page.getByRole("button", { name: "Dictation", exact: true }), { key: "Shift+Tab" });
+  await page.getByRole("button", { name: "Dictation", exact: true }).focus();
   await expectVisibleFocus(page);
 
   await tabUntilFocused(page, page.getByRole("button", { name: "Start dictation", exact: true }));
@@ -290,7 +288,7 @@ test("keeps keyboard focus visible across main workflows and inline confirmation
   await page.getByRole("button", { name: "Settings" }).click();
   await tabUntilFocused(page, page.getByRole("button", { name: "Hotkeys" }));
   await expectVisibleFocus(page);
-  await page.getByRole("button", { name: "Local Engine" }).click();
+  await page.getByRole("button", { name: "Engine" }).click();
   await tabUntilFocused(page, page.getByRole("button", { name: /Medium tier/i }));
   await expectVisibleFocus(page);
 });

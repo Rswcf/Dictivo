@@ -258,16 +258,37 @@ When a customer buys this renewal, LS will email them a *new* license key. They 
 
 If step 6 fails, copy the error message and tell me — we'll fix the activation code.
 
-### Step 3.6 — Get your checkout URLs
+### Step 3.6 — Create and test Cloud Fast
+
+Still in **Test mode**, create a separate Cloud Fast product:
+
+1. Products → New product
+2. **Type: Subscription**
+3. Name: `Dictivo Cloud Fast`
+4. Description: "Fast cloud transcription for Dictivo. Local mode keeps audio on your device; Cloud Fast uploads selected recordings to cloud transcription providers for faster results."
+5. Price: **$6.99 USD / month**
+6. **Enable License keys**, activation limit: 2
+7. Save
+8. Product → Share → copy the **Test mode Checkout link**
+9. Complete one test purchase with `4242 4242 4242 4242`
+10. In Dictivo, open Settings → License & Updates → Cloud Fast license → paste the Cloud Fast key → Activate Cloud Fast
+
+The Cloud Fast product or variant name must contain `Cloud Fast` unless
+`LEMON_SQUEEZY_CLOUD_FAST_PRODUCT_IDS` / `LEMON_SQUEEZY_CLOUD_FAST_VARIANT_IDS`
+are configured in `wrangler.api.jsonc`.
+
+### Step 3.7 — Get your checkout URLs
 
 After step 3.5 succeeds:
 
 1. Main product → Share → copy the checkout URL (e.g. `https://dictivo.lemonsqueezy.com/buy/abc-def-123`)
 2. Renewal product → Share → copy that checkout URL too
+3. Cloud Fast product → Share → copy the **Test mode** checkout URL
 
-**Tell me both URLs in chat** and I'll wire them into the marketing site's `index.html` (in the **separate** `034_Dictivo_Site` / `Rswcf/Dictivo-site` repo — I'll switch repos to make the edit).
+**Tell me all three URLs in chat** and I'll wire them into the marketing site. Cloud Fast uses the site repo's
+`/checkout/cloud-fast` redirect; KYC pending should use the Test mode URL, and Live mode should wait until KYC clears.
 
-### Step 3.7 — Go live
+### Step 3.8 — Go live
 
 When you're ready:
 1. Toggle store to **Live mode**
@@ -310,10 +331,10 @@ curl -I https://dictivo.app
 If this fails, check the Pages project's most recent build at
 https://dash.cloudflare.com/?to=/:account/pages → `dictivo-app`.
 
-### Step 4.2 — Wire the Buy button (after Phase 3 LS approval)
+### Step 4.2 — Wire the Buy / Cloud Fast buttons
 
-When Lemon Squeezy KYC clears and you create the product, you'll get a
-checkout URL like `https://dictivo.lemonsqueezy.com/buy/abc-def-123`.
+When Lemon Squeezy KYC clears, replace the Test checkout URLs with live
+checkout URLs like `https://dictivo.lemonsqueezy.com/buy/abc-def-123`.
 
 Edit **in the site repo, not this one**:
 ```bash
@@ -321,8 +342,25 @@ cd /Users/mayijie/Projects/Code/034_Dictivo_Site
 # search for the placeholder href and replace with the LS URL
 ```
 
-Commit + push → Cloudflare Pages auto-redeploys. Or paste both URLs in chat
-and I'll switch repos to do the edit.
+Commit + push → Cloudflare Pages auto-redeploys. Or paste the checkout URLs in
+chat and I'll switch repos to do the edit.
+
+For Cloud Fast, use the site helper:
+
+```bash
+cd /Users/mayijie/Projects/Code/034_Dictivo_Site
+node scripts/set-cloud-fast-checkout.mjs https://dictivo.lemonsqueezy.com/checkout/buy/...
+EXPECT_CLOUD_FAST_CHECKOUT_URL=https://dictivo.lemonsqueezy.com/checkout/buy/... node scripts/check-cloud-fast-checkout.mjs
+```
+
+While KYC is pending, `/checkout/cloud-fast` is wired to the Lemon Squeezy
+**Test mode** Cloud Fast checkout URL:
+`https://dictivo.lemonsqueezy.com/checkout/buy/36ca20c8-026c-4692-bf42-c95d66b909d2`.
+If you need to go back to the placeholder:
+
+```bash
+node scripts/set-cloud-fast-checkout.mjs --pending
+```
 
 ### Step 4.3 — Provision the R2 download host (1-time, ~20 min)
 

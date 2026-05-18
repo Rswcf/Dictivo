@@ -59,6 +59,17 @@ const models: PrivateFastModel[] = [
   }
 ];
 
+const cloudFastEntitlement = {
+  available: false,
+  plan: "unknown",
+  priceUsdMonthly: "6.99",
+  monthlySecondsLimit: 90_000,
+  monthlySecondsUsed: 0,
+  renewsAt: null,
+  upgradeUrl: "https://dictivo.app/cloud-fast",
+  privacyNotice: "Cloud Fast uploads audio to cloud transcription providers for faster results."
+};
+
 describe("desktop screen render contracts", () => {
   it("keeps dictation controls, live text, shortcuts, and engine telemetry visible", () => {
     const runnableTiers: RunnableTiers = {
@@ -71,6 +82,8 @@ describe("desktop screen render contracts", () => {
     const markup = renderToStaticMarkup(
       <DictationWorkbench
         language="en"
+        transcriptionMode="local"
+        cloudFastEntitlement={cloudFastEntitlement}
         isDictating={false}
         liveText="A very long local transcript with punctuation & symbols <> stays editable."
         hotkeyStatus="CommandOrControl+Shift+Space ready"
@@ -84,7 +97,9 @@ describe("desktop screen render contracts", () => {
         companionAvatar="dog"
         companionEnabled={false}
         customCompanionAvatar={null}
+        onTranscriptionModeChange={vi.fn()}
         onTierChange={vi.fn()}
+        onUpgradeCloudFast={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
         onOpenHistory={vi.fn()}
@@ -96,8 +111,60 @@ describe("desktop screen render contracts", () => {
     expect(markup).toContain("⌥⇧V");
     expect(markup).toContain("Hold and speak");
     expect(markup).toContain("Start dictation");
+    expect(markup).toContain("Private Local");
+    expect(markup).toContain("Audio stays on this device.");
+    expect(markup).toContain("Private by default");
     expect(markup).toContain("CommandOrControl+Shift+Space ready");
     expect(markup).toContain("Copied to clipboard");
+  });
+
+  it("keeps the workbench layout slots stable across Local and Cloud Fast", () => {
+    const runnableTiers: RunnableTiers = {
+      fast: { modelId: "small", realtimeFactor: 0.5, predicted: false, downloaded: true, withinBudget: true },
+      medium: { modelId: "medium", realtimeFactor: 1.2, predicted: true, downloaded: false, withinBudget: true },
+      slow: { modelId: "large-v3", realtimeFactor: 3.5, predicted: true, downloaded: false, withinBudget: false },
+      fingerprint: "stable-stage",
+      benchmarkedAt: "2026-05-18T00:00:00.000Z"
+    };
+    const sharedProps = {
+      language: "en" as const,
+      cloudFastEntitlement: { ...cloudFastEntitlement, available: true },
+      isDictating: false,
+      liveText: "",
+      hotkeyStatus: "Registered",
+      pasteStatus: "",
+      privateFastStatus: installedStatus,
+      hardwareProfile: hardware,
+      selectedModel: models[0],
+      runnableTiers,
+      selectedTier: "fast" as const,
+      hotkeys: { dictation: "Alt+Space", pasteLast: "Alt+Shift+V", activationMode: "toggle" as const },
+      companionAvatar: "dog" as const,
+      companionEnabled: false,
+      customCompanionAvatar: null,
+      onTranscriptionModeChange: vi.fn(),
+      onTierChange: vi.fn(),
+      onUpgradeCloudFast: vi.fn(),
+      onToggleDictation: vi.fn(),
+      onLiveTextChange: vi.fn(),
+      onOpenHistory: vi.fn(),
+      onDisableCompanion: vi.fn()
+    };
+
+    const localMarkup = renderToStaticMarkup(
+      <DictationWorkbench {...sharedProps} transcriptionMode="local" />
+    );
+    const cloudMarkup = renderToStaticMarkup(
+      <DictationWorkbench {...sharedProps} transcriptionMode="cloud-fast" />
+    );
+
+    expect(localMarkup).toContain("capture-hint-slot");
+    expect(cloudMarkup).toContain("capture-hint-slot");
+    expect(localMarkup).toContain("class=\"tier-slot\"");
+    expect(localMarkup).toContain("aria-label=\"Engine tier\"");
+    expect(cloudMarkup).toContain("class=\"tier-slot tier-slot--reserved\"");
+    expect(cloudMarkup).not.toContain("aria-label=\"Engine tier\"");
+    expect(cloudMarkup).toContain("Cloud Fast is ready");
   });
 
   it("renders a custom companion avatar in the dictation preview", () => {
@@ -112,6 +179,8 @@ describe("desktop screen render contracts", () => {
     const markup = renderToStaticMarkup(
       <DictationWorkbench
         language="en"
+        transcriptionMode="local"
+        cloudFastEntitlement={cloudFastEntitlement}
         isDictating={false}
         liveText=""
         hotkeyStatus="Registered"
@@ -129,7 +198,9 @@ describe("desktop screen render contracts", () => {
           name: "avatar.png",
           updatedAt: "2026-05-13T00:00:00.000Z"
         }}
+        onTranscriptionModeChange={vi.fn()}
         onTierChange={vi.fn()}
+        onUpgradeCloudFast={vi.fn()}
         onToggleDictation={vi.fn()}
         onLiveTextChange={vi.fn()}
         onOpenHistory={vi.fn()}
@@ -270,6 +341,8 @@ describe("desktop screen render contracts", () => {
     };
     const sharedProps = {
       appVersion: "0.2.0",
+      transcriptionMode: "local" as const,
+      cloudFastEntitlement,
       hotkeys: {
         dictation: "CommandOrControl+Shift+Space",
         pasteLast: "CommandOrControl+Shift+V",
@@ -291,12 +364,16 @@ describe("desktop screen render contracts", () => {
       privateFastOperation: "download:large-v3",
       runnableTiers,
       companionEnabled: true,
+      companionDisplayMode: "card" as const,
       companionAvatar: "cat" as const,
       customCompanionAvatar: null,
       hardwareProfile: hardware,
       onHotkeyChange: vi.fn(),
+      onTranscriptionModeChange: vi.fn(),
+      onUpgradeCloudFast: vi.fn(),
       onProcessingChange: vi.fn(),
       onCompanionEnabledChange: vi.fn(),
+      onCompanionDisplayModeChange: vi.fn(),
       onCompanionAvatarChange: vi.fn(),
       onCustomCompanionAvatarChange: vi.fn(),
       onModelAction: vi.fn(),
@@ -320,14 +397,16 @@ describe("desktop screen render contracts", () => {
     expect(engine).toContain("Selected");
     expect(engine).toContain("Downloading");
     expect(engine).toContain("Import");
-    // Processing toggles are now collapsed under Engine → Advanced (details/summary)
+    // Text cleanup is shared by Local and Cloud Fast and remains collapsed under Engine.
     expect(engine).toContain("Auto polish");
     expect(engine).toContain("Smart capitalization");
     expect(hotkeys).toContain("Paste Last");
     expect(hotkeys).toContain("Dictation activation");
     expect(companion).toContain("Show floating companion");
+    expect(companion).toContain("Status card");
+    expect(companion).toContain("Animated pet");
     expect(companion).toContain("Cat");
-    expect(privacy).toContain("Local-only by design");
+    expect(privacy).toContain("Local by default");
     expect(privacy).toContain("v0.2.0");
     expect(privacy).toContain("Needs permission");
     expect(privacy).toContain("Enable this permission in system settings");

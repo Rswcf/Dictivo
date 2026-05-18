@@ -1,11 +1,16 @@
-import { ArrowUp, Bot, ClipboardCheck, Cat, Dog, ImagePlus, Keyboard, KeyRound, Lock, Mic2, Receipt, RefreshCw, ShieldCheck, Sparkles, Trash2, WifiOff } from "lucide-react";
+import { ArrowUp, Bot, ClipboardCheck, Cat, Dog, ExternalLink, ImagePlus, Keyboard, KeyRound, Lock, Mic2, RefreshCw, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import {
+  activateCloudFastLicense,
   activateLicense,
   checkForUpdate,
+  deactivateCloudFastLicense,
   deactivateLicense,
+  getCloudFastLicense,
   getLicense,
   installUpdate,
+  migrateCloudFastLicenseFromLocal,
+  refreshCloudFastLicense,
   refreshLicense,
   type LicenseSummary,
   type UpdateCheckResult
@@ -14,7 +19,8 @@ import irisAvatarImage from "../assets/avatars/iris-companion.png";
 import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import type { HardwareProfile, PermissionSettingsTarget, PrivateFastModel, PrivateFastStatus, RunnableTiers, Tier } from "../lib/desktopBridge";
 import { shortcutMatches } from "../lib/hotkeys";
-import { readCustomCompanionAvatar, type CompanionAvatar, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings } from "../lib/settingsStore";
+import { clearCloudFastSessionCache, type CloudFastEntitlement } from "../lib/cloudFastEngine";
+import { readCustomCompanionAvatar, type CompanionAvatar, type CompanionDisplayMode, type CustomCompanionAvatar, type HotkeySettings, type LocalProcessingSettings, type TranscriptionMode } from "../lib/settingsStore";
 import { playStartSound, START_SOUND_VARIANTS, type StartSoundId } from "../lib/sounds";
 import { ModelManager } from "./ModelManager";
 
@@ -22,6 +28,8 @@ type SettingsSection = "engine" | "hotkeys" | "companion" | "license" | "privacy
 
 type SettingsViewProps = {
   appVersion: string;
+  transcriptionMode: TranscriptionMode;
+  cloudFastEntitlement: CloudFastEntitlement;
   hotkeys: HotkeySettings;
   localProcessing: LocalProcessingSettings;
   permissions: Record<string, string>;
@@ -30,12 +38,17 @@ type SettingsViewProps = {
   privateFastOperation: string;
   runnableTiers: RunnableTiers;
   companionEnabled: boolean;
+  companionDisplayMode: CompanionDisplayMode;
   companionAvatar: CompanionAvatar;
   customCompanionAvatar: CustomCompanionAvatar | null;
   hardwareProfile: HardwareProfile | null;
   onHotkeyChange: (key: keyof HotkeySettings, value: string) => void;
+  onTranscriptionModeChange: (mode: TranscriptionMode) => void;
+  onUpgradeCloudFast: () => void;
+  onManageCloudFastBilling?: () => void;
   onProcessingChange: (key: keyof LocalProcessingSettings, value: boolean) => void;
   onCompanionEnabledChange: (enabled: boolean) => void;
+  onCompanionDisplayModeChange: (mode: CompanionDisplayMode) => void;
   onCompanionAvatarChange: (avatar: CompanionAvatar) => void;
   onCustomCompanionAvatarChange: (avatar: CustomCompanionAvatar | null) => void;
   startSound: StartSoundId;
@@ -53,14 +66,18 @@ type SettingsViewProps = {
   initialSection?: SettingsSection;
   /** License key handed in via a `dictivo://activate?key=...` deep link. */
   pendingLicenseKey?: string;
+  /** Cloud Fast key handed in via `dictivo://activate-cloud-fast?key=...`. */
+  pendingCloudFastLicenseKey?: string;
   onLicenseKeyConsumed?: () => void;
+  onCloudFastLicenseKeyConsumed?: () => void;
+  onCloudFastLicenseChange?: () => Promise<CloudFastEntitlement | void> | CloudFastEntitlement | void;
 };
 
 const sections: Array<{ id: SettingsSection; label: string; icon: ReactNode }> = [
-  { id: "engine", label: "Local Engine", icon: <WifiOff size={14} /> },
+  { id: "engine", label: "Engine", icon: <Mic2 size={14} /> },
   { id: "hotkeys", label: "Hotkeys", icon: <KeyRound size={14} /> },
   { id: "companion", label: "Companion", icon: <Bot size={14} /> },
-  { id: "license", label: "License & Updates", icon: <Receipt size={14} /> },
+  { id: "license", label: "Account & Billing", icon: <UserRound size={14} /> },
   { id: "privacy", label: "Privacy", icon: <Lock size={14} /> }
 ];
 
@@ -78,7 +95,7 @@ export const privacyPermissionItems: Array<{
   description: string;
   icon: ReactNode;
 }> = [
-  { key: "microphone", label: "Microphone", requirement: "Required", description: "Records dictation audio so the local engine can transcribe it on this computer.", icon: <Mic2 size={15} /> },
+  { key: "microphone", label: "Microphone", requirement: "Required", description: "Records dictation audio when you start Local or Cloud Fast dictation.", icon: <Mic2 size={15} /> },
   { key: "accessibility", label: "Accessibility", requirement: "Recommended", description: "Allows Dictivo to control paste behavior and keep global dictation shortcuts reliable.", icon: <Keyboard size={15} /> },
   { key: "pasteAutomation", label: "Auto paste", requirement: "Optional", description: "Places the final transcript into the active app. If unavailable, the transcript stays available in Dictivo.", icon: <ClipboardCheck size={15} /> }
 ];
@@ -104,6 +121,8 @@ export function canOpenPermissionSettings(value?: string) {
 
 export function SettingsView({
   appVersion,
+  transcriptionMode,
+  cloudFastEntitlement,
   hotkeys,
   localProcessing,
   permissions,
@@ -112,12 +131,17 @@ export function SettingsView({
   privateFastOperation,
   runnableTiers,
   companionEnabled,
+  companionDisplayMode,
   companionAvatar,
   customCompanionAvatar,
   hardwareProfile,
   onHotkeyChange,
+  onTranscriptionModeChange,
+  onUpgradeCloudFast,
+  onManageCloudFastBilling,
   onProcessingChange,
   onCompanionEnabledChange,
+  onCompanionDisplayModeChange,
   onCompanionAvatarChange,
   onCustomCompanionAvatarChange,
   startSound,
@@ -134,10 +158,14 @@ export function SettingsView({
   onOpenWizard,
   initialSection = "engine",
   pendingLicenseKey,
-  onLicenseKeyConsumed
+  pendingCloudFastLicenseKey,
+  onLicenseKeyConsumed,
+  onCloudFastLicenseKeyConsumed,
+  onCloudFastLicenseChange
 }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [avatarUploadError, setAvatarUploadError] = useState("");
+  const isCloudFastMode = transcriptionMode === "cloud-fast";
 
   // When a deep link arrives after Settings is already mounted (or the user
   // navigates here mid-flow), follow the requested section.
@@ -177,25 +205,74 @@ export function SettingsView({
       <div className="settings-content">
         {section === "engine" && (
           <div className="side-panel">
-            <div className="panel-title"><WifiOff size={16} /><h2>Local Engine</h2></div>
-            <ModelManager
-              status={privateFastStatus}
-              models={privateFastModels}
-              hardwareProfile={hardwareProfile}
-              runnableTiers={runnableTiers}
-              operation={privateFastOperation}
-              selectedTier={selectedTier}
-              rerunStatus={rerunStatus}
-              rerunError={rerunError}
-              onModelAction={onModelAction}
-              onImportModel={onImportModel}
-              onRefresh={onRefreshNative}
-              onTierChange={onTierChange}
-              onRerunBenchmark={onRerunBenchmark}
-              onOpenWizard={onOpenWizard}
-            />
-            <details className="advanced">
-              <summary>Processing toggles</summary>
+            <div className="panel-title"><Mic2 size={16} /><h2>Engine</h2></div>
+            <div className="engine-mode-settings" role="radiogroup" aria-label="Default transcription mode">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={transcriptionMode === "local"}
+                className={transcriptionMode === "local" ? "is-selected" : ""}
+                onClick={() => onTranscriptionModeChange("local")}
+              >
+                <strong>Local</strong>
+                <span>Local keeps audio on this device.</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={transcriptionMode === "cloud-fast"}
+                className={transcriptionMode === "cloud-fast" ? "is-selected" : ""}
+                onClick={() => onTranscriptionModeChange("cloud-fast")}
+              >
+                <strong>Cloud Fast</strong>
+                <span>Cloud Fast uploads audio to cloud transcription providers for faster results.</span>
+              </button>
+            </div>
+            <div className="language-output-panel" aria-label="Language behavior">
+              <div>
+                <strong>Language</strong>
+                <span>Input is auto-detected. Output stays in the spoken language.</span>
+              </div>
+              <span className="mode-status-badge mode-status-badge--ready">Auto</span>
+            </div>
+            {isCloudFastMode ? (
+              <CloudFastSettingsPanel
+                entitlement={cloudFastEntitlement}
+                onUpgradeCloudFast={onUpgradeCloudFast}
+                onOpenAccount={() => setSection("license")}
+              />
+            ) : (
+              <div className="local-engine-settings">
+                <div className="mode-section-heading">
+                  <div>
+                    <strong>Local model setup</strong>
+                    <span>Model choice and hardware calibration for private on-device dictation.</span>
+                  </div>
+                  <span className="mode-status-badge mode-status-badge--private">
+                    <WifiOff size={12} /> Private
+                  </span>
+                </div>
+                <ModelManager
+                  status={privateFastStatus}
+                  models={privateFastModels}
+                  hardwareProfile={hardwareProfile}
+                  runnableTiers={runnableTiers}
+                  operation={privateFastOperation}
+                  selectedTier={selectedTier}
+                  rerunStatus={rerunStatus}
+                  rerunError={rerunError}
+                  onModelAction={onModelAction}
+                  onImportModel={onImportModel}
+                  onRefresh={onRefreshNative}
+                  onTierChange={onTierChange}
+                  onRerunBenchmark={onRerunBenchmark}
+                  onOpenWizard={onOpenWizard}
+                />
+              </div>
+            )}
+            <details className="advanced text-cleanup-settings">
+              <summary>Text cleanup</summary>
+              <p className="advanced-description">Applies after transcription in either Local or Cloud Fast mode.</p>
               <div className="toggle-list toggle-list--spaced">
                 <ToggleRow label="Auto polish" checked={localProcessing.autoPolish} onChange={(v) => onProcessingChange("autoPolish", v)} />
                 <ToggleRow label="Spoken punctuation" checked={localProcessing.spokenPunctuation} onChange={(v) => onProcessingChange("spokenPunctuation", v)} />
@@ -240,6 +317,28 @@ export function SettingsView({
             <div className="panel-title"><Bot size={16} /><h2>Floating Companion</h2></div>
             <div className="toggle-list">
               <ToggleRow label="Show floating companion" checked={companionEnabled} onChange={onCompanionEnabledChange} />
+            </div>
+            <div className="companion-mode-picker" role="radiogroup" aria-label="Companion display mode">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={companionDisplayMode === "card"}
+                className={companionDisplayMode === "card" ? "is-selected" : ""}
+                onClick={() => onCompanionDisplayModeChange("card")}
+              >
+                <strong>Status card</strong>
+                <span>Quiet dictation panel</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={companionDisplayMode === "pet"}
+                className={companionDisplayMode === "pet" ? "is-selected" : ""}
+                onClick={() => onCompanionDisplayModeChange("pet")}
+              >
+                <strong>Animated pet</strong>
+                <span>Cartoon companion</span>
+              </button>
             </div>
             <div className="avatar-picker" aria-label="Companion avatar">
               {avatars.map((avatar) => (
@@ -329,8 +428,14 @@ export function SettingsView({
         {section === "license" && (
           <LicenseAndUpdatesPanel
             appVersion={appVersion}
+            cloudFastEntitlement={cloudFastEntitlement}
+            onUpgradeCloudFast={onUpgradeCloudFast}
+            onManageCloudFastBilling={onManageCloudFastBilling}
             pendingLicenseKey={pendingLicenseKey}
+            pendingCloudFastLicenseKey={pendingCloudFastLicenseKey}
             onLicenseKeyConsumed={onLicenseKeyConsumed}
+            onCloudFastLicenseKeyConsumed={onCloudFastLicenseKeyConsumed}
+            onCloudFastLicenseChange={onCloudFastLicenseChange}
           />
         )}
 
@@ -339,8 +444,8 @@ export function SettingsView({
             <div className="panel-title"><Lock size={16} /><h2>Permissions & Privacy</h2></div>
             <div className="privacy-pledge"><ShieldCheck size={16} />
               <div>
-                <strong>Local-only by design</strong>
-                <p>Audio, text, dictionary terms, snippets, and transcripts stay on this device.</p>
+                <strong>Local by default</strong>
+                <p>Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.</p>
               </div>
             </div>
             <div className="version-row" aria-label="App version">
@@ -376,6 +481,73 @@ export function SettingsView({
               <RefreshCw size={13} /> Refresh local status
             </button>
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CloudFastSettingsPanel({
+  entitlement,
+  onUpgradeCloudFast,
+  onOpenAccount
+}: {
+  entitlement: CloudFastEntitlement;
+  onUpgradeCloudFast: () => void;
+  onOpenAccount: () => void;
+}) {
+  const limitMinutes = formatMinutes(entitlement.monthlySecondsLimit);
+  const usedMinutes = formatMinutes(entitlement.monthlySecondsUsed);
+  const usagePercent = entitlement.monthlySecondsLimit > 0
+    ? Math.min(100, Math.round((entitlement.monthlySecondsUsed / entitlement.monthlySecondsLimit) * 100))
+    : 0;
+  const renewsLabel = entitlement.renewsAt ? formatDate(entitlement.renewsAt) : "Monthly";
+
+  return (
+    <section className={`cloud-fast-mode-panel ${entitlement.available ? "is-ready" : "is-locked"}`} aria-label="Cloud Fast settings">
+      <div className="mode-section-heading">
+        <div>
+          <strong>{entitlement.available ? "Cloud Fast ready" : "Cloud Fast subscription required"}</strong>
+          <span>Fast cloud transcription with automatic fallback.</span>
+        </div>
+        <span className={`mode-status-badge ${entitlement.available ? "mode-status-badge--ready" : "mode-status-badge--locked"}`}>
+          {entitlement.available ? "Ready" : "Locked"}
+        </span>
+      </div>
+
+      <div className="cloud-fast-usage-block">
+        <div className="cloud-fast-usage-header">
+          <span>Monthly usage</span>
+          <strong>{usedMinutes} / {limitMinutes} minutes</strong>
+        </div>
+        <div className="cloud-fast-meter" aria-hidden="true">
+          <span style={{ width: `${usagePercent}%` }} />
+        </div>
+        <div className="cloud-fast-usage-meta">
+          <span>{entitlement.plan === "unknown" ? "Plan pending" : entitlement.plan}</span>
+          <span>{renewsLabel}</span>
+        </div>
+      </div>
+
+      <p className="cloud-fast-privacy-note">
+        <ShieldCheck size={14} />
+        {entitlement.privacyNotice || "Cloud Fast uploads audio to cloud transcription providers for faster results."}
+      </p>
+
+      <div className="cloud-fast-actions">
+        {entitlement.available ? (
+          <button type="button" className="text-button" onClick={onOpenAccount}>
+            Account & Billing
+          </button>
+        ) : (
+          <>
+            <button type="button" className="text-button primary" onClick={onUpgradeCloudFast}>
+              <ArrowUp size={13} /> Upgrade to Cloud Fast
+            </button>
+            <button type="button" className="text-button" onClick={onOpenAccount}>
+              Enter license key
+            </button>
+          </>
         )}
       </div>
     </section>
@@ -470,27 +642,49 @@ function normalizedShortcutKey(key: string) {
 
 type LicenseAndUpdatesPanelProps = {
   appVersion: string;
+  cloudFastEntitlement: CloudFastEntitlement;
+  onUpgradeCloudFast: () => void;
+  onManageCloudFastBilling?: () => void;
   pendingLicenseKey?: string;
+  pendingCloudFastLicenseKey?: string;
   onLicenseKeyConsumed?: () => void;
+  onCloudFastLicenseKeyConsumed?: () => void;
+  onCloudFastLicenseChange?: () => Promise<CloudFastEntitlement | void> | CloudFastEntitlement | void;
 };
 
 function LicenseAndUpdatesPanel({
   appVersion,
+  cloudFastEntitlement,
+  onUpgradeCloudFast,
+  onManageCloudFastBilling,
   pendingLicenseKey,
-  onLicenseKeyConsumed
+  pendingCloudFastLicenseKey,
+  onLicenseKeyConsumed,
+  onCloudFastLicenseKeyConsumed,
+  onCloudFastLicenseChange
 }: LicenseAndUpdatesPanelProps) {
   const [license, setLicense] = useState<LicenseSummary | null>(null);
+  const [cloudFastLicense, setCloudFastLicense] = useState<LicenseSummary | null>(null);
   const [licenseKeyDraft, setLicenseKeyDraft] = useState("");
+  const [cloudFastKeyDraft, setCloudFastKeyDraft] = useState("");
   const [activationBusy, setActivationBusy] = useState(false);
+  const [cloudFastBusy, setCloudFastBusy] = useState(false);
   const [activationError, setActivationError] = useState("");
   const [activationSuccess, setActivationSuccess] = useState("");
+  const [cloudFastError, setCloudFastError] = useState("");
+  const [cloudFastSuccess, setCloudFastSuccess] = useState("");
 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
 
   useEffect(() => {
-    void getLicense().then(setLicense).catch(() => undefined);
+    void getLicense()
+      .then((fresh) => setLicense((current) => current?.present ? current : fresh))
+      .catch(() => undefined);
+    void getCloudFastLicense()
+      .then((fresh) => setCloudFastLicense((current) => current?.present ? current : fresh))
+      .catch(() => undefined);
   }, []);
 
   // When a deep link delivers a license key while Settings is already mounted,
@@ -505,10 +699,59 @@ function LicenseAndUpdatesPanel({
     }
   }, [pendingLicenseKey, onLicenseKeyConsumed]);
 
+  useEffect(() => {
+    if (pendingCloudFastLicenseKey && pendingCloudFastLicenseKey.trim().length > 0) {
+      const key = pendingCloudFastLicenseKey.trim();
+      setCloudFastKeyDraft(key);
+      setCloudFastError("");
+      setCloudFastSuccess("Cloud Fast activation link received — activating on this device...");
+      onCloudFastLicenseKeyConsumed?.();
+
+      const instanceName =
+        typeof navigator !== "undefined" && navigator.userAgent
+          ? `Dictivo Cloud Fast on ${navigator.platform || "this device"}`
+          : "Dictivo Cloud Fast activation";
+
+      setCloudFastBusy(true);
+      void activateCloudFastLicense(key, instanceName)
+        .then(async (fresh) => {
+          clearCloudFastSessionCache();
+          setCloudFastLicense(fresh);
+          setCloudFastKeyDraft("");
+          const entitlement = await onCloudFastLicenseChange?.();
+          if (entitlement && !entitlement.available) {
+            setCloudFastSuccess("");
+            setCloudFastError("License saved, but Cloud Fast access was not confirmed. Refresh or try again in a moment.");
+            return;
+          }
+          setCloudFastSuccess("Cloud Fast activated. Account & Billing is ready.");
+        })
+        .catch((error: unknown) => {
+          setCloudFastSuccess("");
+          setCloudFastError(error instanceof Error ? error.message : "Cloud Fast activation failed.");
+        })
+        .finally(() => setCloudFastBusy(false));
+    }
+  }, [pendingCloudFastLicenseKey, onCloudFastLicenseChange, onCloudFastLicenseKeyConsumed]);
+
   const reloadLicense = useCallback(async () => {
     const fresh = await getLicense().catch(() => null);
     if (fresh) setLicense(fresh);
   }, []);
+
+  const reloadCloudFastLicense = useCallback(async () => {
+    const fresh = await getCloudFastLicense().catch(() => null);
+    if (fresh) setCloudFastLicense(fresh);
+  }, []);
+
+  const localLicenseIsCloudFast = isCloudFastLicenseSummary(license);
+  const accountEmail = cloudFastLicense?.email || license?.email || "";
+  const accountHasCloudFast = Boolean(cloudFastLicense?.present || cloudFastEntitlement.available);
+  const accountPlan = accountHasCloudFast ? "Cloud Fast" : license?.present ? "Local license" : "Local only";
+  const accountStatus = accountHasCloudFast
+    ? cloudFastEntitlement.available ? "active" : cloudFastLicense?.status || "pending"
+    : license?.present ? license.status : "not signed in";
+  const canManageCloudFastBilling = Boolean(accountHasCloudFast && onManageCloudFastBilling);
 
   const handleActivate = useCallback(async () => {
     setActivationError("");
@@ -524,6 +767,12 @@ function LicenseAndUpdatesPanel({
           ? `Dictivo on ${navigator.platform || "this device"}`
           : "Dictivo activation";
       const fresh = await activateLicense(licenseKeyDraft.trim(), instanceName);
+      if (isCloudFastLicenseSummary(fresh)) {
+        setLicense(fresh);
+        setLicenseKeyDraft("");
+        setActivationError("This is a Cloud Fast license. Move it to the Cloud Fast license section below before using Cloud Fast.");
+        return;
+      }
       setLicense(fresh);
       setLicenseKeyDraft("");
       setActivationSuccess(`Activated. Updates included until ${formatDate(fresh.updatesUntil)}.`);
@@ -564,6 +813,105 @@ function LicenseAndUpdatesPanel({
     }
   }, [reloadLicense]);
 
+  const handleMoveCloudFastFromLocal = useCallback(async () => {
+    setActivationError("");
+    setActivationSuccess("");
+    setCloudFastError("");
+    setCloudFastSuccess("");
+    setActivationBusy(true);
+    setCloudFastBusy(true);
+    try {
+      const fresh = await migrateCloudFastLicenseFromLocal();
+      clearCloudFastSessionCache();
+      setCloudFastLicense(fresh);
+      await reloadLicense();
+      const entitlement = await onCloudFastLicenseChange?.();
+      if (entitlement && !entitlement.available) {
+        setCloudFastError("Cloud Fast license moved, but Cloud Fast access was not confirmed. Refresh or try again in a moment.");
+        return;
+      }
+      setCloudFastSuccess("Cloud Fast license moved and activated.");
+    } catch (error) {
+      setCloudFastError(error instanceof Error ? error.message : "Cloud Fast license migration failed.");
+    } finally {
+      setActivationBusy(false);
+      setCloudFastBusy(false);
+    }
+  }, [onCloudFastLicenseChange, reloadLicense]);
+
+  const handleCloudFastActivate = useCallback(async () => {
+    setCloudFastError("");
+    setCloudFastSuccess("");
+    if (!cloudFastKeyDraft.trim()) {
+      setCloudFastError("Enter your Cloud Fast license key first.");
+      return;
+    }
+    setCloudFastBusy(true);
+    try {
+      const instanceName =
+        typeof navigator !== "undefined" && navigator.userAgent
+          ? `Dictivo Cloud Fast on ${navigator.platform || "this device"}`
+          : "Dictivo Cloud Fast activation";
+      const fresh = await activateCloudFastLicense(cloudFastKeyDraft.trim(), instanceName);
+      clearCloudFastSessionCache();
+      setCloudFastLicense(fresh);
+      setCloudFastKeyDraft("");
+      const entitlement = await onCloudFastLicenseChange?.();
+      if (entitlement && !entitlement.available) {
+        setCloudFastError("License saved, but Cloud Fast access was not confirmed. Confirm this key belongs to Dictivo Cloud Fast, then refresh.");
+        setCloudFastSuccess("");
+        return;
+      }
+      setCloudFastSuccess("Cloud Fast license activated.");
+    } catch (error) {
+      setCloudFastError(error instanceof Error ? error.message : "Cloud Fast activation failed.");
+    } finally {
+      setCloudFastBusy(false);
+    }
+  }, [cloudFastKeyDraft, onCloudFastLicenseChange]);
+
+  const handleCloudFastRefresh = useCallback(async () => {
+    setCloudFastError("");
+    setCloudFastSuccess("");
+    setCloudFastBusy(true);
+    try {
+      const fresh = await refreshCloudFastLicense();
+      clearCloudFastSessionCache();
+      setCloudFastLicense(fresh);
+      setCloudFastSuccess("Cloud Fast license refreshed.");
+      onCloudFastLicenseChange?.();
+    } catch (error) {
+      setCloudFastError(error instanceof Error ? error.message : "Cloud Fast refresh failed.");
+    } finally {
+      setCloudFastBusy(false);
+    }
+  }, []);
+
+  const handleCloudFastDeactivate = useCallback(async () => {
+    setCloudFastError("");
+    setCloudFastSuccess("");
+    setCloudFastBusy(true);
+    try {
+      await deactivateCloudFastLicense();
+      clearCloudFastSessionCache();
+      await reloadCloudFastLicense();
+      setCloudFastSuccess("Cloud Fast license removed from this device.");
+      onCloudFastLicenseChange?.();
+    } catch (error) {
+      setCloudFastError(error instanceof Error ? error.message : "Cloud Fast deactivation failed.");
+    } finally {
+      setCloudFastBusy(false);
+    }
+  }, [reloadCloudFastLicense]);
+
+  const handleManageBilling = useCallback(() => {
+    if (onManageCloudFastBilling) {
+      onManageCloudFastBilling();
+      return;
+    }
+    onUpgradeCloudFast();
+  }, [onManageCloudFastBilling, onUpgradeCloudFast]);
+
   const handleCheckUpdate = useCallback(async () => {
     setUpdateMessage("");
     setUpdateBusy(true);
@@ -596,7 +944,53 @@ function LicenseAndUpdatesPanel({
 
   return (
     <div className="side-panel">
-      <div className="panel-title"><Receipt size={16} /><h2>License & Updates</h2></div>
+      <div className="panel-title"><UserRound size={16} /><h2>Account & Billing</h2></div>
+
+      <section className="account-summary-card" aria-label="Account status">
+        <div className="account-avatar" aria-hidden="true">
+          {accountEmail ? accountEmail.slice(0, 1).toUpperCase() : "D"}
+        </div>
+        <div className="account-summary-main">
+          <span>{accountEmail ? "Signed in for billing" : "No cloud account connected"}</span>
+          <strong>{accountEmail || "Local-first mode"}</strong>
+          <p>
+            {accountHasCloudFast
+              ? "Cloud Fast is tied to this device through your subscription license. Local dictation remains available separately."
+              : "Dictivo can run locally without an account. Connect Cloud Fast only when you want fast cloud transcription."}
+          </p>
+        </div>
+        <div className="account-summary-side">
+          <span className={`account-plan-badge ${accountHasCloudFast ? "is-cloud" : "is-local"}`}>{accountPlan}</span>
+          <span className="account-status-text">{accountStatus}</span>
+        </div>
+      </section>
+
+      <div className="account-action-row">
+        {accountHasCloudFast ? (
+          <button type="button" onClick={handleManageBilling} disabled={!canManageCloudFastBilling}>
+            <ExternalLink size={13} /> Manage subscription
+          </button>
+        ) : (
+          <button type="button" className="primary" onClick={onUpgradeCloudFast}>
+            <ArrowUp size={13} /> Upgrade to Cloud Fast
+          </button>
+        )}
+        <button type="button" onClick={handleCloudFastRefresh} disabled={cloudFastBusy || !cloudFastLicense?.present}>
+          <RefreshCw size={13} /> Refresh Cloud Fast
+        </button>
+      </div>
+
+      <p className="account-privacy-note">
+        <ShieldCheck size={14} />
+        Local keeps audio on this device. Cloud Fast uploads audio only when Cloud Fast mode is selected.
+      </p>
+
+      <hr className="settings-divider" />
+
+      <div className="license-section-heading">
+        <strong>Private Local license</strong>
+        <span>Optional. Unlocks local models and the 12-month update window without requiring a cloud account.</span>
+      </div>
 
       {license?.present ? (
         <div className="license-card">
@@ -621,6 +1015,16 @@ function LicenseAndUpdatesPanel({
               <Trash2 size={13} /> Remove from this device
             </button>
           </div>
+          {localLicenseIsCloudFast ? (
+            <div className="license-repair-callout">
+              <p>
+                This Cloud Fast subscription is saved in the Local license slot, so Cloud Fast is still locked.
+              </p>
+              <button type="button" className="primary" onClick={handleMoveCloudFastFromLocal} disabled={activationBusy || cloudFastBusy}>
+                Move to Cloud Fast license
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="license-card license-card--empty">
@@ -655,6 +1059,75 @@ function LicenseAndUpdatesPanel({
 
       <hr className="settings-divider" />
 
+      <div className="license-section-heading">
+        <strong>Cloud Fast subscription</strong>
+        <span>Primary path is checkout and automatic activation. Manual key entry stays here as a fallback.</span>
+      </div>
+
+      {cloudFastLicense?.present ? (
+        <div className="license-card">
+          <div className="license-row"><span>Licensed to</span><strong>{cloudFastLicense.email || "—"}</strong></div>
+          {cloudFastLicense.productName ? (
+            <div className="license-row"><span>Product</span><strong>{cloudFastLicense.productName}</strong></div>
+          ) : null}
+          <div className="license-row"><span>Started</span><strong>{formatDate(cloudFastLicense.createdAt)}</strong></div>
+          <div className="license-row"><span>Status</span><strong>{cloudFastLicense.status}</strong></div>
+          <div className="license-row">
+            <span>Monthly quota</span>
+            <strong>{Math.round(cloudFastEntitlement.monthlySecondsLimit / 60).toLocaleString()} minutes</strong>
+          </div>
+          <div className="license-actions">
+            {onManageCloudFastBilling ? (
+              <button type="button" onClick={onManageCloudFastBilling} disabled={cloudFastBusy}>
+                <ExternalLink size={13} /> Manage subscription
+              </button>
+            ) : null}
+            <button type="button" onClick={handleCloudFastRefresh} disabled={cloudFastBusy}>
+              <RefreshCw size={13} /> Refresh
+            </button>
+            <button type="button" onClick={handleCloudFastDeactivate} disabled={cloudFastBusy}>
+              <Trash2 size={13} /> Sign out on this device
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="license-card license-card--empty">
+          <p className="muted">
+            Cloud Fast is optional at ${cloudFastEntitlement.priceUsdMonthly}/month and uploads audio only when you choose Cloud Fast mode.
+          </p>
+          <div className="license-actions license-actions--stacked">
+            <button type="button" onClick={onUpgradeCloudFast}>
+              <ArrowUp size={13} /> Upgrade to Cloud Fast
+            </button>
+          </div>
+          <label className="license-input-row">
+            <span>Cloud Fast license key</span>
+            <input
+              type="text"
+              value={cloudFastKeyDraft}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              onChange={(e) => setCloudFastKeyDraft(e.target.value)}
+              disabled={cloudFastBusy}
+            />
+          </label>
+          <button
+            type="button"
+            className="primary"
+            onClick={handleCloudFastActivate}
+            disabled={cloudFastBusy || !cloudFastKeyDraft.trim()}
+          >
+            Activate Cloud Fast
+          </button>
+        </div>
+      )}
+
+      {cloudFastError && <div className="settings-inline-error" role="alert">{cloudFastError}</div>}
+      {cloudFastSuccess && <div className="settings-inline-success" role="status">{cloudFastSuccess}</div>}
+
+      <hr className="settings-divider" />
+
       <div className="updates-block">
         <div className="updates-row">
           <span>Current version</span>
@@ -684,4 +1157,13 @@ function formatDate(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatMinutes(seconds: number) {
+  return Math.round(seconds / 60).toLocaleString();
+}
+
+function isCloudFastLicenseSummary(license: LicenseSummary | null | undefined) {
+  if (!license?.present) return false;
+  return license.productName.replace(/[^a-z0-9]/gi, "").toLowerCase().includes("cloudfast");
 }

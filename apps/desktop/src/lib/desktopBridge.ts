@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { PROVIDERS, SUPPORTED_LANGUAGES, type CaptureSource, type InputMode, type LocalSession, type Snippet, type SupportedLanguage } from "@dictivo/shared";
+import { invoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
+import { PROVIDERS, SUPPORTED_LANGUAGES, type CaptureSource, type InputMode, type LocalSession, type Snippet, type TranscriptionLanguage } from "@dictivo/shared";
 
 const storageKey = "dictivo-local-sessions";
 const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
@@ -91,7 +91,7 @@ export type HardwareProfile = {
 };
 
 export type PrivateFastTranscribeOptions = {
-  language: SupportedLanguage;
+  language: TranscriptionLanguage;
   mode: InputMode;
   source: CaptureSource;
   profile: PrivateFastProfile;
@@ -100,7 +100,7 @@ export type PrivateFastTranscribeOptions = {
 };
 
 export function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return tauriIsTauri() || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
 }
 
 export async function requestNativePermissions() {
@@ -134,6 +134,17 @@ async function browserMicrophonePermissionStatus(): Promise<string | null> {
 export async function openPermissionSettings(target: PermissionSettingsTarget): Promise<void> {
   if (!isTauriRuntime()) throw new Error("Opening system permission settings requires the desktop app runtime.");
   return invoke<void>("open_permission_settings", { target });
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    if (typeof window !== "undefined") {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    throw new Error("Opening external links requires a browser or desktop app runtime.");
+  }
+  return invoke<void>("open_external_url", { url });
 }
 
 export async function getClipboardMarker(): Promise<ClipboardMarker | null> {
@@ -278,7 +289,7 @@ function isLocalSession(value: unknown): value is LocalSession {
 	  typeof session.title === "string" &&
 	  isOneOf(session.mode, INPUT_MODES) &&
 	  isOneOf(session.language, SUPPORTED_LANGUAGES) &&
-	  session.privacyMode === "local-only" &&
+	  isOneOf(session.privacyMode, ["local-only", "cloud-fast"] as const) &&
 	  isOneOf(session.provider, PROVIDERS) &&
 	  typeof session.createdAt === "string" &&
 	  typeof session.durationSeconds === "number" &&
@@ -299,7 +310,7 @@ export async function getPrivateFastStatus(): Promise<PrivateFastStatus> {
       modelId: "small",
       modelName: "small",
       message: "Private Fast requires the desktop app runtime.",
-      setupHint: "Open Dictivo.app, then download or import a local model in Settings -> Local Engine."
+      setupHint: "Open Dictivo.app, then download or import a local model in Settings -> Engine."
     };
   }
 
@@ -567,11 +578,34 @@ export type UpdateCheckResult = {
   error: string | null;
 };
 
+export type CloudFastSession = {
+  token: string;
+  tokenType: "Bearer";
+  userId: string;
+  expiresAt: string;
+  plan: string;
+  available: boolean;
+  priceUsdMonthly: string;
+  monthlySecondsLimit: number;
+  monthlySecondsUsed: number;
+  renewsAt: string | null;
+  upgradeUrl: string | null;
+  billingPortalUrl?: string | null;
+  privacyNotice: string;
+};
+
 export async function activateLicense(licenseKey: string, instanceName: string): Promise<LicenseSummary> {
   if (!isTauriRuntime()) {
     throw new Error("License activation requires the desktop app runtime.");
   }
   return invoke<LicenseSummary>("license_activate", { licenseKey, instanceName });
+}
+
+export async function activateCloudFastLicense(licenseKey: string, instanceName: string): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) {
+    throw new Error("Cloud Fast license activation requires the desktop app runtime.");
+  }
+  return invoke<LicenseSummary>("license_cloud_fast_activate", { licenseKey, instanceName });
 }
 
 export async function getLicense(): Promise<LicenseSummary> {
@@ -589,14 +623,51 @@ export async function getLicense(): Promise<LicenseSummary> {
   return invoke<LicenseSummary>("license_get");
 }
 
+export async function getCloudFastLicense(): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) {
+    return {
+      present: false,
+      email: "",
+      productName: "",
+      createdAt: "",
+      updatesUntil: "",
+      daysRemaining: 0,
+      status: "web-preview"
+    };
+  }
+  return invoke<LicenseSummary>("license_cloud_fast_get");
+}
+
+export async function migrateCloudFastLicenseFromLocal(): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) {
+    throw new Error("Cloud Fast license migration requires the desktop app runtime.");
+  }
+  return invoke<LicenseSummary>("license_cloud_fast_migrate_from_local");
+}
+
 export async function refreshLicense(): Promise<LicenseSummary> {
   if (!isTauriRuntime()) throw new Error("License refresh requires the desktop app runtime.");
   return invoke<LicenseSummary>("license_refresh");
 }
 
+export async function refreshCloudFastLicense(): Promise<LicenseSummary> {
+  if (!isTauriRuntime()) throw new Error("Cloud Fast license refresh requires the desktop app runtime.");
+  return invoke<LicenseSummary>("license_cloud_fast_refresh");
+}
+
+export async function getCloudFastSession(apiBaseUrl: string): Promise<CloudFastSession> {
+  if (!isTauriRuntime()) throw new Error("Cloud Fast license session requires the desktop app runtime.");
+  return invoke<CloudFastSession>("license_cloud_fast_session", { apiBaseUrl });
+}
+
 export async function deactivateLicense(): Promise<void> {
   if (!isTauriRuntime()) throw new Error("License deactivation requires the desktop app runtime.");
   return invoke<void>("license_deactivate");
+}
+
+export async function deactivateCloudFastLicense(): Promise<void> {
+  if (!isTauriRuntime()) throw new Error("Cloud Fast license deactivation requires the desktop app runtime.");
+  return invoke<void>("license_cloud_fast_deactivate");
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {

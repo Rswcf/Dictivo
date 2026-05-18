@@ -1,11 +1,12 @@
 import type { SupportedLanguage } from "@dictivo/shared";
-import type { CompanionAvatar } from "./settingsStore";
+import type { CompanionAvatar, CompanionDisplayMode } from "./settingsStore";
 
 export type CompanionPhase = "idle" | "recording" | "processing" | "complete" | "blocked" | "error";
 
 // fields kept for snapshot contract stability; bubble currently renders title + detail only.
 export type CompanionSnapshot = {
   enabled: boolean;
+  displayMode: CompanionDisplayMode;
   avatar: CompanionAvatar;
   customAvatarDataUrl?: string;
   customAvatarName?: string;
@@ -22,6 +23,7 @@ export type CompanionSnapshot = {
 
 type CompanionSnapshotInput = {
   enabled: boolean;
+  displayMode: CompanionDisplayMode;
   avatar: CompanionAvatar;
   customAvatarDataUrl?: string;
   customAvatarName?: string;
@@ -38,11 +40,12 @@ export function buildCompanionSnapshot(input: CompanionSnapshotInput): Companion
   const transcriptPreview = previewText(input.liveText);
   const wordCount = countWords(transcriptPreview, input.language);
   const title = phaseTitle(input.phase);
-  const detail = phaseDetail(input.phase, input.hotkey, wordCount);
+  const detail = phaseDetail(input.phase, input.hotkey, wordCount, input.statusMessage);
   const summary = phaseSummary(input.phase, input.statusMessage, transcriptPreview, wordCount);
 
   return {
     enabled: input.enabled,
+    displayMode: input.displayMode,
     avatar: input.avatar,
     customAvatarDataUrl: input.avatar === "custom" ? input.customAvatarDataUrl : undefined,
     customAvatarName: input.avatar === "custom" ? input.customAvatarName : undefined,
@@ -61,18 +64,26 @@ export function buildCompanionSnapshot(input: CompanionSnapshotInput): Companion
 function phaseTitle(phase: CompanionPhase) {
   if (phase === "recording") return "Listening";
   if (phase === "processing") return "Transcribing";
-  if (phase === "complete") return "Ready";
+  if (phase === "complete") return "Transcript copied to clipboard";
   if (phase === "blocked") return "Setup needed";
   if (phase === "error") return "Needs attention";
   return "Standing by";
 }
 
-function phaseDetail(phase: CompanionPhase, hotkey: string, wordCount: number) {
+function phaseDetail(phase: CompanionPhase, hotkey: string, wordCount: number, statusMessage: string) {
   if (phase === "recording") return `${hotkey} to stop`;
-  if (phase === "processing") return "Local engine is working";
-  if (phase === "complete") return `${wordCount} ${wordCount === 1 ? "word" : "words"} copied`;
-  if (phase === "blocked") return "Open Local Engine settings";
-  if (phase === "error") return "Check the main window";
+  if (phase === "processing") {
+    const status = statusMessage.toLowerCase();
+    if (status.includes("stopping recording")) return "Waiting for microphone";
+    if (status.includes("cloud fast")) return "Cloud Fast is working";
+    return "Local engine is working";
+  }
+  if (phase === "complete") {
+    if (wordCount <= 0) return "Transcript copied";
+    return `${wordCount} ${wordCount === 1 ? "word" : "words"} saved. Looking sharp!`;
+  }
+  if (phase === "blocked") return "Open Engine settings";
+  if (phase === "error") return conciseStatus(statusMessage) || "Check the main window";
   return `${hotkey} to record`;
 }
 
@@ -86,8 +97,14 @@ function phaseSummary(phase: CompanionPhase, statusMessage: string, transcriptPr
 
 function previewText(text: string) {
   const trimmed = text.replace(/\s+/g, " ").trim();
-  if (!trimmed || trimmed.startsWith("Recording locally.")) return "";
+  if (!trimmed || trimmed.startsWith("Recording locally.") || trimmed.startsWith("Recording for Cloud Fast.")) return "";
   return trimmed.length > 118 ? `${trimmed.slice(0, 115).trim()}...` : trimmed;
+}
+
+function conciseStatus(statusMessage: string) {
+  const trimmed = statusMessage.replace(/\s+/g, " ").trim();
+  if (!trimmed) return "";
+  return trimmed.length > 68 ? `${trimmed.slice(0, 65).trim()}...` : trimmed;
 }
 
 function countWords(text: string, language: SupportedLanguage) {

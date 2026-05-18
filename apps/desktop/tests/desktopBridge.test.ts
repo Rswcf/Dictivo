@@ -1,20 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
+const isTauriMock = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: invokeMock
+  invoke: invokeMock,
+  isTauri: isTauriMock
 }));
 
 import {
+  activateCloudFastLicense,
   benchmarkTier,
   clearLocalSessions,
   copyText,
+  deactivateCloudFastLicense,
   deleteLocalSession,
   deletePrivateFastModel,
   detectGpu,
   downloadPrivateFastModel,
   finalizeCalibration,
   getClipboardMarker,
+  getCloudFastLicense,
+  getCloudFastSession,
   getPrivateFastStatus,
   getHardwareProfile,
   getPrivateFastModels,
@@ -22,8 +28,11 @@ import {
   importPrivateFastModel,
   isTauriRuntime,
   listLocalSessions,
+  migrateCloudFastLicenseFromLocal,
+  openExternalUrl,
   openPermissionSettings,
   pasteText,
+  refreshCloudFastLicense,
   requestNativePermissions,
   rerunBenchmark,
   saveLocalSession,
@@ -67,6 +76,8 @@ describe("desktop bridge browser fallback", () => {
 
   afterEach(() => {
     invokeMock.mockReset();
+    isTauriMock.mockReset();
+    isTauriMock.mockReturnValue(false);
     vi.unstubAllGlobals();
   });
 
@@ -329,6 +340,20 @@ describe("desktop bridge browser fallback", () => {
     });
   });
 
+  it("accepts Cloud Fast sessions in browser preview history storage", async () => {
+    const cloudSession: LocalSession = {
+      ...session,
+      id: "session_cloud",
+      privacyMode: "cloud-fast",
+      provider: "cloud-fast",
+      text: "cloud fast text"
+    };
+
+    await saveLocalSession(cloudSession);
+
+    await expect(listLocalSessions()).resolves.toEqual([cloudSession]);
+  });
+
   it("recovers from corrupted or malformed browser preview history storage", async () => {
     localStorage.setItem("dictivo-local-sessions", "not-json");
     await expect(listLocalSessions()).resolves.toEqual([]);
@@ -383,6 +408,64 @@ describe("desktop bridge browser fallback", () => {
     await expect(deletePrivateFastModel("small")).rejects.toThrow("desktop app runtime");
   });
 
+  it("forwards Cloud Fast session requests inside the Tauri runtime", async () => {
+    const session = {
+      token: "signed-token",
+      tokenType: "Bearer",
+      userId: "ls_123",
+      expiresAt: "2026-05-16T11:00:00.000Z",
+      plan: "cloud-fast-monthly",
+      available: true,
+      priceUsdMonthly: "6.99",
+      monthlySecondsLimit: 90_000,
+      monthlySecondsUsed: 0,
+      renewsAt: "2026-06-01T00:00:00.000Z",
+      upgradeUrl: null,
+      privacyNotice: "Cloud Fast uploads audio to cloud transcription providers for faster results."
+    };
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    invokeMock.mockResolvedValue(session);
+
+    await expect(getCloudFastSession("https://api.dictivo.app")).resolves.toBe(session);
+    expect(invokeMock).toHaveBeenCalledWith("license_cloud_fast_session", {
+      apiBaseUrl: "https://api.dictivo.app"
+    });
+  });
+
+  it("keeps Cloud Fast license commands separate from the local license bridge", async () => {
+    const summary = {
+      present: true,
+      email: "alice@example.com",
+      productName: "Dictivo Cloud Fast",
+      createdAt: "2026-05-16T10:00:00Z",
+      updatesUntil: "2027-05-16T10:00:00Z",
+      daysRemaining: 365,
+      status: "active"
+    };
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    invokeMock
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(undefined);
+
+    await expect(activateCloudFastLicense("CF-123", "Alice Mac")).resolves.toBe(summary);
+    await expect(getCloudFastLicense()).resolves.toBe(summary);
+    await expect(migrateCloudFastLicenseFromLocal()).resolves.toBe(summary);
+    await expect(refreshCloudFastLicense()).resolves.toBe(summary);
+    await expect(deactivateCloudFastLicense()).resolves.toBeUndefined();
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "license_cloud_fast_activate", {
+      licenseKey: "CF-123",
+      instanceName: "Alice Mac"
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "license_cloud_fast_get");
+    expect(invokeMock).toHaveBeenNthCalledWith(3, "license_cloud_fast_migrate_from_local");
+    expect(invokeMock).toHaveBeenNthCalledWith(4, "license_cloud_fast_refresh");
+    expect(invokeMock).toHaveBeenNthCalledWith(5, "license_cloud_fast_deactivate");
+  });
+
   it("forwards native model operations inside the Tauri runtime", async () => {
     const nativeStatus = {
       ready: true,
@@ -410,6 +493,16 @@ describe("desktop bridge browser fallback", () => {
 
   it("blocks opening system permission settings outside Tauri", async () => {
     await expect(openPermissionSettings("microphone")).rejects.toThrow("desktop app runtime");
+  });
+
+  it("opens external URLs through native bridge inside Tauri", async () => {
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    invokeMock.mockResolvedValue(undefined);
+
+    await expect(openExternalUrl("https://dictivo.app/cloud-fast")).resolves.toBeUndefined();
+    expect(invokeMock).toHaveBeenCalledWith("open_external_url", {
+      url: "https://dictivo.app/cloud-fast"
+    });
   });
 
   it("blocks native transcription in web preview", async () => {

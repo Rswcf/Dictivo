@@ -1,11 +1,20 @@
-import { SUPPORTED_LANGUAGES, type DictionaryTerm, type InputMode, type Snippet, type SupportedLanguage } from "@dictivo/shared";
+import {
+  SUPPORTED_LANGUAGES,
+  type DictionaryTerm,
+  type InputMode,
+  type Snippet,
+  type SupportedLanguage,
+  type TranscriptionLanguage
+} from "@dictivo/shared";
 import { DEFAULT_START_SOUND, type StartSoundId } from "./sounds";
 
 const STORAGE_KEY = "dictivo-settings-v4";
 const LEGACY_KEYS = ["dictivo-settings-v3", "dictivo-settings-v2", "dictivo-settings"];
 const INPUT_MODES = ["dictation", "email", "message", "raw", "prompt"] as const satisfies readonly InputMode[];
+const TRANSCRIPTION_MODES = ["local", "cloud-fast"] as const satisfies readonly TranscriptionMode[];
 const SELECTABLE_TIERS = ["fast", "medium", "slow"] as const satisfies readonly Settings["selectedTier"][];
 const COMPANION_AVATARS = ["dog", "cat", "iris", "marcus", "custom"] as const satisfies readonly CompanionAvatar[];
+const COMPANION_DISPLAY_MODES = ["card", "pet"] as const satisfies readonly CompanionDisplayMode[];
 // Legacy avatar IDs that earlier internal builds shipped. We migrate them to
 // the current professional naming so beta users do not silently lose their
 // selection on first launch after 0.2.1. "trump" is intentionally absent —
@@ -19,6 +28,10 @@ export const CUSTOM_COMPANION_AVATAR_MAX_BYTES = 1_500_000;
 const CUSTOM_COMPANION_AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 
 export type CompanionAvatar = "dog" | "cat" | "iris" | "marcus" | "custom";
+
+export type CompanionDisplayMode = "card" | "pet";
+
+export type TranscriptionMode = "local" | "cloud-fast";
 
 export type CustomCompanionAvatar = {
   dataUrl: string;
@@ -64,11 +77,13 @@ export const DEFAULT_LOCAL_PROCESSING: LocalProcessingSettings = {
 };
 
 export type Settings = {
-  language: SupportedLanguage;
+  language: TranscriptionLanguage;
   selectedMode: InputMode;
+  transcriptionMode: TranscriptionMode;
   selectedTier: "fast" | "medium" | "slow";
   onboardingCompleted: boolean;
   companionEnabled: boolean;
+  companionDisplayMode: CompanionDisplayMode;
   companionAvatar: CompanionAvatar;
   customCompanionAvatar: CustomCompanionAvatar | null;
   companionPosition: CompanionPosition | null;
@@ -80,11 +95,13 @@ export type Settings = {
 };
 
 const DEFAULTS: Settings = {
-  language: "en",
+  language: "auto",
   selectedMode: "message",
+  transcriptionMode: "local",
   selectedTier: "medium",
   onboardingCompleted: false,
   companionEnabled: true,
+  companionDisplayMode: "card",
   companionAvatar: "dog",
   customCompanionAvatar: null,
   companionPosition: null,
@@ -154,7 +171,8 @@ export function saveSettings(settings: Settings) {
 function normalizeSettings(value: unknown, legacy: boolean): Settings {
   if (!value || typeof value !== "object") return DEFAULTS;
   const parsed = value as Record<string, unknown>;
-  const language = isOneOf(parsed.language, SUPPORTED_LANGUAGES) ? parsed.language : DEFAULTS.language;
+  const language: TranscriptionLanguage = parsed.language === "auto" ? "auto" : DEFAULTS.language;
+  const fallbackLanguage = isOneOf(parsed.language, SUPPORTED_LANGUAGES) ? parsed.language : "en";
   const selectedTier = isOneOf(parsed.selectedTier, SELECTABLE_TIERS)
     ? parsed.selectedTier
     : legacy
@@ -176,9 +194,15 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     ...DEFAULTS,
     language,
     selectedMode: isOneOf(parsed.selectedMode, INPUT_MODES) ? parsed.selectedMode : DEFAULTS.selectedMode,
+    transcriptionMode: isOneOf(parsed.transcriptionMode, TRANSCRIPTION_MODES)
+      ? parsed.transcriptionMode
+      : DEFAULTS.transcriptionMode,
     selectedTier,
     onboardingCompleted: booleanOrDefault(parsed.onboardingCompleted, DEFAULTS.onboardingCompleted),
     companionEnabled: booleanOrDefault(parsed.companionEnabled, DEFAULTS.companionEnabled),
+    companionDisplayMode: isOneOf(parsed.companionDisplayMode, COMPANION_DISPLAY_MODES)
+      ? parsed.companionDisplayMode
+      : DEFAULTS.companionDisplayMode,
     companionAvatar: companionAvatar === "custom" && !customCompanionAvatar ? DEFAULTS.companionAvatar : companionAvatar,
     customCompanionAvatar,
     companionPosition: normalizeCompanionPosition(parsed.companionPosition),
@@ -187,8 +211,8 @@ function normalizeSettings(value: unknown, legacy: boolean): Settings {
     localProcessing: normalizeLocalProcessing(
       parsed.localProcessing as Partial<LocalProcessingSettings> | undefined
     ),
-    dictionary: normalizeDictionaryTerms(parsed.dictionary, language),
-    snippets: normalizeSnippets(parsed.snippets, language)
+    dictionary: normalizeDictionaryTerms(parsed.dictionary, fallbackLanguage),
+    snippets: normalizeSnippets(parsed.snippets, fallbackLanguage)
   };
 }
 

@@ -17,8 +17,8 @@
 
 #[cfg(target_os = "macos")]
 pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<String, String> {
-    use objc2::msg_send;
     use objc2::runtime::AnyObject;
+    use objc2::{msg_send, sel};
     use tauri::Manager;
 
     let window = handle
@@ -47,7 +47,16 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
     const NEEDED_FLAGS: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY;
 
     // ────────────────────────────────────────────────────────────────────
-    // Layer 2: window level — Tauri's `alwaysOnTop: true` sets level 3
+    // Layer 2: NSPanel-style non-activation — fullscreen-friendly floating
+    // widgets are typically backed by nonactivating panels. Tauri gives us a
+    // regular NSWindow, but macOS will still accept the style-mask bit on
+    // some windows; if it does not stick, the diagnostic below makes that
+    // obvious and the next escalation is a true NSPanel-backed companion.
+    // ────────────────────────────────────────────────────────────────────
+    const NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL: u64 = 1 << 7;
+
+    // ────────────────────────────────────────────────────────────────────
+    // Layer 3: window level — Tauri's `alwaysOnTop: true` sets level 3
     // (NSFloatingWindowLevel), but fullscreen apps render at a level
     // *above* that, so a level-3 window gets covered.
     //
@@ -59,10 +68,45 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
     // ────────────────────────────────────────────────────────────────────
     const NS_STATUS_WINDOW_LEVEL: i64 = 25;
 
-    let (before_behavior, after_behavior, before_level, after_level) = unsafe {
+    let (
+        before_behavior,
+        after_behavior,
+        before_style,
+        after_style,
+        before_hides_on_deactivate,
+        after_hides_on_deactivate,
+        before_level,
+        after_level,
+    ) = unsafe {
         let before_behavior: u64 = msg_send![ns_window, collectionBehavior];
         let after_behavior = before_behavior | NEEDED_FLAGS;
         let _: () = msg_send![ns_window, setCollectionBehavior: after_behavior];
+
+        let before_style: u64 = msg_send![ns_window, styleMask];
+        let requested_style = before_style | NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL;
+        let _: () = msg_send![ns_window, setStyleMask: requested_style];
+        let after_style: u64 = msg_send![ns_window, styleMask];
+
+        let can_set_hides_on_deactivate: bool =
+            msg_send![ns_window, respondsToSelector: sel!(setHidesOnDeactivate:)];
+        let before_hides_on_deactivate = if can_set_hides_on_deactivate {
+            let value: bool = msg_send![ns_window, hidesOnDeactivate];
+            let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+            Some(value)
+        } else {
+            None
+        };
+        let after_hides_on_deactivate = if can_set_hides_on_deactivate {
+            let value: bool = msg_send![ns_window, hidesOnDeactivate];
+            Some(value)
+        } else {
+            None
+        };
+
+        let can_set_can_hide: bool = msg_send![ns_window, respondsToSelector: sel!(setCanHide:)];
+        if can_set_can_hide {
+            let _: () = msg_send![ns_window, setCanHide: false];
+        }
 
         let before_level: i64 = msg_send![ns_window, level];
         let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
@@ -74,6 +118,10 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
         (
             before_behavior,
             observed_behavior,
+            before_style,
+            after_style,
+            before_hides_on_deactivate,
+            after_hides_on_deactivate,
             before_level,
             after_level,
         )
@@ -81,9 +129,12 @@ pub fn apply_companion_collection_behavior(handle: &tauri::AppHandle) -> Result<
 
     let report = format!(
         "companion NSWindow: behavior before=0x{before_behavior:x} after=0x{after_behavior:x} \
-         (CanJoinAllSpaces={} FullScreenAuxiliary={}) | level before={before_level} after={after_level}",
+         (CanJoinAllSpaces={} FullScreenAuxiliary={}) | style before=0x{before_style:x} after=0x{after_style:x} \
+         (NonactivatingPanel={}) | hidesOnDeactivate before={before_hides_on_deactivate:?} after={after_hides_on_deactivate:?} \
+         | level before={before_level} after={after_level}",
         (after_behavior & CAN_JOIN_ALL_SPACES) != 0,
-        (after_behavior & FULL_SCREEN_AUXILIARY) != 0
+        (after_behavior & FULL_SCREEN_AUXILIARY) != 0,
+        (after_style & NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL) != 0
     );
     eprintln!("{report}");
     Ok(report)

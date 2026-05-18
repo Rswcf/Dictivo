@@ -1,4 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Buffer } from "node:buffer";
+
+const tauriCore = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  isTauri: vi.fn(() => false)
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: tauriCore.invoke,
+  isTauri: tauriCore.isTauri
+}));
+
 import { computeBands, encodeWav, startAudioRecording } from "../src/lib/mediaCapture";
 
 async function readWav(blob: Blob) {
@@ -99,6 +111,10 @@ function stubMicrophoneStream() {
 afterEach(() => {
   FakeMediaRecorder.instances = [];
   FakeAudioContext.instances = [];
+  tauriCore.invoke.mockReset();
+  tauriCore.isTauri.mockReset();
+  tauriCore.isTauri.mockReturnValue(false);
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -148,6 +164,28 @@ describe("media capture WAV encoding", () => {
 });
 
 describe("media capture recording controller", () => {
+  it("uses the native recorder in the desktop runtime", async () => {
+    tauriCore.isTauri.mockReturnValue(true);
+    tauriCore.invoke
+      .mockResolvedValueOnce({ startedAt: 1234, sampleRate: 48_000 })
+      .mockResolvedValueOnce({
+        audioBase64: Buffer.from("wav").toString("base64"),
+        mimeType: "audio/wav",
+        startedAt: 1234,
+        durationMs: 500
+      });
+
+    const controller = await startAudioRecording("microphone", "wav", vi.fn());
+    const blob = await controller.stop();
+
+    expect(controller.startedAt).toBe(1234);
+    expect(controller.format).toBe("wav");
+    expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, "start_native_recording");
+    expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, "stop_native_recording");
+    expect(blob.type).toBe("audio/wav");
+    expect(await blob.text()).toBe("wav");
+  });
+
   it("starts compressed microphone capture, returns a blob, and stops tracks", async () => {
     const microphone = stubMicrophoneStream();
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
@@ -191,6 +229,18 @@ describe("media capture recording controller", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
 
     await expect(startAudioRecording("microphone", "compressed")).rejects.toThrow("Permission denied");
+  });
+
+  it("times out when the browser leaves microphone setup pending", async () => {
+    vi.useFakeTimers();
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>(() => undefined));
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+
+    const capture = startAudioRecording("microphone", "compressed");
+    const assertion = expect(capture).rejects.toThrow("Microphone setup timed out");
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await assertion;
   });
 
   it("starts wav microphone capture, mutes monitor output, and stops tracks", async () => {

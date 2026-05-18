@@ -4,13 +4,15 @@ import { buildCompanionSnapshot } from "../src/lib/companion";
 import {
   COMPANION_SNAP_THRESHOLD,
   companionWindowPosition,
-  snapToWorkAreaEdge
+  snapToWorkAreaEdge,
+  windowIntersectsWorkArea
 } from "../src/lib/companionWindowPosition";
 
 describe("floating companion state", () => {
   it("summarizes an active recording with the stop hotkey and timer source", () => {
     const snapshot = buildCompanionSnapshot({
       enabled: true,
+      displayMode: "card",
       avatar: "cat",
       phase: "recording",
       hotkey: "CommandOrControl+Shift+Space",
@@ -30,6 +32,7 @@ describe("floating companion state", () => {
   it("shows completion word count and keeps a short transcript preview", () => {
     const snapshot = buildCompanionSnapshot({
       enabled: true,
+      displayMode: "card",
       avatar: "dog",
       phase: "complete",
       hotkey: "CommandOrControl+Shift+Space",
@@ -39,8 +42,8 @@ describe("floating companion state", () => {
       language: "en"
     });
 
-    expect(snapshot.title).toBe("Ready");
-    expect(snapshot.detail).toBe("8 words copied");
+    expect(snapshot.title).toBe("Transcript copied to clipboard");
+    expect(snapshot.detail).toBe("8 words saved. Looking sharp!");
     expect(snapshot.summary).toBe("Dictivo copied this local transcript into the clipboard.");
     expect(snapshot.pasteStatus).toBe("Copied to clipboard");
   });
@@ -49,6 +52,7 @@ describe("floating companion state", () => {
     expect(
       buildCompanionSnapshot({
         enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "processing",
         hotkey: "CommandOrControl+Shift+Space",
@@ -66,6 +70,43 @@ describe("floating companion state", () => {
     expect(
       buildCompanionSnapshot({
         enabled: true,
+        displayMode: "card",
+        avatar: "dog",
+        phase: "processing",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "Transcribing with Cloud Fast...",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      title: "Transcribing",
+      detail: "Cloud Fast is working",
+      summary: "Transcribing with Cloud Fast..."
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        displayMode: "card",
+        avatar: "dog",
+        phase: "processing",
+        hotkey: "CommandOrControl+Shift+Space",
+        liveText: "",
+        statusMessage: "Stopping recording as soon as the microphone is ready...",
+        pasteStatus: "",
+        language: "en"
+      })
+    ).toMatchObject({
+      title: "Transcribing",
+      detail: "Waiting for microphone",
+      summary: "Stopping recording as soon as the microphone is ready..."
+    });
+
+    expect(
+      buildCompanionSnapshot({
+        enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "blocked",
         hotkey: "CommandOrControl+Shift+Space",
@@ -76,13 +117,14 @@ describe("floating companion state", () => {
       })
     ).toMatchObject({
       title: "Setup needed",
-      detail: "Open Local Engine settings",
+      detail: "Open Engine settings",
       summary: "Dictivo needs a local engine check."
     });
 
     expect(
       buildCompanionSnapshot({
         enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "error",
         hotkey: "CommandOrControl+Shift+Space",
@@ -93,13 +135,14 @@ describe("floating companion state", () => {
       })
     ).toMatchObject({
       title: "Needs attention",
-      detail: "Check the main window",
+      detail: "Microphone denied",
       summary: "Microphone denied"
     });
 
     expect(
       buildCompanionSnapshot({
         enabled: false,
+        displayMode: "pet",
         avatar: "cat",
         phase: "idle",
         hotkey: "CommandOrControl+Shift+Space",
@@ -118,6 +161,7 @@ describe("floating companion state", () => {
     expect(
       buildCompanionSnapshot({
         enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "complete",
         hotkey: "CommandOrControl+Shift+Space",
@@ -126,12 +170,13 @@ describe("floating companion state", () => {
         pasteStatus: "",
         language: "zh"
       }).detail
-    ).toBe("4 words copied");
+    ).toBe("4 words saved. Looking sharp!");
   });
 
   it("truncates very long transcript previews", () => {
     const snapshot = buildCompanionSnapshot({
       enabled: true,
+      displayMode: "card",
       avatar: "dog",
       phase: "complete",
       hotkey: "CommandOrControl+Shift+Space",
@@ -148,6 +193,7 @@ describe("floating companion state", () => {
   it("carries custom companion image data only for the custom avatar", () => {
     const customSnapshot = buildCompanionSnapshot({
       enabled: true,
+      displayMode: "pet",
       avatar: "custom",
       customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
       customAvatarName: "avatar.png",
@@ -160,6 +206,7 @@ describe("floating companion state", () => {
     });
     const builtInSnapshot = buildCompanionSnapshot({
       enabled: true,
+      displayMode: "pet",
       avatar: "dog",
       customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
       customAvatarName: "avatar.png",
@@ -284,5 +331,26 @@ describe("snapToWorkAreaEdge — companion drag-end magnet", () => {
   it("exposes a sane default threshold", () => {
     expect(COMPANION_SNAP_THRESHOLD).toBeGreaterThan(0);
     expect(COMPANION_SNAP_THRESHOLD).toBeLessThanOrEqual(80);
+  });
+});
+
+describe("windowIntersectsWorkArea", () => {
+  const workArea = {
+    position: { x: 0, y: 0 },
+    size: { width: 1440, height: 900 }
+  };
+  const windowSize = { width: 360, height: 100 };
+
+  it("accepts persisted companion positions with enough visible area", () => {
+    expect(windowIntersectsWorkArea({ x: 1200, y: 24 }, windowSize, workArea)).toBe(true);
+  });
+
+  it("rejects positions restored fully off the current display", () => {
+    expect(windowIntersectsWorkArea({ x: -900, y: 24 }, windowSize, workArea)).toBe(false);
+  });
+
+  it("allows a partially visible edge placement", () => {
+    expect(windowIntersectsWorkArea({ x: 1410, y: 24 }, windowSize, workArea)).toBe(false);
+    expect(windowIntersectsWorkArea({ x: 1408, y: 24 }, windowSize, workArea)).toBe(true);
   });
 });

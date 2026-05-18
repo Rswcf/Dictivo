@@ -87,3 +87,28 @@ export function snapToWorkAreaEdge(
     y: clamp(y, minY, maxY)
   };
 }
+
+/**
+ * A persisted companion position is safe to reuse only if enough of the
+ * window still intersects a currently connected display. This prevents the
+ * common multi-monitor failure mode where a user drags the companion to a
+ * secondary screen, disconnects it later, and the next launch restores the
+ * window off-screen.
+ */
+export function windowIntersectsWorkArea(
+  windowOrigin: Point,
+  windowSize: Size,
+  workArea: WorkArea,
+  minVisiblePx = 32
+): boolean {
+  const left = workArea.position.x;
+  const top = workArea.position.y;
+  const right = left + workArea.size.width;
+  const bottom = top + workArea.size.height;
+
+  const overlapWidth = Math.min(windowOrigin.x + windowSize.width, right) - Math.max(windowOrigin.x, left);
+  const overlapHeight = Math.min(windowOrigin.y + windowSize.height, bottom) - Math.max(windowOrigin.y, top);
+
+  return overlapWidth >= Math.min(minVisiblePx, windowSize.width) &&
+    overlapHeight >= Math.min(minVisiblePx, windowSize.height);
+}

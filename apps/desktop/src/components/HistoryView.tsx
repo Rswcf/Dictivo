@@ -103,7 +103,7 @@ export function HistoryView({
                 <h2>{session.title}</h2>
                 <p>{session.text}</p>
                 <span>
-                  {session.mode} · {session.language} · {session.wordCount} {countLabel(session.language)} · local-only
+                  {session.mode} · {session.language} · {session.wordCount} {countLabel(session.language)} · {session.privacyMode}
                   {session.rawText ? " · raw saved" : ""}
                 </span>
               </div>

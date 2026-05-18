@@ -93,11 +93,16 @@ export function playRecordingStartSound() {
   playStartSound();
 }
 
-/** Falling tone reserved for "transcript ready" in v1.1. */
-export function playRecordingDoneSound() {
+/** Falling tone confirming that recording has stopped and processing has begun. */
+export function playRecordingStopSound() {
   const ctx = getContext();
   if (!ctx) return;
   scheduleChime(ctx, { startFreq: 880, endFreq: 660, duration: 0.14, gain: 0.18 });
+}
+
+/** Backwards-compat alias for older callsites. */
+export function playRecordingDoneSound() {
+  playRecordingStopSound();
 }
 
 type ChimeSpec = {

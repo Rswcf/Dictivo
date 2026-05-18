@@ -1,6 +1,6 @@
-import type { SupportedLanguage } from "@dictivo/shared";
-import { Mic, X as XIcon } from "lucide-react";
-import { estimateWordCount } from "@dictivo/shared";
+import type { TranscriptionLanguage } from "@dictivo/shared";
+import { Mic, ShieldCheck, X as XIcon, Zap } from "lucide-react";
+import { estimateWordCount, resolveTranscriptLanguage } from "@dictivo/shared";
 import irisAvatarImage from "../assets/avatars/iris-companion.png";
 import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
 import type {
@@ -12,11 +12,15 @@ import type {
   TierAssignment
 } from "../lib/desktopBridge";
 import type { CompanionAvatar, CustomCompanionAvatar, HotkeySettings } from "../lib/settingsStore";
+import type { CloudFastEntitlement } from "../lib/cloudFastEngine";
 import { formatShortcutForDisplay } from "../lib/hotkeys";
 import { TIER_DISPLAY } from "../lib/tierDisplay";
+import type { TranscriptionMode } from "../lib/settingsStore";
 
 type DictationWorkbenchProps = {
-  language: SupportedLanguage;
+  language: TranscriptionLanguage;
+  transcriptionMode: TranscriptionMode;
+  cloudFastEntitlement: CloudFastEntitlement;
   isDictating: boolean;
   liveText: string;
   hotkeyStatus: string;
@@ -30,7 +34,9 @@ type DictationWorkbenchProps = {
   companionAvatar: CompanionAvatar;
   companionEnabled: boolean;
   customCompanionAvatar: CustomCompanionAvatar | null;
+  onTranscriptionModeChange: (mode: TranscriptionMode) => void;
   onTierChange: (tier: Tier) => void;
+  onUpgradeCloudFast: () => void;
   onToggleDictation: () => void;
   onLiveTextChange: (value: string) => void;
   onOpenHistory: () => void;
@@ -39,6 +45,8 @@ type DictationWorkbenchProps = {
 
 export function DictationWorkbench({
   language,
+  transcriptionMode,
+  cloudFastEntitlement,
   isDictating,
   liveText,
   hotkeyStatus,
@@ -52,23 +60,36 @@ export function DictationWorkbench({
   companionAvatar,
   companionEnabled,
   customCompanionAvatar,
+  onTranscriptionModeChange,
   onTierChange,
+  onUpgradeCloudFast,
   onToggleDictation,
   onLiveTextChange,
   onOpenHistory,
   onDisableCompanion
 }: DictationWorkbenchProps) {
   const wordCount = estimateWordCount(liveText, language);
+  const effectiveLanguage = resolveTranscriptLanguage(language, liveText);
   const accel = hardwareProfile?.accelerators?.[0] ?? "CPU";
   const modelLabel = selectedModel?.label ?? privateFastStatus.modelName;
   const dictationShortcut = formatShortcutForDisplay(hotkeys.dictation, hardwareProfile?.platform);
   const pasteShortcut = formatShortcutForDisplay(hotkeys.pasteLast, hardwareProfile?.platform);
   const dictationAction = hotkeys.activationMode === "hold" ? "Hold and speak" : "Start / stop dictation";
-  const countLabel = language === "zh" || language === "ja" ? "characters" : "words";
+  const countLabel = effectiveLanguage === "zh" || effectiveLanguage === "ja" ? "characters" : "words";
+  const isCloudFast = transcriptionMode === "cloud-fast";
+  const modeHeadline = isCloudFast
+    ? cloudFastEntitlement.available ? "Cloud Fast is ready" : "Cloud Fast subscription required"
+    : "Private Local is ready";
+  const modeDetail = isCloudFast
+    ? cloudFastEntitlement.available
+      ? "Uploads audio for faster transcription."
+      : "Subscribe to use faster cloud transcription."
+    : "Audio stays on this device.";
 
   const availableTiers: Array<[Tier, TierAssignment]> = (["fast", "medium", "slow"] as const)
     .map((id) => [id, runnableTiers[id]] as [Tier, TierAssignment])
     .filter((pair) => pair[1].withinBudget);
+  const showTierSelector = transcriptionMode === "local" && availableTiers.length > 0;
 
   return (
     <section className="dictation-workbench" aria-label="Local dictation workbench">
@@ -79,7 +100,35 @@ export function DictationWorkbench({
           <button type="button" className="suggestion-chip suggestion-chip-button" onClick={onOpenHistory}>Resume from history</button>
         </div>
 
-        <div className={`capture-stage ${isDictating ? "is-recording" : ""}`}>
+        <div className={`capture-stage capture-stage--${isCloudFast ? "cloud" : "local"} ${isDictating ? "is-recording" : ""}`}>
+          <div className="engine-mode-selector" role="radiogroup" aria-label="Transcription mode">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={transcriptionMode === "local"}
+              className={`engine-mode-option engine-mode-option--local ${transcriptionMode === "local" ? "is-selected" : ""}`}
+              onClick={() => onTranscriptionModeChange("local")}
+            >
+              <ShieldCheck size={15} />
+              <span>
+                <strong>Private Local</strong>
+                <small>Audio stays here</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={transcriptionMode === "cloud-fast"}
+              className={`engine-mode-option engine-mode-option--cloud ${transcriptionMode === "cloud-fast" ? "is-selected" : ""}`}
+              onClick={() => onTranscriptionModeChange("cloud-fast")}
+            >
+              <Zap size={15} />
+              <span>
+                <strong>Cloud Fast</strong>
+                <small>Uploads for speed</small>
+              </span>
+            </button>
+          </div>
           <button
             type="button"
             className="capture-orbit"
@@ -88,12 +137,18 @@ export function DictationWorkbench({
           >
             <Mic />
           </button>
+          <div className="mode-promise" aria-live="polite">
+            <strong>{modeHeadline}</strong>
+            <span>{modeDetail}</span>
+          </div>
 
-          {!liveText && (
-            <div className="capture-hint">
-              Tap the mic, or press <kbd title={hotkeys.dictation}>{dictationShortcut}</kbd>.
-            </div>
-          )}
+          <div className="capture-hint-slot">
+            {!liveText && (
+              <div className="capture-hint">
+                Tap the mic, or press <kbd title={hotkeys.dictation}>{dictationShortcut}</kbd>.
+              </div>
+            )}
+          </div>
           <textarea
             value={liveText}
             onChange={(event) => onLiveTextChange(event.target.value)}
@@ -102,22 +157,43 @@ export function DictationWorkbench({
           />
 
 
-          {availableTiers.length > 0 && (
-            <div className="tier-selector" role="radiogroup" aria-label="Engine tier">
-              {availableTiers.map(([id]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedTier === id}
-                  className={`tier-button ${selectedTier === id ? "is-selected" : ""}`}
-                  onClick={() => onTierChange(id)}
-                >
-                  <span className="name">{TIER_DISPLAY[id].name}</span>
-                </button>
-              ))}
+          <div className={`mode-tradeoff-card mode-tradeoff-card--${isCloudFast ? "cloud" : "local"}`}>
+            <div className="mode-tradeoff-icon" aria-hidden="true">
+              {isCloudFast ? <Zap size={15} /> : <ShieldCheck size={15} />}
             </div>
-          )}
+            <div>
+              <strong>{isCloudFast ? "Fast when privacy is not required" : "Private by default"}</strong>
+              <span>
+                {isCloudFast
+                  ? "Audio is uploaded to cloud transcription providers. Best for public content, casual notes, and low-latency dictation."
+                  : "Your audio stays on this device. Best for meetings, private notes, and sensitive work."}
+              </span>
+            </div>
+            {isCloudFast && !cloudFastEntitlement.available && (
+              <button type="button" className="text-button" onClick={onUpgradeCloudFast}>
+                Upgrade - $6.99/mo
+              </button>
+            )}
+          </div>
+
+          <div className={`tier-slot${showTierSelector ? "" : " tier-slot--reserved"}`} aria-hidden={showTierSelector ? undefined : true}>
+            {showTierSelector && (
+              <div className="tier-selector" role="radiogroup" aria-label="Engine tier">
+                {availableTiers.map(([id]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedTier === id}
+                    className={`tier-button ${selectedTier === id ? "is-selected" : ""}`}
+                    onClick={() => onTierChange(id)}
+                  >
+                    <span className="name">{TIER_DISPLAY[id].name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -125,10 +201,16 @@ export function DictationWorkbench({
         <div className="meta-chips">
           <span className="meta-chip">
             <span className="dot" />
-            {privateFastStatus.ready ? "Engine ready" : "Engine setup needed"}
+            {isCloudFast
+              ? cloudFastEntitlement.available ? "Cloud Fast ready" : "Cloud Fast locked"
+              : privateFastStatus.ready ? "Engine ready" : "Engine setup needed"}
           </span>
-          <span className="meta-chip">⚡ {accel}</span>
-          <span className="meta-chip">{modelLabel}</span>
+          <span className={`meta-chip meta-chip--${isCloudFast ? "cloud" : "private"}`}>
+            {isCloudFast ? <Zap size={11} /> : <ShieldCheck size={11} />}
+            {isCloudFast ? "Fast cloud" : "Private"}
+          </span>
+          {transcriptionMode === "local" && <span className="meta-chip">⚡ {accel}</span>}
+          <span className="meta-chip">{isCloudFast ? "$6.99/mo" : modelLabel}</span>
         </div>
         <span>
           {wordCount} {countLabel} · {hotkeyStatus}

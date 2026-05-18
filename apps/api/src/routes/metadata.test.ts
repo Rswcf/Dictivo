@@ -117,6 +117,14 @@ describe("metadata API routes", () => {
         plan: "pro-monthly"
       }
     });
+    const cloudFast = await app.inject({
+      method: "POST",
+      url: "/v1/billing/checkout",
+      payload: {
+        email: "person@example.com",
+        plan: "cloud-fast-monthly"
+      }
+    });
     const rejected = await app.inject({
       method: "POST",
       url: "/v1/billing/checkout",
@@ -131,6 +139,11 @@ describe("metadata API routes", () => {
     expect(accepted.json()).toMatchObject({
       mode: "test",
       checkoutUrl: "http://localhost:1420/billing/mock-success?plan=pro-monthly"
+    });
+    expect(cloudFast.statusCode).toBe(200);
+    expect(cloudFast.json()).toMatchObject({
+      mode: "test",
+      checkoutUrl: "http://localhost:1420/billing/mock-success?plan=cloud-fast-monthly"
     });
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json()).toMatchObject({ error: "invalid_checkout_request" });

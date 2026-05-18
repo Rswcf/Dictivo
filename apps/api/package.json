@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:worker": "npx wrangler dev --config ../../wrangler.api.jsonc",
+    "deploy:worker": "npx wrangler deploy --config ../../wrangler.api.jsonc",
+    "d1:create": "npx wrangler d1 create dictivo-api",
+    "d1:migrate:local": "npx wrangler d1 migrations apply dictivo-api --local --config ../../wrangler.api.jsonc",
+    "d1:migrate:remote": "npx wrangler d1 migrations apply dictivo-api --remote --config ../../wrangler.api.jsonc",
     "build": "npm run build -w @dictivo/shared && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.check.json",

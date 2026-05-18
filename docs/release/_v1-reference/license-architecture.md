@@ -146,6 +146,28 @@ We do **not** dial home to enforce — the count is informational only. Heavy en
 
 Defer both to v1.1+.
 
+## 10.1 Cloud Fast entitlement
+
+Cloud Fast is a separate optional subscription from the perpetual Local license.
+
+| Field | Decision |
+|---|---|
+| Price | $6.99/month |
+| Product boundary | Sold standalone or alongside Local. It never gates Local/offline dictation. |
+| User-facing mode | One mode only: `Cloud Fast`. Do not expose provider choice. |
+| Primary provider | Groq `whisper-large-v3` |
+| Fallback provider | ElevenLabs `Scribe v2` |
+| Planning quota | 1,500 transcription minutes/month, revisited after real usage data |
+| Privacy requirement | UI must say Cloud Fast uploads audio to cloud transcription providers; Local keeps audio on device. |
+
+Cloud Fast requires server-side entitlement and metering. Do not put provider API keys in the desktop app. The desktop should send audio to a Dictivo-owned proxy; the proxy chooses Groq first, fails over to ElevenLabs when needed, enforces quotas, and returns only the transcript/error state needed by the app.
+
+Current implementation note: the desktop uses Lemon Squeezy license activation
+directly rather than the older JWT issuer sketch below. Local and Cloud Fast
+activations are stored separately. Local uses `license.json` for the perpetual
+license/update window; Cloud Fast uses `cloud-fast-license.json` and exchanges
+that key/instance ID for a short-lived Worker session token before upload.
+
 ## 11. License-issuer Worker — directory layout
 
 ```

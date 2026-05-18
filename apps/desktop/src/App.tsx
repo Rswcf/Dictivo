@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { PhysicalPosition, Window as TauriWindow, primaryMonitor } from "@tauri-apps/api/window";
+import { PhysicalPosition, Window as TauriWindow, availableMonitors, primaryMonitor } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { BookOpenText, History, Settings, TerminalSquare } from "lucide-react";
 import irisAvatarImage from "./assets/avatars/iris-companion.png";
 import marcusAvatarImage from "./assets/avatars/marcus-companion.png";
 import {
-  LANGUAGE_LABELS,
+  resolveTranscriptLanguage,
   type DictionaryTerm,
   type InputMode,
   type LocalSession,
   type Snippet,
-  type SupportedLanguage
+  type SupportedLanguage,
+  type TranscriptionLanguage
 } from "@dictivo/shared";
 import { createId } from "./lib/id";
 import { startAudioRecording, type RecordingController } from "./lib/mediaCapture";
-import { playStartSound } from "./lib/sounds";
+import { playRecordingStopSound, playStartSound } from "./lib/sounds";
 import { runLocalDictation } from "./lib/localDictationEngine";
+import { getCloudFastEntitlement, runCloudFastDictation, type CloudFastEntitlement } from "./lib/cloudFastEngine";
 import {
   benchmarkTier,
   clearLocalSessions,
@@ -31,6 +33,7 @@ import {
   importPrivateFastModel,
   isTauriRuntime,
   listLocalSessions,
+  openExternalUrl,
   openPermissionSettings,
   pasteText,
   requestNativePermissions,
@@ -55,10 +58,12 @@ import {
   type HotkeySettings,
   type LocalProcessingSettings,
   type CompanionAvatar,
+  type CompanionDisplayMode,
+  type TranscriptionMode,
   type CustomCompanionAvatar
 } from "./lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase } from "./lib/companion";
-import { companionWindowPosition } from "./lib/companionWindowPosition";
+import { companionWindowPosition, windowIntersectsWorkArea, type WorkArea } from "./lib/companionWindowPosition";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { DictationWorkbench } from "./components/DictationWorkbench";
 import { CompanionWindow } from "./components/CompanionWindow";
@@ -77,13 +82,25 @@ type AppProps = {
 };
 
 const DEFAULT_DICTATION_MODE: InputMode = "message";
+const DEFAULT_CLOUD_FAST_ENTITLEMENT: CloudFastEntitlement = {
+  available: false,
+  plan: "unknown",
+  priceUsdMonthly: "6.99",
+  monthlySecondsLimit: 90_000,
+  monthlySecondsUsed: 0,
+  renewsAt: null,
+  upgradeUrl: "https://dictivo.app/cloud-fast",
+  billingPortalUrl: "https://app.lemonsqueezy.com/my-orders",
+  privacyNotice: "Cloud Fast uploads audio to cloud transcription providers for faster results."
+};
 
 export function App({ windowLabel = "main" }: AppProps) {
   if (windowLabel === "companion") return <CompanionWindow />;
 
   const initialSettings = useMemo(() => loadSettings(), []);
   const [view, setView] = useState<View>("dictation");
-  const [language, setLanguage] = useState<SupportedLanguage>(initialSettings.language);
+  const [language] = useState<TranscriptionLanguage>(initialSettings.language);
+  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>(initialSettings.transcriptionMode);
   const [sessions, setSessions] = useState<LocalSession[]>([]);
   const [liveText, setLiveText] = useState("");
   const [isDictating, setIsDictating] = useState(false);
@@ -97,6 +114,7 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [rerunStatus, setRerunStatus] = useState<"idle" | "measuring" | "error">("idle");
   const [rerunError, setRerunError] = useState("");
   const [companionEnabled, setCompanionEnabled] = useState(initialSettings.companionEnabled);
+  const [companionDisplayMode, setCompanionDisplayMode] = useState<CompanionDisplayMode>(initialSettings.companionDisplayMode);
   const [companionAvatar, setCompanionAvatar] = useState<CompanionAvatar>(initialSettings.companionAvatar);
   const [customCompanionAvatar, setCustomCompanionAvatar] = useState<CustomCompanionAvatar | null>(initialSettings.customCompanionAvatar);
   const [companionPosition, setCompanionPosition] = useState(initialSettings.companionPosition);
@@ -121,12 +139,17 @@ export function App({ windowLabel = "main" }: AppProps) {
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>();
   const [appVersion, setAppVersion] = useState(BUNDLED_APP_VERSION);
   const [pendingLicenseKey, setPendingLicenseKey] = useState<string>("");
+  const [pendingCloudFastLicenseKey, setPendingCloudFastLicenseKey] = useState<string>("");
+  const [cloudFastEntitlement, setCloudFastEntitlement] = useState<CloudFastEntitlement>(DEFAULT_CLOUD_FAST_ENTITLEMENT);
+  const [cloudFastEntitlementChecked, setCloudFastEntitlementChecked] = useState(false);
+  const [companionDismissed, setCompanionDismissed] = useState(false);
   const activationLimiterRef = useRef(createActivationRateLimiter());
 
   const dictationRecordingRef = useRef<RecordingController | null>(null);
   const isDictatingRef = useRef(false);
   const recordingSetupPendingRef = useRef(false);
   const stopAfterRecordingSetupRef = useRef(false);
+  const stopSoundPlayedForCurrentRecordingRef = useRef(false);
   const companionPositionedRef = useRef(false);
   const lastFinalTextRef = useRef("");
   const mountedRef = useRef(true);
@@ -154,11 +177,11 @@ export function App({ windowLabel = "main" }: AppProps) {
     [privateFastModels, privateFastStatus.modelId]
   );
   const dictionaryForLanguage = useMemo(
-    () => dictionary.filter((term) => term.language === language),
+    () => language === "auto" ? dictionary : dictionary.filter((term) => term.language === language),
     [dictionary, language]
   );
   const snippetsForLanguage = useMemo(
-    () => snippets.filter((snippet) => snippet.language === language),
+    () => language === "auto" ? snippets : snippets.filter((snippet) => snippet.language === language),
     [snippets, language]
   );
 
@@ -205,9 +228,11 @@ export function App({ windowLabel = "main" }: AppProps) {
     saveSettings({
       language,
       selectedMode: DEFAULT_DICTATION_MODE,
+      transcriptionMode,
       selectedTier,
       onboardingCompleted,
       companionEnabled,
+      companionDisplayMode,
       companionAvatar,
       customCompanionAvatar,
       companionPosition,
@@ -217,7 +242,7 @@ export function App({ windowLabel = "main" }: AppProps) {
       dictionary,
       snippets
     });
-  }, [companionAvatar, companionEnabled, companionPosition, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets, startSound]);
+  }, [companionAvatar, companionDisplayMode, companionEnabled, companionPosition, customCompanionAvatar, dictionary, hotkeys, language, localProcessing, onboardingCompleted, selectedTier, snippets, startSound, transcriptionMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +257,27 @@ export function App({ windowLabel = "main" }: AppProps) {
       cancelled = true;
     };
   }, [onboardingCompleted]);
+
+  const refreshCloudFastEntitlement = useCallback(async () => {
+    setCloudFastEntitlementChecked(false);
+    try {
+      const entitlement = await getCloudFastEntitlement();
+      if (!mountedRef.current) return entitlement;
+      setCloudFastEntitlement(entitlement);
+      setCloudFastEntitlementChecked(true);
+      return entitlement;
+    } catch {
+      if (!mountedRef.current) return DEFAULT_CLOUD_FAST_ENTITLEMENT;
+      setCloudFastEntitlement(DEFAULT_CLOUD_FAST_ENTITLEMENT);
+      setCloudFastEntitlementChecked(true);
+      return DEFAULT_CLOUD_FAST_ENTITLEMENT;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (transcriptionMode !== "cloud-fast") return;
+    void refreshCloudFastEntitlement();
+  }, [refreshCloudFastEntitlement, transcriptionMode]);
 
   const handleTierChange = useCallback(
     async (next: Tier) => {
@@ -319,15 +365,68 @@ export function App({ windowLabel = "main" }: AppProps) {
     return session;
   }, []);
 
+  const buildCompanionSnapshotForPhase = useCallback((phase: CompanionPhase, overrides: {
+    enabled?: boolean;
+    liveText?: string;
+    statusMessage?: string;
+    pasteStatus?: string;
+    recordingStartedAt?: number;
+  } = {}) => buildCompanionSnapshot({
+    enabled: overrides.enabled ?? true,
+    displayMode: companionDisplayMode,
+    avatar: companionAvatar,
+    customAvatarDataUrl: customCompanionAvatar?.dataUrl,
+    customAvatarName: customCompanionAvatar?.name,
+    phase,
+    hotkey: formatShortcutForDisplay(hotkeys.dictation, hardwareProfile?.platform),
+    liveText: overrides.liveText ?? liveText,
+    statusMessage: overrides.statusMessage ?? statusMessage,
+    pasteStatus: overrides.pasteStatus ?? pasteStatus,
+    recordingStartedAt: overrides.recordingStartedAt,
+    language: resolveTranscriptLanguage(language, overrides.liveText ?? liveText)
+  }), [companionAvatar, companionDisplayMode, customCompanionAvatar?.dataUrl, customCompanionAvatar?.name, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, statusMessage]);
+
+  const presentCompanionWindow = useCallback(async (snapshot: ReturnType<typeof buildCompanionSnapshot>) => {
+    if (!isTauriRuntime()) return;
+
+    const companion = await TauriWindow.getByLabel("companion");
+    if (!companion) return;
+
+    if (!companionPositionedRef.current) {
+      await positionCompanionWindow(companion, companionPosition);
+      companionPositionedRef.current = true;
+    }
+
+    await companion.show();
+    await emitTo("companion", "companion-state", snapshot);
+  }, [companionPosition]);
+
   const startDictation = useCallback(async () => {
     if (isDictatingRef.current || recordingSetupPendingRef.current) {
       return;
     }
 
-    if (!privateFastStatus.ready) {
+    if (transcriptionMode === "local" && !privateFastStatus.ready) {
       setStatusMessage(`${privateFastStatus.message} ${privateFastStatus.setupHint}`);
       setDictationPhase("blocked");
       setView("settings");
+      return;
+    }
+    let activeCloudFastEntitlement = cloudFastEntitlement;
+    if (transcriptionMode === "cloud-fast" && !cloudFastEntitlementChecked) {
+      try {
+        activeCloudFastEntitlement = await getCloudFastEntitlement();
+        setCloudFastEntitlement(activeCloudFastEntitlement);
+      } catch {
+        activeCloudFastEntitlement = DEFAULT_CLOUD_FAST_ENTITLEMENT;
+        setCloudFastEntitlement(DEFAULT_CLOUD_FAST_ENTITLEMENT);
+      } finally {
+        setCloudFastEntitlementChecked(true);
+      }
+    }
+    if (transcriptionMode === "cloud-fast" && !activeCloudFastEntitlement.available) {
+      setStatusMessage("Cloud Fast requires an active $6.99/month subscription. Local mode keeps working on this device.");
+      setDictationPhase("blocked");
       return;
     }
 
@@ -335,12 +434,25 @@ export function App({ windowLabel = "main" }: AppProps) {
     isDictatingRef.current = true;
     recordingSetupPendingRef.current = true;
     stopAfterRecordingSetupRef.current = false;
+    stopSoundPlayedForCurrentRecordingRef.current = false;
+    setCompanionDismissed(false);
+    setCompanionEnabled(true);
     setIsDictating(true);
     setDictationPhase("recording");
-    setRecordingStartedAt(Date.now());
-    setLiveText("Recording locally. Stop to transcribe with the on-device engine.");
+    const startedAt = Date.now();
+    const recordingText = transcriptionMode === "cloud-fast"
+      ? "Recording for Cloud Fast. Stop to upload this audio for faster transcription."
+      : "Recording locally. Stop to transcribe with the on-device engine.";
+    setRecordingStartedAt(startedAt);
+    setLiveText(recordingText);
     setStatusMessage("");
     setPasteStatus("");
+    void presentCompanionWindow(buildCompanionSnapshotForPhase("recording", {
+      liveText: recordingText,
+      statusMessage: "",
+      pasteStatus: "",
+      recordingStartedAt: startedAt
+    })).catch(() => undefined);
 
     // Auditory "the mic is open" confirmation. Fires before the actual
     // recording starts so the user hears it during the brief gap while
@@ -364,6 +476,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     } catch (error) {
       recordingSetupPendingRef.current = false;
       stopAfterRecordingSetupRef.current = false;
+      stopSoundPlayedForCurrentRecordingRef.current = false;
       isDictatingRef.current = false;
       setIsDictating(false);
       setDictationPhase("error");
@@ -371,30 +484,52 @@ export function App({ windowLabel = "main" }: AppProps) {
       setLiveText(previousLiveText);
       setStatusMessage(error instanceof Error ? error.message : "Unable to start microphone recording.");
     }
-  }, [liveText, privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint]);
+  }, [buildCompanionSnapshotForPhase, cloudFastEntitlement, cloudFastEntitlementChecked, liveText, presentCompanionWindow, privateFastStatus.message, privateFastStatus.ready, privateFastStatus.setupHint, startSound, transcriptionMode]);
+
+  const playStopSoundOnce = useCallback(() => {
+    if (stopSoundPlayedForCurrentRecordingRef.current) return;
+    stopSoundPlayedForCurrentRecordingRef.current = true;
+    playRecordingStopSound();
+  }, []);
 
   const stopDictation = useCallback(async () => {
     if (recordingSetupPendingRef.current && !dictationRecordingRef.current) {
+      playStopSoundOnce();
       stopAfterRecordingSetupRef.current = true;
       setDictationPhase("processing");
       setRecordingStartedAt(undefined);
       setStatusMessage("Stopping recording as soon as the microphone is ready...");
+      void presentCompanionWindow(buildCompanionSnapshotForPhase("processing", {
+        statusMessage: "Stopping recording as soon as the microphone is ready...",
+        recordingStartedAt: undefined
+      })).catch(() => undefined);
       return;
     }
-
-    isDictatingRef.current = false;
-    setIsDictating(false);
-    setDictationPhase("processing");
-    setRecordingStartedAt(undefined);
-    setStatusMessage("Transcribing with local engine...");
 
     const recording = dictationRecordingRef.current;
     dictationRecordingRef.current = null;
     if (!recording) {
+      isDictatingRef.current = false;
+      setIsDictating(false);
       setDictationPhase("error");
+      setRecordingStartedAt(undefined);
       setStatusMessage("No active recording was found.");
       return;
     }
+
+    playStopSoundOnce();
+    isDictatingRef.current = false;
+    setIsDictating(false);
+    setDictationPhase("processing");
+    setRecordingStartedAt(undefined);
+    const processingMessage = transcriptionMode === "cloud-fast"
+      ? "Transcribing with Cloud Fast..."
+      : "Transcribing with local engine...";
+    setStatusMessage(processingMessage);
+    void presentCompanionWindow(buildCompanionSnapshotForPhase("processing", {
+      statusMessage: processingMessage,
+      recordingStartedAt: undefined
+    })).catch(() => undefined);
 
     try {
       const clipboardBeforeTranscription = await getClipboardMarker().catch(() => null);
@@ -402,24 +537,49 @@ export function App({ windowLabel = "main" }: AppProps) {
       const durationSeconds = Math.max(1, Math.round((Date.now() - recording.startedAt) / 1000));
       const dictionaryValues = dictionaryForLanguage.map((term) => term.value);
       const snippetValues = snippetsForLanguage.map(({ trigger, replacement }) => ({ trigger, replacement }));
-      const result = await runLocalDictation(audio, {
-        language,
-        dictionary: dictionaryValues,
-        snippets: snippetValues,
-        mode: DEFAULT_DICTATION_MODE,
-        profile: tierToProfile(selectedTier),
-        localProcessing
-      });
+      const result = transcriptionMode === "cloud-fast"
+        ? await runCloudFastDictation(audio, {
+          clientSessionId: createId("cloud"),
+          language,
+          dictionary: dictionaryValues,
+          snippets: snippetValues,
+          mode: DEFAULT_DICTATION_MODE,
+          durationSeconds,
+          appVersion,
+          platform: hardwareProfile?.platform,
+          localProcessing
+        })
+        : await runLocalDictation(audio, {
+          language,
+          dictionary: dictionaryValues,
+          snippets: snippetValues,
+          mode: DEFAULT_DICTATION_MODE,
+          profile: tierToProfile(selectedTier),
+          localProcessing
+        });
 
-      const wordCount = countWords(result.finalizedText, language);
+      const resultLanguage = result.language ?? resolveTranscriptLanguage(language, result.finalizedText);
+      const wordCount = countWords(result.finalizedText, resultLanguage);
       let pasteResult: Awaited<ReturnType<typeof pasteText>> | undefined;
+      let pasteWarning = "";
       let pasteError = "";
       let saveError = "";
 
       try {
         pasteResult = await pasteText(result.finalizedText, clipboardBeforeTranscription);
       } catch (error) {
-        pasteError = error instanceof Error ? error.message : "Clipboard paste failed.";
+        pasteWarning = error instanceof Error ? error.message : "Clipboard paste failed.";
+        try {
+          const copyResult = await copyText(result.finalizedText);
+          pasteResult = {
+            pasted: false,
+            copied: copyResult.copied,
+            method: copyResult.method ? `fallback-${copyResult.method}` : "fallback-clipboard"
+          };
+        } catch (copyError) {
+          const copyMessage = copyError instanceof Error ? copyError.message : "Clipboard copy failed.";
+          pasteError = `${pasteWarning}; clipboard fallback failed: ${copyMessage}`;
+        }
       }
 
       lastFinalTextRef.current = result.finalizedText;
@@ -427,9 +587,9 @@ export function App({ windowLabel = "main" }: AppProps) {
         await saveSession({
           title: `Message ${new Date().toLocaleTimeString()}`,
           mode: DEFAULT_DICTATION_MODE,
-          language,
-          privacyMode: "local-only",
-          provider: "local-whisper",
+          language: resultLanguage,
+          privacyMode: transcriptionMode === "cloud-fast" ? "cloud-fast" : "local-only",
+          provider: transcriptionMode === "cloud-fast" ? "cloud-fast" : "local-whisper",
           durationSeconds,
           wordCount,
           rawText: result.rawText,
@@ -441,39 +601,62 @@ export function App({ windowLabel = "main" }: AppProps) {
 
       setLiveText(result.finalizedText);
       setDictationPhase("complete");
-      setPasteStatus(
+      const nextPasteStatus =
         pasteResult?.pasted
           ? "Pasted into active app"
           : pasteResult?.method === "clipboard-changed-copied"
             ? "Copied; auto paste skipped"
             : pasteResult?.copied
               ? "Copied to clipboard"
-              : "Transcript kept in Dictivo"
-      );
-      const completionMessage =
-        result.fallbackUsed
-          ? `Local transcription completed with fast fallback after ${selectedTier} profile failed.`
-          : result.slowWarning
-            ? result.slowWarning
-            : `Local transcription completed with ${result.profileUsed} profile.`;
-      setStatusMessage(
+              : "Transcript kept in Dictivo";
+      setPasteStatus(nextPasteStatus);
+      let completionMessage: string;
+      if (transcriptionMode === "cloud-fast") {
+        completionMessage = result.fallbackUsed
+          ? "Cloud Fast completed through the backup route."
+          : "Cloud Fast transcription completed.";
+      } else if (result.fallbackUsed) {
+        completionMessage = `Local transcription completed with fast fallback after ${selectedTier} profile failed.`;
+      } else if ("slowWarning" in result && typeof result.slowWarning === "string") {
+        completionMessage = result.slowWarning;
+      } else {
+        completionMessage = `Local transcription completed with ${"profileUsed" in result ? result.profileUsed : "balanced"} profile.`;
+      }
+      const nextStatusMessage =
         pasteError && saveError
           ? `${completionMessage} Transcript is shown here, but paste/copy failed (${pasteError}) and history could not be saved (${saveError}).`
           : pasteError
             ? `${completionMessage} Transcript is shown here, but could not be pasted or copied: ${pasteError}`
             : saveError
               ? `${completionMessage} Transcript is ready, but history could not be saved: ${saveError}`
+              : pasteWarning && pasteResult?.copied
+                ? `${completionMessage} Auto paste failed (${pasteWarning}), so Dictivo copied the transcript to the clipboard.`
               : pasteResult?.method === "clipboard-changed-copied"
           ? `${completionMessage} The clipboard changed during transcription, so Dictivo copied the transcript but skipped automatic paste. Press Command+V to paste it.`
           : pasteResult?.copied
             ? completionMessage
-            : `${completionMessage} Transcript is available in Dictivo, but could not be copied to the clipboard.`
-      );
+            : `${completionMessage} Transcript is available in Dictivo, but could not be copied to the clipboard.`;
+      setStatusMessage(nextStatusMessage);
+      void presentCompanionWindow(buildCompanionSnapshotForPhase("complete", {
+        liveText: result.finalizedText,
+        statusMessage: nextStatusMessage,
+        pasteStatus: nextPasteStatus,
+        recordingStartedAt: undefined
+      })).catch(() => undefined);
     } catch (error) {
+      const message = error instanceof Error ? error.message : `${transcriptionMode === "cloud-fast" ? "Cloud Fast" : "Local"} dictation failed.`;
       setDictationPhase("error");
-      setStatusMessage(error instanceof Error ? error.message : "Local dictation failed.");
+      setStatusMessage(message);
+      setPasteStatus("");
+      setLiveText((current) => current.startsWith("Recording ") ? "" : current);
+      void presentCompanionWindow(buildCompanionSnapshotForPhase("error", {
+        liveText: "",
+        statusMessage: message,
+        pasteStatus: "",
+        recordingStartedAt: undefined
+      })).catch(() => undefined);
     }
-  }, [dictionaryForLanguage, language, localProcessing, saveSession, selectedTier, snippetsForLanguage]);
+  }, [appVersion, buildCompanionSnapshotForPhase, dictionaryForLanguage, hardwareProfile?.platform, language, localProcessing, playStopSoundOnce, presentCompanionWindow, saveSession, selectedTier, snippetsForLanguage, transcriptionMode]);
 
   const toggleDictation = useCallback(() => {
     if (isDictatingRef.current) {
@@ -654,6 +837,7 @@ export function App({ windowLabel = "main" }: AppProps) {
     () =>
       buildCompanionSnapshot({
         enabled: companionEnabled,
+        displayMode: companionDisplayMode,
         avatar: companionAvatar,
         customAvatarDataUrl: customCompanionAvatar?.dataUrl,
         customAvatarName: customCompanionAvatar?.name,
@@ -663,13 +847,14 @@ export function App({ windowLabel = "main" }: AppProps) {
         statusMessage,
         pasteStatus,
         recordingStartedAt,
-        language
+        language: resolveTranscriptLanguage(language, liveText)
       }),
-    [companionAvatar, companionEnabled, customCompanionAvatar?.dataUrl, customCompanionAvatar?.name, dictationPhase, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
+    [companionAvatar, companionDisplayMode, companionEnabled, customCompanionAvatar?.dataUrl, customCompanionAvatar?.name, dictationPhase, hardwareProfile?.platform, hotkeys.dictation, language, liveText, pasteStatus, recordingStartedAt, statusMessage]
   );
 
   const showCompanionWindow = useCallback(async () => {
     setCompanionEnabled(true);
+    setCompanionDismissed(false);
     setStatusMessage("");
 
     if (!isTauriRuntime()) return;
@@ -700,9 +885,13 @@ export function App({ windowLabel = "main" }: AppProps) {
 
     const handleUrl = (url: string) => {
       const parsed = parseDeepLink(url);
-      if (!parsed || parsed.kind !== "activate") return;
+      if (!parsed || (parsed.kind !== "activate" && parsed.kind !== "activate-cloud-fast")) return;
       if (!activationLimiterRef.current.allow()) return;
-      setPendingLicenseKey(parsed.licenseKey);
+      if (parsed.kind === "activate") {
+        setPendingLicenseKey(parsed.licenseKey);
+      } else {
+        setPendingCloudFastLicenseKey(parsed.licenseKey);
+      }
       setView("settings");
     };
 
@@ -750,17 +939,11 @@ export function App({ windowLabel = "main" }: AppProps) {
     };
 
     register("companion-hide-requested", () => {
-      setCompanionEnabled(false);
-      setStatusMessage("Floating companion hidden. Re-enable it in Settings -> Companion.");
-    });
-
-    // F — short tap on the companion avatar toggles dictation. The actual
-    // ref is set later in the file; we call through the ref so this listener
-    // doesn't have to be torn down + re-registered every time the callback
-    // identity changes.
-    register("companion-toggle-dictation", () => {
-      const fn = isDictatingRef.current ? stopDictationRef.current : startDictationRef.current;
-      void fn?.();
+      setCompanionDismissed(true);
+      setStatusMessage("Floating companion hidden until the next dictation.");
+      void TauriWindow.getByLabel("companion").then((companion) => {
+        if (companion) void companion.hide();
+      }).catch(() => undefined);
     });
 
     // F — long-press menu actions.
@@ -807,13 +990,13 @@ export function App({ windowLabel = "main" }: AppProps) {
       const companion = await TauriWindow.getByLabel("companion");
       if (!companion || disposed) return;
 
-      if (!companionSnapshot.enabled) {
+      if (!companionSnapshot.enabled || companionDismissed) {
         await companion.hide();
         return;
       }
 
       if (!companionPositionedRef.current) {
-        await positionCompanionWindow(companion);
+        await positionCompanionWindow(companion, companionPosition);
         companionPositionedRef.current = true;
       }
 
@@ -829,16 +1012,17 @@ export function App({ windowLabel = "main" }: AppProps) {
     return () => {
       disposed = true;
     };
-  }, [companionSnapshot]);
+  }, [companionDismissed, companionPosition, companionSnapshot]);
 
   const addDictionaryTerm = useCallback((value: string) => {
     const trimmed = value.trim();
     if (!trimmed) return;
     const normalized = trimmed.toLocaleLowerCase();
+    const termLanguage = resolveTranscriptLanguage(language, trimmed);
     setDictionary((current) => {
-      if (current.some((item) => item.language === language && item.value.trim().toLocaleLowerCase() === normalized)) return current;
+      if (current.some((item) => item.language === termLanguage && item.value.trim().toLocaleLowerCase() === normalized)) return current;
       return [
-        { id: createId("term"), value: trimmed, language, createdAt: new Date().toISOString() },
+        { id: createId("term"), value: trimmed, language: termLanguage, createdAt: new Date().toISOString() },
         ...current
       ];
     });
@@ -849,14 +1033,15 @@ export function App({ windowLabel = "main" }: AppProps) {
     const trimmedReplacement = replacement.trim();
     if (!trimmedTrigger || !trimmedReplacement) return;
     const normalizedTrigger = trimmedTrigger.toLocaleLowerCase();
+    const snippetLanguage = resolveTranscriptLanguage(language, `${trimmedTrigger} ${trimmedReplacement}`);
     setSnippets((current) => {
-      if (current.some((item) => item.language === language && item.trigger.trim().toLocaleLowerCase() === normalizedTrigger)) return current;
+      if (current.some((item) => item.language === snippetLanguage && item.trigger.trim().toLocaleLowerCase() === normalizedTrigger)) return current;
       return [
         {
           id: createId("snippet"),
           trigger: trimmedTrigger,
           replacement: trimmedReplacement,
-          language,
+          language: snippetLanguage,
           createdAt: new Date().toISOString()
         },
         ...current
@@ -936,6 +1121,20 @@ export function App({ windowLabel = "main" }: AppProps) {
     });
   }, []);
 
+  const handleUpgradeCloudFast = useCallback(() => {
+    const url = cloudFastEntitlement.upgradeUrl || "https://dictivo.app/cloud-fast";
+    void openExternalUrl(url).catch((error: unknown) => {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to open Cloud Fast upgrade link.");
+    });
+  }, [cloudFastEntitlement.upgradeUrl]);
+
+  const handleManageCloudFastBilling = useCallback(() => {
+    const url = cloudFastEntitlement.billingPortalUrl || "https://app.lemonsqueezy.com/my-orders";
+    void openExternalUrl(url).catch((error: unknown) => {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to open Cloud Fast billing.");
+    });
+  }, [cloudFastEntitlement.billingPortalUrl]);
+
   if (!onboardingCompleted) {
     return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
@@ -959,7 +1158,7 @@ export function App({ windowLabel = "main" }: AppProps) {
         />
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace workspace--${view}`}>
         <header className="topbar">
           {view === "dictation" ? (
             <div className="heading-block">
@@ -968,7 +1167,7 @@ export function App({ windowLabel = "main" }: AppProps) {
                 <span className="beta-chip">BETA</span>
               </div>
               <p className="promise">
-                Audio, transcripts, dictionary, snippets — <b>everything stays on this device</b>. No cloud round-trip, no API keys, no account required.
+                Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.
               </p>
             </div>
           ) : (
@@ -978,21 +1177,11 @@ export function App({ windowLabel = "main" }: AppProps) {
               </div>
             </div>
           )}
-          <div className="toolbar">
-            <label className="select-control">
-              <select
-                value={language}
-                onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}
-                aria-label="Dictation language"
-              >
-                {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {view === "dictation" && (
+            <div className="toolbar" aria-label="Dictation defaults">
+              <span className="auto-language-chip">Auto language</span>
+            </div>
+          )}
         </header>
 
         {statusMessage && (
@@ -1006,6 +1195,8 @@ export function App({ windowLabel = "main" }: AppProps) {
         {view === "dictation" && (
           <DictationWorkbench
             language={language}
+            transcriptionMode={transcriptionMode}
+            cloudFastEntitlement={cloudFastEntitlement}
             isDictating={isDictating}
             liveText={liveText}
             hotkeyStatus={hotkeyStatus}
@@ -1019,7 +1210,9 @@ export function App({ windowLabel = "main" }: AppProps) {
             companionAvatar={companionAvatar}
             companionEnabled={companionEnabled}
             customCompanionAvatar={customCompanionAvatar}
+            onTranscriptionModeChange={setTranscriptionMode}
             onTierChange={(tier) => void handleTierChange(tier)}
+            onUpgradeCloudFast={handleUpgradeCloudFast}
             onToggleDictation={toggleDictation}
             onLiveTextChange={setLiveText}
             onOpenHistory={() => setView("history")}
@@ -1057,9 +1250,14 @@ export function App({ windowLabel = "main" }: AppProps) {
         {view === "settings" && (
           <SettingsView
             appVersion={appVersion}
-            initialSection={pendingLicenseKey ? "license" : undefined}
+            transcriptionMode={transcriptionMode}
+            cloudFastEntitlement={cloudFastEntitlement}
+            initialSection={pendingLicenseKey || pendingCloudFastLicenseKey ? "license" : undefined}
             pendingLicenseKey={pendingLicenseKey}
+            pendingCloudFastLicenseKey={pendingCloudFastLicenseKey}
             onLicenseKeyConsumed={() => setPendingLicenseKey("")}
+            onCloudFastLicenseKeyConsumed={() => setPendingCloudFastLicenseKey("")}
+            onCloudFastLicenseChange={refreshCloudFastEntitlement}
             hotkeys={hotkeys}
             localProcessing={localProcessing}
             permissions={permissions}
@@ -1067,13 +1265,18 @@ export function App({ windowLabel = "main" }: AppProps) {
             privateFastModels={privateFastModels}
             privateFastOperation={privateFastOperation}
             companionEnabled={companionEnabled}
+            companionDisplayMode={companionDisplayMode}
             companionAvatar={companionAvatar}
             customCompanionAvatar={customCompanionAvatar}
             hardwareProfile={hardwareProfile}
             runnableTiers={runnableTiers}
             onHotkeyChange={updateHotkey}
+            onTranscriptionModeChange={setTranscriptionMode}
+            onUpgradeCloudFast={handleUpgradeCloudFast}
+            onManageCloudFastBilling={handleManageCloudFastBilling}
             onProcessingChange={updateProcessingSetting}
             onCompanionEnabledChange={setCompanionEnabled}
+            onCompanionDisplayModeChange={setCompanionDisplayMode}
             onCompanionAvatarChange={setCompanionAvatar}
             onCustomCompanionAvatarChange={updateCustomCompanionAvatar}
             startSound={startSound}
@@ -1210,19 +1413,31 @@ function placeholderRunnableTiers(): RunnableTiers {
 }
 
 async function positionCompanionWindow(window: TauriWindow, override?: { x: number; y: number } | null) {
+  const size = await window.outerSize();
+  const workAreas = await availableCompanionWorkAreas();
+
   if (override) {
     // The user explicitly placed the companion on a previous launch; honor
-    // that exact position. We deliberately do not re-clamp here because the
-    // companion-position-changed handler already validates/clamps before
-    // persisting, and re-clamping against a now-different monitor layout
-    // could undo a deliberate placement on a secondary display.
-    await window.setPosition(new PhysicalPosition(override.x, override.y));
-    return;
+    // that exact position while it still intersects a connected display. If
+    // the monitor went away, fall through to the default visible anchor.
+    if (workAreas.length === 0 || workAreas.some((area) => windowIntersectsWorkArea(override, size, area))) {
+      await window.setPosition(new PhysicalPosition(override.x, override.y));
+      return;
+    }
   }
 
-  const [monitor, size] = await Promise.all([primaryMonitor(), window.outerSize()]);
+  const monitor = await primaryMonitor();
   if (!monitor) return;
 
   const position = companionWindowPosition(monitor.workArea, size);
   await window.setPosition(new PhysicalPosition(position.x, position.y));
+}
+
+async function availableCompanionWorkAreas(): Promise<WorkArea[]> {
+  try {
+    const monitors = await availableMonitors();
+    return monitors.map((monitor) => monitor.workArea);
+  } catch {
+    return [];
+  }
 }

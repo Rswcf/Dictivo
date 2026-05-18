@@ -30,6 +30,7 @@ describe("local dictation engine", () => {
     await expect(runLocalDictation(audio, options)).resolves.toMatchObject({
       rawText: "um dictivo comma calendar link",
       finalizedText: "Dictivo, https://example.test/calendar.",
+      language: "en",
       profileUsed: "balanced",
       fallbackUsed: false
     });
@@ -69,6 +70,20 @@ describe("local dictation engine", () => {
 
     await expect(runLocalDictation(audio, { ...options, profile: "fast" })).rejects.toThrow("fast model missing");
     expect(bridge.transcribePrivateFast).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets local transcription auto-detect input language before cleanup", async () => {
+    bridge.transcribePrivateFast.mockResolvedValueOnce("你好世界");
+
+    await expect(runLocalDictation(audio, { ...options, language: "auto" })).resolves.toMatchObject({
+      finalizedText: "你好世界。",
+      language: "zh"
+    });
+
+    expect(bridge.transcribePrivateFast).toHaveBeenCalledWith(
+      audio,
+      expect.objectContaining({ language: "auto" })
+    );
   });
 
   it("reports a slow warning for non-fast profiles that exceed the latency budget", async () => {

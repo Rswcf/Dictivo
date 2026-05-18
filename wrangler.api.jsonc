@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dictivo-api",
+  "main": "apps/api/src/worker.ts",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "vars": {
+    "NODE_ENV": "production",
+    "APP_BASE_URL": "https://dictivo.app",
+    "CLOUD_FAST_TIMEOUT_MS": "10000",
+    "CLOUD_FAST_MONTHLY_SECONDS": "90000"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dictivo-api",
+      "database_id": "e2a0c04c-c252-43ac-a4c7-336f13c7b8aa",
+      "migrations_dir": "apps/api/migrations/d1"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "api.dictivo.app",
+      "custom_domain": true
+    }
+  ]
+}

@@ -10,6 +10,7 @@ const tauri = vi.hoisted(() => {
     listeners,
     emitTo: vi.fn().mockResolvedValue(undefined),
     hide: vi.fn().mockResolvedValue(undefined),
+    invoke: vi.fn().mockResolvedValue("ok"),
     listen: vi.fn((eventName: string, handler: (event: { payload: CompanionSnapshot }) => void) => {
       listeners.set(eventName, handler);
       return Promise.resolve(() => listeners.delete(eventName));
@@ -18,7 +19,7 @@ const tauri = vi.hoisted(() => {
     setSize: vi.fn().mockResolvedValue(undefined),
     setPosition: vi.fn().mockResolvedValue(undefined),
     outerPosition: vi.fn().mockResolvedValue({ x: 200, y: 200 }),
-    outerSize: vi.fn().mockResolvedValue({ width: 92, height: 92 }),
+    outerSize: vi.fn().mockResolvedValue({ width: 300, height: 104 }),
     primaryMonitor: vi.fn().mockResolvedValue({
       position: { x: 0, y: 0 },
       size: { width: 1440, height: 900 }
@@ -29,6 +30,11 @@ const tauri = vi.hoisted(() => {
 vi.mock("@tauri-apps/api/event", () => ({
   emitTo: tauri.emitTo,
   listen: tauri.listen
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: tauri.invoke,
+  isTauri: () => true
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -57,6 +63,7 @@ afterEach(() => {
   tauri.listeners.clear();
   tauri.emitTo.mockClear();
   tauri.hide.mockClear();
+  tauri.invoke.mockClear();
   tauri.listen.mockClear();
   tauri.startDragging.mockClear();
   tauri.setSize.mockClear();
@@ -72,26 +79,27 @@ describe("CompanionWindow", () => {
 
     await waitFor(() => expect(tauri.listen).toHaveBeenCalledWith("companion-state", expect.any(Function)));
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--idle");
-    expect(screen.getByRole("img", { name: "Cartoon dog" })).toBeTruthy();
+    expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--card");
+    expect(screen.queryByRole("img", { name: "Cartoon dog" })).toBeNull();
     expect(screen.getByText("Standing by")).toBeTruthy();
     expect(screen.getByText(/(⌘⇧Space|Ctrl\+Shift\+Space) to record/)).toBeTruthy();
+    expect(screen.getByText("Hotkey")).toBeTruthy();
 
-    // pointerDown alone is no longer enough to start a drag — the new
-    // gesture machine waits for movement past 5 px (drag), >600 ms (long
-    // press), or a short tap (toggle). Verify a clean pointerDown→Up with
-    // no movement routes to the short-tap toggle path.
+    // pointerDown alone is no longer enough to start a drag — the gesture
+    // machine waits for movement past 5 px (drag) or >600 ms (long press).
+    // A clean pointerDown→Up with no movement is now intentionally inert.
     const shell = screen.getByLabelText("Dictivo floating recording status");
     fireEvent.pointerDown(shell, { button: 0, clientX: 40, clientY: 40 });
     fireEvent.pointerUp(shell, { clientX: 40, clientY: 40 });
     expect(tauri.startDragging).not.toHaveBeenCalled();
-    expect(tauri.emitTo).toHaveBeenCalledWith("main", "companion-toggle-dictation", {});
+    expect(tauri.emitTo).not.toHaveBeenCalledWith("main", "companion-toggle-dictation", {});
 
     // Movement past threshold should promote to a drag.
     fireEvent.pointerDown(shell, { button: 0, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(shell, { clientX: 140, clientY: 100 });
     await waitFor(() => expect(tauri.startDragging).toHaveBeenCalledTimes(1));
 
-    const hideButton = screen.getByRole("button", { name: "Hide companion" });
+    const hideButton = screen.getByRole("button", { name: "Hide" });
     fireEvent.click(hideButton);
 
     expect(tauri.emitTo).toHaveBeenCalledWith("main", "companion-hide-requested", {});
@@ -124,6 +132,7 @@ describe("CompanionWindow", () => {
     await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
 
     await emitCompanionState({
+      displayMode: "pet",
       avatar: "cat",
       phase: "recording",
       title: "Listening",
@@ -142,11 +151,35 @@ describe("CompanionWindow", () => {
     expect(screen.getByLabelText("Dictivo is recording")).toBeTruthy();
   });
 
+  it("resizes to idle, expanded, and menu footprints", async () => {
+    render(<CompanionWindow />);
+    await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
+
+    await waitFor(() => expect(tauri.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 300, height: 104 })));
+
+    await emitCompanionState({
+      displayMode: "pet",
+      phase: "recording",
+      title: "Listening",
+      detail: "CommandOrControl+Shift+Space to stop",
+      recordingStartedAt: Date.now()
+    });
+    await waitFor(() => expect(tauri.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 360, height: 118 })));
+
+    const shell = screen.getByLabelText("Dictivo floating recording status");
+    fireEvent.pointerDown(shell, { button: 0, clientX: 40, clientY: 40 });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 650));
+    });
+    await waitFor(() => expect(tauri.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 220, height: 230 })));
+  });
+
   it("renders processing, complete, and blocked/error visual states", async () => {
     render(<CompanionWindow />);
     await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
 
     await emitCompanionState({
+      displayMode: "pet",
       avatar: "iris",
       phase: "processing",
       title: "Transcribing",
@@ -157,25 +190,29 @@ describe("CompanionWindow", () => {
     expect(screen.getByLabelText("Dictivo is transcribing")).toBeTruthy();
 
     await emitCompanionState({
+      displayMode: "pet",
       avatar: "cat",
       phase: "complete",
-      title: "Ready",
-      detail: "8 words copied"
+      title: "Transcript copied to clipboard",
+      detail: "8 words saved. Looking sharp!",
+      wordCount: 8
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--complete");
     expect(screen.getByRole("img", { name: "Cartoon cat" })).toBeTruthy();
+    expect(screen.getByText("8 words saved. Looking sharp!")).toBeTruthy();
     expect(screen.getByLabelText("Dictivo finished — transcript copied")).toBeTruthy();
 
     await emitCompanionState({
+      displayMode: "pet",
       avatar: "marcus",
       phase: "blocked",
       title: "Setup needed",
       detail: "",
-      summary: "Open Local Engine settings"
+      summary: "Open Engine settings"
     });
     expect(screen.getByLabelText("Dictivo floating recording status").className).toContain("companion-shell--blocked");
     expect(screen.getByRole("img", { name: "Marcus companion" })).toBeTruthy();
-    expect(screen.getByText("Open Local Engine settings")).toBeTruthy();
+    expect(screen.getByText("Open Engine settings")).toBeTruthy();
     expect(screen.getByLabelText("Dictivo needs setup")).toBeTruthy();
   });
 
@@ -184,6 +221,7 @@ describe("CompanionWindow", () => {
     await waitFor(() => expect(tauri.listeners.has("companion-state")).toBe(true));
 
     await emitCompanionState({
+      displayMode: "pet",
       avatar: "custom",
       customAvatarDataUrl: "data:image/png;base64,YXZhdGFy",
       customAvatarName: "avatar.png",
@@ -205,6 +243,7 @@ async function emitCompanionState(overrides: Partial<CompanionSnapshot>) {
     listener({
       payload: {
         enabled: true,
+        displayMode: "card",
         avatar: "dog",
         phase: "idle",
         hotkey: "CommandOrControl+Shift+Space",

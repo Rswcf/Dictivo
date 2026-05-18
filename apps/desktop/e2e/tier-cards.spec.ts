@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 test("tier cards render with Quality label and show Active on selected", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Settings/i }).click();
-  // The Settings sidebar already shows "Local Engine" section by default.
+  // The Settings sidebar already shows the Engine section by default.
   await expect(page.getByRole("button", { name: /Quality tier/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Fast tier/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Medium tier/i })).toBeVisible();

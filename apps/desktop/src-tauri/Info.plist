@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Dictivo records microphone audio only when you start local dictation.</string>
+    <string>Dictivo records microphone audio only when you start dictation.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dictivo may need automation permission to paste dictated text into the active application.</string>
   </dict>

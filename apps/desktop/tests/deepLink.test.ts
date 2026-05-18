@@ -22,6 +22,11 @@ describe("parseDeepLink — activate flow", () => {
     expect(result).toEqual({ kind: "activate", licenseKey: "ABC" });
   });
 
+  it("parses Cloud Fast activation links separately", () => {
+    const result = parseDeepLink("dictivo://activate-cloud-fast?key=CF-1234");
+    expect(result).toEqual({ kind: "activate-cloud-fast", licenseKey: "CF-1234" });
+  });
+
   it("returns unknown for an activation URL with no key", () => {
     const result = parseDeepLink("dictivo://activate");
     expect(result).toEqual({ kind: "unknown", url: "dictivo://activate" });

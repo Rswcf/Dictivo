@@ -1,20 +1,18 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, primaryMonitor } from "@tauri-apps/api/window";
-import { ChevronRight, Eye, Settings as SettingsIcon, X } from "lucide-react";
+import { Check, ChevronRight, Eye, Settings as SettingsIcon, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import irisAvatarImage from "../assets/avatars/iris-companion.png";
 import marcusAvatarImage from "../assets/avatars/marcus-companion.png";
-import { DEFAULT_HOTKEYS, type CompanionAvatar } from "../lib/settingsStore";
+import { DEFAULT_HOTKEYS, type CompanionAvatar, type CompanionDisplayMode } from "../lib/settingsStore";
 import { buildCompanionSnapshot, type CompanionPhase, type CompanionSnapshot } from "../lib/companion";
 import { snapToWorkAreaEdge } from "../lib/companionWindowPosition";
 import { formatShortcutForDisplay } from "../lib/hotkeys";
 
-// Pointer-gesture tunables for batch 4. Picked so a deliberate tap (~120 ms)
-// clearly reads as a tap, while a brief mouse jiggle on press never trips
-// drag mode by accident.
+// Pointer-gesture tunables for batch 4. Picked so a brief mouse jiggle on
+// press never trips drag mode, while a deliberate hold opens the menu.
 const DRAG_THRESHOLD_PX = 5;
-const TAP_MAX_MS = 250;
 const LONG_PRESS_MS = 600;
 
 // Batch 1 design language for the companion window:
@@ -27,6 +25,7 @@ const LONG_PRESS_MS = 600;
 
 const defaultSnapshot: CompanionSnapshot = buildCompanionSnapshot({
   enabled: true,
+  displayMode: "card",
   avatar: "dog",
   phase: "idle",
   hotkey: formatShortcutForDisplay(DEFAULT_HOTKEYS.dictation),
@@ -36,12 +35,11 @@ const defaultSnapshot: CompanionSnapshot = buildCompanionSnapshot({
   language: "en"
 });
 
-// Window dimensions in logical pixels. The idle size is just the avatar (76 px
-// box) plus the .companion-shell 8 px padding on each side, so the visible
-// avatar lands exactly where it does in the expanded state — no eye-jumps
-// when collapsing back to idle.
-const IDLE_WINDOW_SIZE = { width: 92, height: 92 } as const;
-const EXPANDED_WINDOW_SIZE = { width: 360, height: 100 } as const;
+const CARD_WINDOW_SIZE = { width: 300, height: 104 } as const;
+const CARD_MENU_WINDOW_SIZE = { width: 300, height: 238 } as const;
+const PET_IDLE_WINDOW_SIZE = { width: 120, height: 120 } as const;
+const PET_EXPANDED_WINDOW_SIZE = { width: 360, height: 118 } as const;
+const PET_MENU_WINDOW_SIZE = { width: 220, height: 230 } as const;
 
 const SILENT_BANDS: number[] = [0, 0, 0, 0, 0, 0, 0];
 
@@ -49,7 +47,8 @@ export function CompanionWindow() {
   const [snapshot, setSnapshot] = useState<CompanionSnapshot>(defaultSnapshot);
   const [now, setNow] = useState(Date.now());
   const [audioBands, setAudioBands] = useState<number[]>(SILENT_BANDS);
-  const lastAppliedPhaseRef = useRef<CompanionPhase | null>(null);
+  const lastAppliedLayoutRef = useRef<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -113,16 +112,17 @@ export function CompanionWindow() {
    * no transparent click-trap region around it, which keeps the rest of the
    * screen clickable when Dictivo is dormant.
    *
-   * The resize fires on every phase transition. We track the last applied
-   * phase in a ref to avoid a redundant Tauri IPC call when react re-renders
-   * for an unrelated state change (timer tick, custom-avatar swap, etc.).
+   * The resize fires on phase transitions and when the long-press menu opens.
+   * We track the last applied layout in a ref to avoid a redundant Tauri IPC
+   * call when react re-renders for an unrelated state change.
    */
   useEffect(() => {
     const phase = snapshot.phase;
-    if (lastAppliedPhaseRef.current === phase) return;
-    lastAppliedPhaseRef.current = phase;
+    const layoutKey = `${snapshot.displayMode}:${phase}:${menuOpen ? "menu" : "normal"}`;
+    if (lastAppliedLayoutRef.current === layoutKey) return;
+    lastAppliedLayoutRef.current = layoutKey;
 
-    const target = phase === "idle" ? IDLE_WINDOW_SIZE : EXPANDED_WINDOW_SIZE;
+    const target = companionWindowSize(snapshot.displayMode, phase, menuOpen);
     void getCurrentWindow()
       .setSize(new LogicalSize(target.width, target.height))
       .catch((error) => {
@@ -131,7 +131,7 @@ export function CompanionWindow() {
         // Swallowed previously, which hid the v0.2.3 resize regression.
         console.warn("CompanionWindow: setSize failed", error);
       });
-  }, [snapshot.phase]);
+  }, [menuOpen, snapshot.displayMode, snapshot.phase]);
 
   useEffect(() => {
     if (snapshot.phase !== "recording") return;
@@ -189,19 +189,17 @@ export function CompanionWindow() {
   }, []);
 
   // === F — pointer-gesture state machine ===
-  // Single short tap → toggle dictation.
+  // Single short tap → no-op. Recording is controlled by hotkey/main window.
   // Long press (≥600ms, no drag) → show context menu.
   // Movement past DRAG_THRESHOLD_PX → start a native window drag.
   // All three live in one onPointerDown so they share start-coords + start-
   // time and don't conflict with each other.
   const gestureRef = useRef<{
-    startedAt: number;
     startX: number;
     startY: number;
     longPressTimer: number;
-    consumed: boolean; // true once we've routed to drag / long-press / tap
+    consumed: boolean; // true once we've routed to drag / long-press
   } | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const handlePointerDown = (event: React.PointerEvent) => {
     // Only react to primary mouse button / single-touch. Anything else
@@ -220,7 +218,6 @@ export function CompanionWindow() {
     }, LONG_PRESS_MS);
 
     gestureRef.current = {
-      startedAt: Date.now(),
       startX: event.clientX,
       startY: event.clientY,
       longPressTimer,
@@ -247,14 +244,6 @@ export function CompanionWindow() {
     const gesture = gestureRef.current;
     if (!gesture) return;
     window.clearTimeout(gesture.longPressTimer);
-
-    if (!gesture.consumed) {
-      const elapsedMs = Date.now() - gesture.startedAt;
-      if (elapsedMs < TAP_MAX_MS) {
-        // Short tap with no drag, no long-press → toggle recording.
-        void emitTo("main", "companion-toggle-dictation", {});
-      }
-    }
     gestureRef.current = null;
   };
 
@@ -279,7 +268,7 @@ export function CompanionWindow() {
 
   return (
     <section
-      className={`companion-shell companion-shell--${snapshot.phase}`}
+      className={`companion-shell companion-shell--${snapshot.phase} companion-shell--${snapshot.displayMode}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -287,42 +276,21 @@ export function CompanionWindow() {
       aria-label="Dictivo floating recording status"
       data-phase={snapshot.phase}
     >
-      <div
-        className="companion-avatar-wrap"
-        role="img"
-        aria-label={ariaLabelForPhase(snapshot.phase)}
-      >
-        <CartoonAvatar
-          avatar={snapshot.avatar}
-          customAvatarDataUrl={snapshot.customAvatarDataUrl}
-          customAvatarName={snapshot.customAvatarName}
-          phase={snapshot.phase}
+      {snapshot.displayMode === "card" ? (
+        <CompanionStatusCard
+          snapshot={snapshot}
+          elapsed={elapsed}
+          audioBands={audioBands}
+          onHide={hideCompanion}
         />
-      </div>
-
-      <div className="companion-bubble">
-        <button
-          className="companion-hide-button"
-          type="button"
-          title="Hide companion"
-          aria-label="Hide companion"
-          data-no-gesture
-          onClick={hideCompanion}
-        >
-          <X size={11} />
-        </button>
-
-        <div className="companion-title-row">
-          <div className="companion-title">{snapshot.title}</div>
-          {snapshot.phase === "recording" ? (
-            <Waveform bands={audioBands} />
-          ) : null}
-        </div>
-        {snapshot.phase === "recording" ? (
-          <div className="companion-timer">{elapsed}</div>
-        ) : null}
-        <div className="companion-sub">{snapshot.detail || snapshot.summary}</div>
-      </div>
+      ) : (
+        <CompanionPet
+          snapshot={snapshot}
+          elapsed={elapsed}
+          audioBands={audioBands}
+          onHide={hideCompanion}
+        />
+      )}
 
       {menuOpen ? (
         <div className="companion-menu" role="menu" data-no-gesture>
@@ -343,6 +311,126 @@ export function CompanionWindow() {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function CompanionStatusCard({
+  snapshot,
+  elapsed,
+  audioBands,
+  onHide
+}: {
+  snapshot: CompanionSnapshot;
+  elapsed: string;
+  audioBands: number[];
+  onHide: () => void;
+}) {
+  return (
+    <div className="companion-card">
+      <div className="companion-card-head">
+        <span className={`companion-card-dot companion-card-dot--${snapshot.phase}`} aria-hidden="true" />
+        <span className="companion-card-title">{snapshot.title}</span>
+        <span className={`companion-card-phase companion-card-phase--${snapshot.phase}`}>
+          {cardPhaseLabel(snapshot.phase)}
+        </span>
+      </div>
+      {snapshot.phase === "recording" ? (
+        <div className="companion-card-wave-row">
+          <Waveform bands={audioBands} />
+          <span>{elapsed}</span>
+        </div>
+      ) : (
+        <div className={`companion-card-cheer companion-card-cheer--${snapshot.phase}`}>
+          {snapshot.detail || snapshot.summary}
+        </div>
+      )}
+      {snapshot.phase === "complete" && snapshot.transcriptPreview ? (
+        <div className="companion-card-preview">{snapshot.transcriptPreview}</div>
+      ) : null}
+      <div className="companion-card-footer">
+        <span className="companion-hotkey-hint companion-hotkey-hint--card">
+          <span>{snapshot.phase === "recording" ? "Stop" : "Hotkey"}</span>
+          <kbd>{snapshot.hotkey}</kbd>
+        </span>
+        <button className="companion-card-hide" type="button" data-no-gesture onClick={onHide}>
+          Hide
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompanionPet({
+  snapshot,
+  elapsed,
+  audioBands,
+  onHide
+}: {
+  snapshot: CompanionSnapshot;
+  elapsed: string;
+  audioBands: number[];
+  onHide: () => void;
+}) {
+  return (
+    <>
+      <div
+        className="companion-avatar-wrap"
+        role="img"
+        aria-label={ariaLabelForPhase(snapshot.phase)}
+      >
+        <CartoonAvatar
+          avatar={snapshot.avatar}
+          customAvatarDataUrl={snapshot.customAvatarDataUrl}
+          customAvatarName={snapshot.customAvatarName}
+          phase={snapshot.phase}
+        />
+      </div>
+
+      <div className="companion-bubble">
+        <button
+          className="companion-hide-button"
+          type="button"
+          title="Hide companion"
+          aria-label="Hide companion"
+          data-no-gesture
+          onClick={onHide}
+        >
+          <X size={11} />
+        </button>
+
+        <div className="companion-title-row">
+          <div className={`companion-status-pill companion-status-pill--${snapshot.phase}`}>{snapshot.title}</div>
+          {snapshot.phase === "recording" ? (
+            <Waveform bands={audioBands} />
+          ) : null}
+        </div>
+        {snapshot.phase === "recording" ? (
+          <div className="companion-timer">{elapsed}</div>
+        ) : null}
+        {snapshot.phase === "complete" ? (
+          <div className="companion-cheer-pill">
+            <Check size={12} />
+            {completionCheer(snapshot.wordCount)}
+          </div>
+        ) : (
+          <div className="companion-sub">{snapshot.detail || snapshot.summary}</div>
+        )}
+        <div className="companion-footer">
+          <span className="companion-hotkey-hint">
+            <span>{snapshot.phase === "recording" ? "Stop" : "Start"}:</span>
+            <kbd>{snapshot.hotkey}</kbd>
+          </span>
+          <button
+            className="companion-footer-hide"
+            type="button"
+            data-no-gesture
+            onClick={onHide}
+          >
+            <X size={10} /> Hide
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -437,6 +525,27 @@ function formatElapsed(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remaining = seconds % 60;
   return `${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}`;
+}
+
+function completionCheer(wordCount: number) {
+  if (wordCount <= 0) return "Transcript copied";
+  const label = wordCount === 1 ? "word" : "words";
+  return `${wordCount} ${label} saved. Looking sharp!`;
+}
+
+function companionWindowSize(displayMode: CompanionDisplayMode, phase: CompanionPhase, menuOpen: boolean) {
+  if (displayMode === "card") return menuOpen ? CARD_MENU_WINDOW_SIZE : CARD_WINDOW_SIZE;
+  if (menuOpen) return PET_MENU_WINDOW_SIZE;
+  return phase === "idle" ? PET_IDLE_WINDOW_SIZE : PET_EXPANDED_WINDOW_SIZE;
+}
+
+function cardPhaseLabel(phase: CompanionPhase) {
+  if (phase === "recording") return "Live";
+  if (phase === "processing") return "Working";
+  if (phase === "complete") return "Done";
+  if (phase === "blocked") return "Setup";
+  if (phase === "error") return "Fix";
+  return "Ready";
 }
 
 /**

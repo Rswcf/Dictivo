@@ -10,6 +10,13 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
+export const TRANSCRIPTION_LANGUAGES = [
+  "auto",
+  ...SUPPORTED_LANGUAGES
+] as const;
+
+export type TranscriptionLanguage = (typeof TRANSCRIPTION_LANGUAGES)[number];
+
 export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   en: "English",
   zh: "中文",
@@ -20,11 +27,16 @@ export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   vi: "Tiếng Việt"
 };
 
-export const PROVIDERS = ["local-whisper"] as const;
+export const TRANSCRIPTION_LANGUAGE_LABELS: Record<TranscriptionLanguage, string> = {
+  auto: "Auto-detect",
+  ...LANGUAGE_LABELS
+};
+
+export const PROVIDERS = ["local-whisper", "cloud-fast"] as const;
 
 export type ProviderId = (typeof PROVIDERS)[number];
 
-export type PrivacyMode = "local-only";
+export type PrivacyMode = "local-only" | "cloud-fast";
 
 export type CaptureSource = "microphone";
 
@@ -187,10 +199,40 @@ function normalizeFieldName(field: string) {
   return field.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
-export function estimateWordCount(text: string, language: SupportedLanguage): number {
+export function isSupportedLanguage(value: unknown): value is SupportedLanguage {
+  return typeof value === "string" && (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
+}
+
+export function isTranscriptionLanguage(value: unknown): value is TranscriptionLanguage {
+  return typeof value === "string" && (TRANSCRIPTION_LANGUAGES as readonly string[]).includes(value);
+}
+
+export function resolveTranscriptLanguage(
+  requestedLanguage: TranscriptionLanguage,
+  text: string,
+  fallback: SupportedLanguage = "en"
+): SupportedLanguage {
+  if (requestedLanguage !== "auto") return requestedLanguage;
+  return detectTranscriptLanguage(text, fallback);
+}
+
+export function detectTranscriptLanguage(text: string, fallback: SupportedLanguage = "en"): SupportedLanguage {
+  const sample = text.trim();
+  if (!sample) return fallback;
+  if (/[\u3040-\u30ff]/u.test(sample)) return "ja";
+  if (/[\u3400-\u9fff]/u.test(sample)) return "zh";
+  if (/[ăâđêôơưÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/u.test(sample)) return "vi";
+  if (/[äöüßÄÖÜ]/u.test(sample)) return "de";
+  if (/[ñÑ¡¿]/u.test(sample)) return "es";
+  if (/[çœæÇŒÆ]/u.test(sample)) return "fr";
+  return fallback;
+}
+
+export function estimateWordCount(text: string, language: TranscriptionLanguage): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
-  if (language === "zh" || language === "ja") {
+  const effectiveLanguage = resolveTranscriptLanguage(language, trimmed);
+  if (effectiveLanguage === "zh" || effectiveLanguage === "ja") {
     return [...trimmed.replace(/\s+/g, "")].length;
   }
   return trimmed.split(/\s+/).filter(Boolean).length;

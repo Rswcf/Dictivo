@@ -13,24 +13,24 @@
 
 Candidates, scored on clarity and curiosity:
 
-1. **`The voice keyboard that never leaves your laptop.`** (51 c) — recommended
-2. **`Whisper-grade dictation, fully offline. $49 once.`** (49 c)
+1. **`Local-first voice dictation for your laptop.`** (45 c) — recommended
+2. **`Whisper-grade local dictation. $49 once.`** (42 c)
 3. **`Voice typing without the subscription.`** (38 c)
 4. **`Hold a hotkey, talk, paste anywhere. 100% local.`** (49 c)
 
-Recommend #1 — leads with the privacy promise, "voice keyboard" reframes the category from "dictation tool" (boring) to "keyboard" (everyone has one).
+Recommend #1 — leads with the default privacy model without hiding the optional Cloud Fast add-on.
 
 ## Description (max 260 chars)
 
 ```
-Dictivo turns speech into polished text on your laptop — fully offline.
+Dictivo Local turns speech into polished text on your laptop — fully offline.
 Hold a hotkey, talk, release, and the text appears wherever your cursor
-is. No subscription, no cloud round-trip, no account. $49 once with 12
-months of updates included.
+is. Cloud Fast is optional when you want faster cloud transcription.
+$49 once for Local, or $6.99/mo for Cloud Fast.
 ```
 
-253 chars. Hits: capability, mechanic, anti-pattern (no subscription),
-price.
+Fits 260 chars. Hits: capability, mechanic, local pricing, and optional
+Cloud Fast without implying every mode is offline.
 
 ## First comment (the maker's introduction)
 
@@ -40,15 +40,20 @@ PH expects a first comment from the maker. Aim for ~150 words:
 Hi Hunters — solo maker here. Dictivo is the voice dictation app I wanted
 my partner (a writer, not a coder) to be able to install in 60 seconds.
 
-It runs whisper.cpp locally on macOS: hold a hotkey, talk, release. The
+Local mode runs whisper.cpp on macOS: hold a hotkey, talk, release. The
 polished transcript pastes into whatever app has focus — Notion, Slack,
-the next email. Nothing about your audio ever leaves the laptop.
+the next email. In Local mode, your audio stays on the laptop.
 
 The pricing is the contrarian bit. $49 once, 12 months of updates
 included. After that the version you have keeps working — you can
 optionally renew for $24 to keep getting new versions and new
 transcription models. Buy-once is the model I wanted for a tool I use
 daily; "perpetual fallback" is in the EULA in writing.
+
+Cloud Fast is optional at $6.99/mo if you want faster cloud transcription
+and accept that the current recording is uploaded. Local keeps audio on
+this device. Cloud Fast uploads audio to cloud transcription providers
+for faster results.
 
 Free tier with the `tiny` model if you want to try first.
 

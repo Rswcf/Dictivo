@@ -80,6 +80,17 @@ const runnableTiers: RunnableTiers = {
   benchmarkedAt: "2026-05-13T00:00:00.000Z"
 };
 
+const cloudFastEntitlement = {
+  available: false,
+  plan: "unknown",
+  priceUsdMonthly: "6.99",
+  monthlySecondsLimit: 90_000,
+  monthlySecondsUsed: 0,
+  renewsAt: null,
+  upgradeUrl: "https://dictivo.app/cloud-fast",
+  privacyNotice: "Cloud Fast uploads audio to cloud transcription providers for faster results."
+};
+
 describe("DictationWorkbench interactions", () => {
   it("edits text, changes tiers, opens history, toggles dictation, and hides the companion through React state", () => {
     const onTierChange = vi.fn();
@@ -91,6 +102,8 @@ describe("DictationWorkbench interactions", () => {
     render(
       <DictationWorkbench
         language="en"
+        transcriptionMode="local"
+        cloudFastEntitlement={cloudFastEntitlement}
         isDictating={false}
         liveText=""
         hotkeyStatus="Registered"
@@ -104,7 +117,9 @@ describe("DictationWorkbench interactions", () => {
         companionAvatar="dog"
         companionEnabled
         customCompanionAvatar={null}
+        onTranscriptionModeChange={vi.fn()}
         onTierChange={onTierChange}
+        onUpgradeCloudFast={vi.fn()}
         onToggleDictation={onToggleDictation}
         onLiveTextChange={onLiveTextChange}
         onOpenHistory={onOpenHistory}

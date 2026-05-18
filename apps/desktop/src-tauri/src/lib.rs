@@ -1,5 +1,6 @@
 mod companion_macos;
 mod license;
+mod native_recorder;
 mod private_fast;
 mod storage;
 mod updater;
@@ -160,6 +161,48 @@ fn open_permission_settings(target: PermissionSettingsTarget) -> Result<(), Stri
         Ok(())
     } else {
         Err("Unable to open system settings automatically. Open Privacy & Security in system settings and grant the permission manually.".to_string())
+    }
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !is_allowed_external_url(&url) {
+        return Err("Only HTTPS links can be opened from Dictivo.".to_string());
+    }
+
+    let (program, args) = external_url_command(&url);
+    let status = quiet_command(program)
+        .args(args)
+        .status()
+        .map_err(|error| format!("Unable to open link: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Unable to open this link automatically. Copy it into your browser.".to_string())
+    }
+}
+
+fn is_allowed_external_url(url: &str) -> bool {
+    let trimmed = url.trim();
+    trimmed.starts_with("https://") && !trimmed.chars().any(char::is_control)
+}
+
+fn external_url_command(url: &str) -> (&'static str, Vec<&str>) {
+    external_url_command_for_platform(current_permission_settings_platform(), url)
+}
+
+fn external_url_command_for_platform(
+    platform: PermissionSettingsPlatform,
+    url: &str,
+) -> (&'static str, Vec<&str>) {
+    match platform {
+        #[cfg(any(test, target_os = "macos"))]
+        PermissionSettingsPlatform::Macos => ("open", vec![url]),
+        #[cfg(any(test, target_os = "windows"))]
+        PermissionSettingsPlatform::Windows => ("explorer.exe", vec![url]),
+        #[cfg(any(test, all(not(target_os = "macos"), not(target_os = "windows"))))]
+        PermissionSettingsPlatform::Linux => ("xdg-open", vec![url]),
     }
 }
 
@@ -335,6 +378,7 @@ fn stop_dictation() -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppLifecycle::default())
+        .manage(native_recorder::NativeRecorderState::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -370,11 +414,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             request_permissions,
             open_permission_settings,
+            open_external_url,
             clipboard_marker,
             copy_text,
             paste_text,
             start_dictation,
             stop_dictation,
+            native_recorder::start_native_recording,
+            native_recorder::stop_native_recording,
             private_fast::hardware_profile,
             private_fast::private_fast_status,
             private_fast::private_fast_models,
@@ -394,6 +441,12 @@ pub fn run() {
             storage::clear_sessions,
             storage::delete_session,
             license::license_activate,
+            license::license_cloud_fast_activate,
+            license::license_cloud_fast_deactivate,
+            license::license_cloud_fast_get,
+            license::license_cloud_fast_migrate_from_local,
+            license::license_cloud_fast_refresh,
+            license::license_cloud_fast_session,
             license::license_get,
             license::license_refresh,
             license::license_deactivate,
@@ -418,11 +471,15 @@ fn configure_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, MENU_QUIT, "Quit Dictivo", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&status, &show_main, &hide_companion, &quit])?;
 
+    #[cfg(target_os = "macos")]
+    let icon = tauri::image::Image::new(include_bytes!("../icons/tray.rgba"), 32, 32);
+
+    #[cfg(not(target_os = "macos"))]
     let Some(icon) = app.default_window_icon().cloned() else {
         return Ok(());
     };
 
-    TrayIconBuilder::with_id(TRAY_ID)
+    let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .tooltip("Dictivo is running locally")
         .menu(&menu)
@@ -452,8 +509,12 @@ fn configure_tray(app: &tauri::App) -> tauri::Result<()> {
                     show_window(tray.app_handle(), "main");
                 }
             }
-        })
-        .build(app)?;
+        });
+
+    #[cfg(target_os = "macos")]
+    let tray = tray.icon_as_template(true);
+
+    tray.build(app)?;
 
     Ok(())
 }
@@ -556,7 +617,8 @@ fn marker_from_bytes(kind: &str, bytes: &[u8]) -> ClipboardMarker {
 #[cfg(test)]
 mod tests {
     use super::{
-        accessibility_status_from_trusted, clipboard_changed_since, marker_from_bytes,
+        accessibility_status_from_trusted, clipboard_changed_since,
+        external_url_command_for_platform, is_allowed_external_url, marker_from_bytes,
         permission_settings_command, permission_settings_command_for_platform,
         should_hide_on_close, tray_click_shows_main, tray_menu_action, PermissionSettingsPlatform,
         PermissionSettingsTarget, TrayMenuAction, MENU_HIDE_COMPANION, MENU_QUIT, MENU_SHOW_MAIN,
@@ -751,6 +813,31 @@ mod tests {
                 PermissionSettingsTarget::PasteAutomation
             ),
             ("xdg-open", vec!["settings://privacy"])
+        );
+    }
+
+    #[test]
+    fn external_url_opening_is_limited_to_https_links() {
+        assert!(is_allowed_external_url("https://dictivo.app/cloud-fast"));
+        assert!(!is_allowed_external_url("http://dictivo.app"));
+        assert!(!is_allowed_external_url("javascript:alert(1)"));
+        assert!(!is_allowed_external_url("https://dictivo.app/\nopen"));
+    }
+
+    #[test]
+    fn external_url_commands_are_locked_for_all_release_platforms() {
+        let url = "https://dictivo.app/cloud-fast";
+        assert_eq!(
+            external_url_command_for_platform(PermissionSettingsPlatform::Macos, url),
+            ("open", vec![url])
+        );
+        assert_eq!(
+            external_url_command_for_platform(PermissionSettingsPlatform::Windows, url),
+            ("explorer.exe", vec![url])
+        );
+        assert_eq!(
+            external_url_command_for_platform(PermissionSettingsPlatform::Linux, url),
+            ("xdg-open", vec![url])
         );
     }
 }

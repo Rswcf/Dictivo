@@ -10,7 +10,7 @@ test("tier selector reflects selection in footer", async ({ page }) => {
   await page.goto("/");
   // Web-preview RunnableTiers fallback returns fast + medium (both flagged as
   // downloaded), so switching does not trigger the native download dialog.
-  await page.getByRole("radio", { name: /Fast/i }).click();
-  await expect(page.getByRole("radio", { name: /Fast/i })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByRole("radio", { name: /Medium/i })).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("radio", { name: "Fast", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Fast", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Medium", exact: true })).toHaveAttribute("aria-checked", "false");
 });

@@ -62,13 +62,17 @@ This is the one place we explicitly carve out a major-version paid upgrade. It m
 
 ## 9. Privacy Promise (echoed in EULA, fully stated in Privacy Policy)
 
-> The Software does not transmit your audio, transcripts, dictionaries, or hotkey configuration to Dictivo or any third party. The only network connections the Software makes by default are:
+> Local keeps audio on this device. Cloud Fast uploads audio to cloud transcription providers for faster results.
+>
+> When used in Local mode, the Software does not transmit your audio, transcripts, dictionaries, snippets, or hotkey configuration to Dictivo or any third party. The network connections the Software makes by default are:
 >
 > (a) **Updates check** — once on launch and every 24 hours thereafter, the Software requests a single JSON file from `updates.dictivo.app` to determine if a newer version is available. No identifiers other than your license token are transmitted.
 >
 > (b) **License refresh (optional, disable-able)** — once every seven days the Software may request a refreshed license token from `verify.dictivo.app`.
 >
 > Both checks can be disabled in Settings; doing so does not affect any other functionality of the Software.
+>
+> Cloud Fast is an optional paid transcription mode. When you select Cloud Fast, the Software uploads the current recording and minimal request metadata to a Dictivo-operated proxy. Dictivo uses that proxy to verify entitlement, meter monthly transcription minutes, route transcription to cloud transcription providers, and return the final transcript to the Software. Dictionary terms and snippets remain on device and are applied locally after the transcript returns. Provider choice is not exposed in the Software.
 
 ## 10. Limitation of Liability (standard)
 
@@ -121,15 +125,28 @@ Content-Type: application/json
 
 This lets us send you an updated token if you have renewed, and notify you if a refund or chargeback has revoked your license. No other data is collected.
 
-## §C. What you can disable
+## §C. What we receive when you use Cloud Fast
+
+Cloud Fast is optional and separate from Local mode. When you select Cloud Fast, Dictivo sends:
+
+- The current recording audio.
+- Language, mode, duration, app version, platform, and a client session ID.
+- Account or entitlement information needed to verify subscription status and monthly minute quota.
+
+Dictivo does not send dictionary entries or snippets with Cloud Fast requests. Those remain local and are applied after the transcript returns.
+
+The Dictivo proxy routes Cloud Fast requests to Groq `whisper-large-v3` first and falls back to ElevenLabs `Scribe v2` on provider rate limits, 5xx errors, timeout, network failure, empty result, or clearly invalid transcript output. Provider names and model routing are internal operational metadata. The desktop app receives the final transcript and a generic fallback-used state, not provider selection controls.
+
+## §D. What you can disable
 
 | Setting | Effect |
 |---|---|
 | Auto-check for updates | Stops the every-24-h request. You can still check manually. |
 | Allow online license refresh | Stops the every-7-day request. Renewals must be activated manually via the email link. |
+| Cloud Fast mode | Keep transcription in Local mode. No audio is uploaded for dictation. |
 | Pre-release builds (beta) | Switches the update channel to `beta`. |
 
-## §D. Lemon Squeezy
+## §E. Lemon Squeezy
 
 When you purchase Dictivo, **Lemon Squeezy** (3-One.com Inc., 2261 Market Street, Suite 5651, San Francisco, CA 94114) is the Merchant of Record and processes your payment, billing address, and tax information. Their privacy policy applies to that transaction: https://www.lemonsqueezy.com/privacy.
 
@@ -141,18 +158,20 @@ Dictivo receives from Lemon Squeezy only:
 
 We retain this information for the lifetime of the license + 7 years (tax-record retention requirement).
 
-## §E. Subprocessors
+## §F. Subprocessors
 
 | Service | Purpose |
 |---|---|
 | Lemon Squeezy | Payment processing, billing email |
 | Cloudflare R2 | Update manifest + installer hosting |
-| Cloudflare Workers | Update endpoint, license issuer |
+| Cloudflare Workers | Update endpoint, license issuer, Cloud Fast proxy |
+| Groq | Cloud Fast primary transcription provider |
+| ElevenLabs | Cloud Fast fallback transcription provider |
 | Resend (or Postmark) | Transactional emails — license delivery, renewal reminders |
 
 We may switch any subprocessor with 30 days' notice. The Privacy Policy here will be updated, and the change visible at the canonical URL.
 
-## §F. Your rights (GDPR / CCPA)
+## §G. Your rights (GDPR / CCPA)
 
 You may, at any time:
 - Request a copy of all data we hold tied to your email address.

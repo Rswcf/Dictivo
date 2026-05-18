@@ -21,6 +21,21 @@ const LEMON_SQUEEZY_DEACTIVATE_URL: &str = "https://api.lemonsqueezy.com/v1/lice
 const UPDATE_WINDOW_DAYS: i64 = 365;
 const HTTP_TIMEOUT_SECS: u64 = 12;
 
+#[derive(Debug, Clone, Copy)]
+enum LicenseSlot {
+    Local,
+    CloudFast,
+}
+
+impl LicenseSlot {
+    fn filename(self) -> &'static str {
+        match self {
+            Self::Local => "license.json",
+            Self::CloudFast => "cloud-fast-license.json",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct License {
@@ -55,6 +70,30 @@ pub struct LicenseSummary {
     pub status: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudFastSessionResponse {
+    pub token: String,
+    pub token_type: String,
+    pub user_id: String,
+    pub expires_at: String,
+    pub plan: String,
+    pub available: bool,
+    pub price_usd_monthly: String,
+    pub monthly_seconds_limit: i64,
+    pub monthly_seconds_used: i64,
+    pub renews_at: Option<String>,
+    pub upgrade_url: Option<String>,
+    pub privacy_notice: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudFastSessionRequest<'a> {
+    license_key: &'a str,
+    instance_id: &'a str,
+}
+
 impl LicenseSummary {
     fn absent() -> Self {
         Self {
@@ -74,6 +113,22 @@ pub async fn license_activate(
     license_key: String,
     instance_name: String,
 ) -> Result<LicenseSummary, String> {
+    activate_license_in_slot(license_key, instance_name, LicenseSlot::Local).await
+}
+
+#[tauri::command]
+pub async fn license_cloud_fast_activate(
+    license_key: String,
+    instance_name: String,
+) -> Result<LicenseSummary, String> {
+    activate_license_in_slot(license_key, instance_name, LicenseSlot::CloudFast).await
+}
+
+async fn activate_license_in_slot(
+    license_key: String,
+    instance_name: String,
+    slot: LicenseSlot,
+) -> Result<LicenseSummary, String> {
     let trimmed = license_key.trim();
     if trimmed.is_empty() {
         return Err("License key is empty.".to_string());
@@ -86,13 +141,40 @@ pub async fn license_activate(
     .await?;
 
     let license = build_license_from_response(&response, trimmed)?;
-    save_license(&license)?;
+    if !license_matches_slot(slot, &license) {
+        deactivate_remote_license_instance(&license).await;
+        return Err(slot_mismatch_message(slot).to_string());
+    }
+    save_license(slot, &license)?;
     Ok(summarize(&license))
 }
 
 #[tauri::command]
 pub fn license_get() -> Result<LicenseSummary, String> {
-    match load_license()? {
+    get_license_summary(LicenseSlot::Local)
+}
+
+#[tauri::command]
+pub fn license_cloud_fast_get() -> Result<LicenseSummary, String> {
+    get_license_summary(LicenseSlot::CloudFast)
+}
+
+#[tauri::command]
+pub fn license_cloud_fast_migrate_from_local() -> Result<LicenseSummary, String> {
+    let Some(license) = load_license(LicenseSlot::Local)? else {
+        return Err("No local license is available to move.".to_string());
+    };
+    if !license_is_cloud_fast(&license) {
+        return Err("The saved local license is not a Cloud Fast license.".to_string());
+    }
+
+    save_license(LicenseSlot::CloudFast, &license)?;
+    remove_license_cache(LicenseSlot::Local);
+    Ok(summarize(&license))
+}
+
+fn get_license_summary(slot: LicenseSlot) -> Result<LicenseSummary, String> {
+    match load_license(slot)? {
         Some(license) => Ok(summarize(&license)),
         None => Ok(LicenseSummary::absent()),
     }
@@ -103,7 +185,16 @@ pub fn license_get() -> Result<LicenseSummary, String> {
 /// the app is allowed to keep working offline indefinitely.
 #[tauri::command]
 pub async fn license_refresh() -> Result<LicenseSummary, String> {
-    let Some(mut license) = load_license()? else {
+    refresh_license_in_slot(LicenseSlot::Local).await
+}
+
+#[tauri::command]
+pub async fn license_cloud_fast_refresh() -> Result<LicenseSummary, String> {
+    refresh_license_in_slot(LicenseSlot::CloudFast).await
+}
+
+async fn refresh_license_in_slot(slot: LicenseSlot) -> Result<LicenseSummary, String> {
+    let Some(mut license) = load_license(slot)? else {
         return Ok(LicenseSummary::absent());
     };
 
@@ -128,30 +219,84 @@ pub async fn license_refresh() -> Result<LicenseSummary, String> {
         license.status = status.to_string();
     }
     license.last_refreshed_at = now_iso();
-    save_license(&license)?;
+    save_license(slot, &license)?;
     Ok(summarize(&license))
 }
 
 #[tauri::command]
+pub async fn license_cloud_fast_session(
+    api_base_url: String,
+) -> Result<CloudFastSessionResponse, String> {
+    let Some(license) = load_license(LicenseSlot::CloudFast)? else {
+        return Err("Activate your Cloud Fast license before using Cloud Fast.".to_string());
+    };
+    if license.instance_id.trim().is_empty() || license.license_key.trim().is_empty() {
+        return Err("Your cached license is missing activation details. Reactivate the license and try Cloud Fast again.".to_string());
+    }
+
+    let base = api_base_url.trim().trim_end_matches('/');
+    if !(base.starts_with("https://")
+        || base.starts_with("http://localhost")
+        || base.starts_with("http://127.0.0.1"))
+    {
+        return Err("Cloud Fast API URL must use HTTPS.".to_string());
+    }
+
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .user_agent("Dictivo-CloudFast/1.0")
+        .build()
+        .map_err(|_| {
+            "Unable to start Cloud Fast license check. Please restart Dictivo.".to_string()
+        })?
+        .post(format!("{base}/v1/cloud-fast/session"))
+        .header("Accept", "application/json")
+        .json(&CloudFastSessionRequest {
+            license_key: license.license_key.as_str(),
+            instance_id: license.instance_id.as_str(),
+        })
+        .send()
+        .await
+        .map_err(|e| friendly_cloud_fast_network_error(e))?;
+
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| "Cloud Fast returned an unexpected license response.".to_string())?;
+
+    if !status.is_success() {
+        let message = body
+            .get("message")
+            .and_then(|v| v.as_str())
+            .or_else(|| body.get("error").and_then(|v| v.as_str()))
+            .unwrap_or("Cloud Fast license check failed.");
+        return Err(message.to_string());
+    }
+
+    serde_json::from_value(body)
+        .map_err(|_| "Cloud Fast returned an incomplete license session.".to_string())
+}
+
+#[tauri::command]
 pub async fn license_deactivate() -> Result<(), String> {
-    let Some(license) = load_license()? else {
+    deactivate_license_in_slot(LicenseSlot::Local).await
+}
+
+#[tauri::command]
+pub async fn license_cloud_fast_deactivate() -> Result<(), String> {
+    deactivate_license_in_slot(LicenseSlot::CloudFast).await
+}
+
+async fn deactivate_license_in_slot(slot: LicenseSlot) -> Result<(), String> {
+    let Some(license) = load_license(slot)? else {
         return Ok(());
     };
 
     // Best-effort remote deactivation. We always delete locally afterwards so
     // the user is never stuck with a stale local state.
-    let _ = ls_post(
-        LEMON_SQUEEZY_DEACTIVATE_URL,
-        &[
-            ("license_key", license.license_key.as_str()),
-            ("instance_id", license.instance_id.as_str()),
-        ],
-    )
-    .await;
-
-    if let Ok(path) = license_path() {
-        let _ = fs::remove_file(path);
-    }
+    deactivate_remote_license_instance(&license).await;
+    remove_license_cache(slot);
     Ok(())
 }
 
@@ -159,7 +304,7 @@ pub async fn license_deactivate() -> Result<(), String> {
 /// otherwise `None`. The updater module uses this to decide whether to surface
 /// new builds to the user.
 pub fn cached_updates_until() -> Option<OffsetDateTime> {
-    let license = load_license().ok().flatten()?;
+    let license = load_license(LicenseSlot::Local).ok().flatten()?;
     parse_iso(&license.updates_until)
 }
 
@@ -205,6 +350,17 @@ fn friendly_network_error(error: reqwest::Error) -> String {
             .to_string()
     } else {
         "Network error while contacting the license server. Try again in a moment.".to_string()
+    }
+}
+
+fn friendly_cloud_fast_network_error(error: reqwest::Error) -> String {
+    if error.is_timeout() {
+        "Cloud Fast license check timed out. Try again in a moment.".to_string()
+    } else if error.is_connect() || error.is_request() {
+        "Couldn't reach the Cloud Fast service. Check your internet connection and try again."
+            .to_string()
+    } else {
+        "Network error while checking Cloud Fast access. Try again in a moment.".to_string()
     }
 }
 
@@ -333,6 +489,49 @@ fn summarize(license: &License) -> LicenseSummary {
     }
 }
 
+fn license_matches_slot(slot: LicenseSlot, license: &License) -> bool {
+    match slot {
+        LicenseSlot::Local => !license_is_cloud_fast(license),
+        LicenseSlot::CloudFast => license_is_cloud_fast(license),
+    }
+}
+
+fn license_is_cloud_fast(license: &License) -> bool {
+    let combined = format!("{} {}", license.product_name, license.variant_name);
+    let compact = combined
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    compact.contains("cloudfast")
+}
+
+fn slot_mismatch_message(slot: LicenseSlot) -> &'static str {
+    match slot {
+        LicenseSlot::Local => {
+            "This is a Cloud Fast license. Activate it in Settings > License & Updates > Cloud Fast license instead."
+        }
+        LicenseSlot::CloudFast => "This license does not include Cloud Fast.",
+    }
+}
+
+async fn deactivate_remote_license_instance(license: &License) {
+    let _ = ls_post(
+        LEMON_SQUEEZY_DEACTIVATE_URL,
+        &[
+            ("license_key", license.license_key.as_str()),
+            ("instance_id", license.instance_id.as_str()),
+        ],
+    )
+    .await;
+}
+
+fn remove_license_cache(slot: LicenseSlot) {
+    if let Ok(path) = license_path(slot) {
+        let _ = fs::remove_file(path);
+    }
+}
+
 fn parse_iso(value: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339).ok()
 }
@@ -347,15 +546,15 @@ fn now_iso() -> String {
     format_iso(OffsetDateTime::now_utc())
 }
 
-fn license_path() -> Result<PathBuf, String> {
+fn license_path(slot: LicenseSlot) -> Result<PathBuf, String> {
     let base = dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .ok_or_else(|| "Unable to resolve local data directory.".to_string())?;
-    Ok(base.join("Dictivo").join("license.json"))
+    Ok(base.join("Dictivo").join(slot.filename()))
 }
 
-fn save_license(license: &License) -> Result<(), String> {
-    let path = license_path()?;
+fn save_license(slot: LicenseSlot, license: &License) -> Result<(), String> {
+    let path = license_path(slot)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -364,8 +563,8 @@ fn save_license(license: &License) -> Result<(), String> {
     Ok(())
 }
 
-fn load_license() -> Result<Option<License>, String> {
-    let path = license_path()?;
+fn load_license(slot: LicenseSlot) -> Result<Option<License>, String> {
+    let path = license_path(slot)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -399,6 +598,27 @@ mod tests {
         assert!(!summary.present);
         assert_eq!(summary.status, "absent");
         assert_eq!(summary.days_remaining, 0);
+    }
+
+    #[test]
+    fn license_slots_use_distinct_cache_files() {
+        assert_eq!(LicenseSlot::Local.filename(), "license.json");
+        assert_eq!(LicenseSlot::CloudFast.filename(), "cloud-fast-license.json");
+    }
+
+    #[test]
+    fn license_slots_reject_mismatched_cloud_fast_products() {
+        let mut license = test_license();
+        license.product_name = "Dictivo Cloud Fast".to_string();
+        assert!(license_is_cloud_fast(&license));
+        assert!(!license_matches_slot(LicenseSlot::Local, &license));
+        assert!(license_matches_slot(LicenseSlot::CloudFast, &license));
+
+        license.product_name = "Dictivo Local".to_string();
+        license.variant_name = "Personal".to_string();
+        assert!(!license_is_cloud_fast(&license));
+        assert!(license_matches_slot(LicenseSlot::Local, &license));
+        assert!(!license_matches_slot(LicenseSlot::CloudFast, &license));
     }
 
     #[test]
@@ -464,5 +684,22 @@ mod tests {
     fn friendly_error_falls_back_for_unknown_payload() {
         let msg = friendly_activation_error(500, "");
         assert!(msg.contains("Activation failed"));
+    }
+
+    fn test_license() -> License {
+        License {
+            license_key: "KEY-1234".to_string(),
+            instance_id: "inst-1".to_string(),
+            instance_name: "Test".to_string(),
+            customer_email: "alice@example.com".to_string(),
+            customer_name: "Alice".to_string(),
+            order_id: "123".to_string(),
+            product_name: "Dictivo".to_string(),
+            variant_name: "Personal".to_string(),
+            created_at: "2026-05-14T10:00:00Z".to_string(),
+            updates_until: "2027-05-14T10:00:00Z".to_string(),
+            status: "active".to_string(),
+            last_refreshed_at: "2026-05-14T10:00:00Z".to_string(),
+        }
     }
 }

@@ -1,10 +1,12 @@
 /**
  * Deep-link handling for `dictivo://...` URLs.
  *
- * The only supported flow at v1.0 is `dictivo://activate?key=<license-key>`,
- * fired from the activation email Lemon Squeezy sends after purchase. The
- * link opens Dictivo, hands off the key, and the app pre-fills the License
- * Settings panel so the user clicks Activate (or sees auto-activation).
+ * Supported flows:
+ * - `dictivo://activate?key=<license-key>` for the local license.
+ * - `dictivo://activate-cloud-fast?key=<license-key>` for Cloud Fast.
+ *
+ * The link opens Dictivo, hands off the key, and the app pre-fills the
+ * matching Settings panel so the user clicks Activate.
  *
  * Parsing lives here, in a Tauri-free module, so it is unit-testable without
  * a desktop runtime.
@@ -12,10 +14,12 @@
 
 export type DeepLinkPayload =
   | { kind: "activate"; licenseKey: string }
+  | { kind: "activate-cloud-fast"; licenseKey: string }
   | { kind: "unknown"; url: string };
 
 const VALID_SCHEMES = new Set(["dictivo:"]);
 const ACTIVATION_HOST = "activate";
+const CLOUD_FAST_ACTIVATION_HOST = "activate-cloud-fast";
 // Allow at most this many incoming activation links per minute. Real users
 // click these once; anything higher suggests a malformed loop and we silently
 // drop the rest until the timer resets.
@@ -47,6 +51,12 @@ export function parseDeepLink(url: string): DeepLinkPayload | null {
     const key = parsed.searchParams.get("key")?.trim();
     if (!key) return { kind: "unknown", url: trimmed };
     return { kind: "activate", licenseKey: key };
+  }
+
+  if (route === CLOUD_FAST_ACTIVATION_HOST) {
+    const key = parsed.searchParams.get("key")?.trim();
+    if (!key) return { kind: "unknown", url: trimmed };
+    return { kind: "activate-cloud-fast", licenseKey: key };
   }
 
   return { kind: "unknown", url: trimmed };

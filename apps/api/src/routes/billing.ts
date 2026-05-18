@@ -8,7 +8,7 @@ import { stripe } from "../lib/stripe.js";
 
 const checkoutSchema = z.object({
   email: z.string().email(),
-  plan: z.enum(["pro-monthly"]).default("pro-monthly")
+  plan: z.enum(["pro-monthly", "cloud-fast-monthly"]).default("pro-monthly")
 }).strict();
 
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300;
@@ -23,7 +23,11 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    if (!stripe || !config.STRIPE_PRICE_PRO_MONTHLY) {
+    const priceId = parsed.data.plan === "cloud-fast-monthly"
+      ? config.STRIPE_PRICE_CLOUD_FAST_MONTHLY
+      : config.STRIPE_PRICE_PRO_MONTHLY;
+
+    if (!stripe || !priceId) {
       return {
         mode: "test",
         checkoutUrl: `${config.APP_BASE_URL}/billing/mock-success?plan=${parsed.data.plan}`
@@ -33,7 +37,7 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: parsed.data.email,
-      line_items: [{ price: config.STRIPE_PRICE_PRO_MONTHLY, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${config.APP_BASE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${config.APP_BASE_URL}/billing/cancel`
     });

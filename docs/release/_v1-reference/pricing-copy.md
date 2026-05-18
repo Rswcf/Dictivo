@@ -6,7 +6,7 @@
 
 # One purchase. One hotkey. Yours to keep.
 
-Dictivo turns speech into polished text on your laptop — 100% offline. Pay once, own your copy forever. No subscription required.
+Dictivo Local turns speech into polished text on your laptop — 100% offline. Pay once, own your local copy forever. Cloud Fast is optional if you want faster cloud transcription.
 
 [ Buy Dictivo — $49 ]   [ Try the free tier ]
 
@@ -40,9 +40,33 @@ Dictivo turns speech into polished text on your laptop — 100% offline. Pay onc
 └───────────────────────────────────────────────┘
 ```
 
+## Optional Cloud Fast card
+
+```
+┌───────────────────────────────────────────────┐
+│                Dictivo Cloud Fast             │
+│                                               │
+│                  $6.99 USD / month            │
+│              optional cloud transcription     │
+│                                               │
+│   ✓ Faster cloud transcription                 │
+│   ✓ One simple Cloud Fast mode                 │
+│   ✓ Automatic backup route if the fast path    │
+│       is unavailable                           │
+│   ✓ 1,500 transcription minutes / month        │
+│   ✓ Works standalone or alongside Local        │
+│                                               │
+│   Local keeps audio on your device. Cloud     │
+│   Fast uploads audio to cloud transcription   │
+│   providers for faster results.               │
+│                                               │
+│             [ Add Cloud Fast — $6.99/mo ]     │
+└───────────────────────────────────────────────┘
+```
+
 ## Trust strip (below pricing)
 
-> 🔒 **100% on-device** — audio never leaves your computer
+> 🔒 **Local mode is 100% on-device** — audio stays on your computer unless you choose Cloud Fast
 > 🍎 **Apple-notarized** · 🪟 **Microsoft-signed** — installs cleanly, no warnings
 > 💳 **Lemon Squeezy** handles billing — global tax included, full refund within 14 days
 > 🇪🇺 **GDPR friendly** — we collect no usage data, ever
@@ -53,7 +77,9 @@ Dictivo turns speech into polished text on your laptop — 100% offline. Pay onc
 
 ### Why isn't Dictivo a subscription like Wispr Flow?
 
-Because dictation is a tool, not a service. Once it's installed, it works offline forever — there's no cloud cost we'd be hiding behind a monthly fee. We charge once for the version you get today, and we charge a small annual fee if you want to keep getting *new* versions. If you don't want to renew, the app you have keeps working. Forever. We mean it.
+Because local dictation is a tool, not a service. Once Dictivo Local is installed, it works offline forever — there's no cloud cost we'd be hiding behind a monthly fee. We charge once for the version you get today, and we charge a small annual fee if you want to keep getting *new* versions. If you don't want to renew, the app you have keeps working. Forever. We mean it.
+
+Cloud Fast is different: it uses cloud transcription providers, so it has real recurring infrastructure cost. That's why Cloud Fast is a separate optional subscription, not a condition for using Dictivo Local.
 
 ### What exactly does my $49 include?
 
@@ -113,7 +139,7 @@ Roughly: 30% to Lemon Squeezy fees + VAT, 30% to engineering and design time, 20
 
 ### Will you ever switch to subscription?
 
-Anyone you give your money to today is the answer to this question. So: **no.** If we ever launch a separate Dictivo Cloud product that adds optional cloud features (cross-device sync, GPT-4-class post-processing), it will be a *separate* purchase. Buying Dictivo today entitles you to Dictivo on your laptop, forever, at the terms above. That's in the EULA in writing, and we'd rather close the company than break it.
+Anyone you give your money to today is the answer to this question. So: **no for Dictivo Local.** Cloud Fast is a separate optional subscription because it sends audio to cloud transcription providers and has recurring model cost. Buying Dictivo Local entitles you to Dictivo on your laptop, forever, at the terms above. That's in the EULA in writing, and we'd rather close the company than break it.
 
 ### Refund policy?
 
