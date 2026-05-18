@@ -28,21 +28,32 @@ describe("desktop release workflow", () => {
     expect(workflow).not.toContain("windows-latest");
   });
 
-  it("keeps the desktop CI workflow macOS-only during the macOS-first launch window", () => {
-    expect(workflow).toContain("name: macOS universal");
-    expect(workflow).toContain("runs-on: macos-latest");
-    expect(workflow).toContain("rustup target add x86_64-apple-darwin aarch64-apple-darwin");
-    expect(workflow).toContain("--target universal-apple-darwin --bundles app");
-    expect(workflow).toContain("name: Dictivo-macOS-universal");
-    expect(workflow).toContain("path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/**");
+  it("keeps the macOS universal app validation target in the desktop build matrix", () => {
+    const macosMatrix = workflow.slice(
+      workflow.indexOf("- label: macOS universal"),
+      workflow.indexOf("- label: Windows x64")
+    );
+
+    expect(macosMatrix).toContain("os: macos-latest");
+    expect(macosMatrix).toContain("rust_targets: x86_64-apple-darwin aarch64-apple-darwin");
+    expect(macosMatrix).toContain("tauri_target: universal-apple-darwin");
+    expect(macosMatrix).toContain("tauri_bundles: app");
+    expect(macosMatrix).toContain("artifact_name: Dictivo-macOS-universal");
+    expect(macosMatrix).toContain("bundle_path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle");
   });
 
-  it("does not build Windows installers from the desktop CI workflow yet", () => {
-    expect(workflow).not.toContain("- label: Windows x64");
-    expect(workflow).not.toContain("os: windows-2025-vs2026");
-    expect(workflow).not.toContain("x86_64-pc-windows-msvc");
-    expect(workflow).not.toContain("msi,nsis");
-    expect(workflow).not.toContain("Dictivo-Windows-x64-installers");
+  it("keeps Windows MSI and NSIS validation targets in desktop CI without making tag releases", () => {
+    const windowsMatrix = workflow.slice(
+      workflow.indexOf("- label: Windows x64"),
+      workflow.indexOf("steps:")
+    );
+
+    expect(windowsMatrix).toContain("os: windows-2025-vs2026");
+    expect(windowsMatrix).toContain("rust_targets: x86_64-pc-windows-msvc");
+    expect(windowsMatrix).toContain("tauri_target: x86_64-pc-windows-msvc");
+    expect(windowsMatrix).toContain("tauri_bundles: msi,nsis");
+    expect(windowsMatrix).toContain("artifact_name: Dictivo-Windows-x64-installers");
+    expect(windowsMatrix).toContain("bundle_path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle");
     expect(workflow).not.toContain("- \"v*.*.*\"");
   });
 

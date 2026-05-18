@@ -1,8 +1,8 @@
 name: Build desktop apps
 
-# CI is intentionally macOS-only while Dictivo is in its macOS-first launch
-# window. Release tags are handled by release-desktop.yml so the Actions page
-# does not keep producing stale Windows installers.
+# CI builds both macOS and Windows so we can keep testing Windows before public
+# launch. Release tags are handled by release-desktop.yml; Windows artifacts
+# from this workflow are validation builds, not public release assets.
 
 on:
   workflow_dispatch:
@@ -21,9 +21,27 @@ permissions:
 
 jobs:
   build:
-    name: macOS universal
-    runs-on: macos-latest
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            os: macos-latest
+            rust_targets: x86_64-apple-darwin aarch64-apple-darwin
+            tauri_target: universal-apple-darwin
+            tauri_bundles: app
+            artifact_name: Dictivo-macOS-universal
+            bundle_path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
+          - label: Windows x64
+            os: windows-2025-vs2026
+            rust_targets: x86_64-pc-windows-msvc
+            tauri_target: x86_64-pc-windows-msvc
+            tauri_bundles: msi,nsis
+            artifact_name: Dictivo-Windows-x64-installers
+            bundle_path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle
 
     steps:
       - name: Checkout
@@ -36,10 +54,13 @@ jobs:
           cache: npm
 
       - name: Setup Rust
+        shell: bash
         run: |
           rustup update stable
           rustup default stable
-          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+          for target in ${{ matrix.rust_targets }}; do
+            rustup target add "$target"
+          done
 
       - name: Install dependencies
         run: npm ci
@@ -88,12 +109,12 @@ jobs:
           # CI artifacts are validation-only and never published.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri:build -w @dictivo/desktop -- --target universal-apple-darwin --bundles app
+        run: npm run tauri:build -w @dictivo/desktop -- --target ${{ matrix.tauri_target }} --bundles ${{ matrix.tauri_bundles }}
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Dictivo-macOS-universal
-          path: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/**
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.bundle_path }}/**
           if-no-files-found: error
           retention-days: 14
