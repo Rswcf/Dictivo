@@ -97,6 +97,8 @@ describe("desktop release workflow", () => {
     expect(smokeStep).toContain('Start-Process -FilePath $nsis.FullName -ArgumentList "/S"');
     expect(smokeStep).toContain("Dictivo.exe");
     expect(smokeStep).toContain("NSIS silent install did not create Dictivo.exe");
+    expect(smokeStep).toContain("Installed Dictivo.exe ProductVersion");
+    expect(smokeStep).toContain("does not match app version");
     expect(smokeStep).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");
     expect(smokeStep).toContain("Start-Sleep -Seconds 8");
     expect(smokeStep).toContain('Get-Process -Name "Dictivo"');

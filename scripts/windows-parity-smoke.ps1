@@ -103,7 +103,16 @@ if ($installedExe.Length -le 0) {
   throw "Installed Dictivo.exe is empty."
 }
 
+$installedProductVersion = $installedExe.VersionInfo.ProductVersion
+if (-not $installedProductVersion) {
+  throw "Installed Dictivo.exe is missing ProductVersion metadata."
+}
+if ($installedProductVersion -notlike "$version*") {
+  throw "Installed Dictivo.exe ProductVersion '$installedProductVersion' does not match expected version $version."
+}
+
 Write-Host "Installed $($installedExe.FullName) ($($installedExe.Length) bytes)."
+Write-Host "Installed Dictivo.exe ProductVersion $installedProductVersion."
 
 $launched = Start-Process -FilePath $installedExe.FullName -PassThru
 Start-Sleep -Seconds $LaunchWaitSeconds

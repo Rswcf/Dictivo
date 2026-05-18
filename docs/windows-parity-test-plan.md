@@ -43,9 +43,10 @@ PowerShell on Windows:
 
 The script validates the current-version installer name, requires the adjacent
 `.sig` file, installs the NSIS package silently, finds the installed
-`Dictivo.exe`, launches it, and confirms the process stays alive. It leaves the
-app running by default so the tester can continue with `WIN-PARITY-002`; add
-`-StopAfterLaunch` when you only want the preflight result.
+`Dictivo.exe`, verifies its ProductVersion metadata, launches it, and confirms
+the process stays alive. It leaves the app running by default so the tester can
+continue with `WIN-PARITY-002`; add `-StopAfterLaunch` when you only want the
+preflight result.
 
 ## Windows Feature Matrix
 

@@ -107,6 +107,7 @@ describe("user-facing documentation", () => {
     }
     expect(nativePlan).toContain("windows-parity-test-plan.md");
     expect(windowsSmokeScript).toContain("Dictivo_${version}_x64-setup.exe");
+    expect(windowsSmokeScript).toContain("Installed Dictivo.exe ProductVersion");
     expect(windowsSmokeScript).toContain("Start-Process -FilePath $installedExe.FullName -PassThru");
     expect(windowsSmokeScript).toContain("Continue with WIN-PARITY-002 through WIN-PARITY-020");
   });
