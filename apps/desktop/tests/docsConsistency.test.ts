@@ -35,23 +35,23 @@ describe("user-facing documentation", () => {
     expect(readme).toContain("Text cleanup");
   });
 
-  it("documents the current macOS-first platform boundary in user-facing docs", () => {
+  it("documents the current Windows parity boundary in user-facing docs", () => {
     const expectations = [
       {
         path: "../../README.md",
-        snippets: ["macOS first, Windows planned", "Windows packaging is in the repo but is planned for a later release"]
+        snippets: ["Windows validation builds", "feature-aligned with macOS"]
       },
       {
         path: "../../docs/README.zh-CN.md",
-        snippets: ["macOS 优先", "Windows 打包路径已在仓库中"]
+        snippets: ["Windows 验证构建", "功能与 macOS 对齐"]
       },
       {
         path: "../../docs/README.ja.md",
-        snippets: ["macOS から提供", "Windows のパッケージング経路はリポジトリ内にあります"]
+        snippets: ["Windows 検証ビルド", "macOS と機能を揃え"]
       },
       {
         path: "../../docs/README.es.md",
-        snippets: ["empieza por macOS", "El empaquetado para Windows existe en el repo"]
+        snippets: ["builds de validación para Windows", "paridad funcional con macOS"]
       }
     ];
 

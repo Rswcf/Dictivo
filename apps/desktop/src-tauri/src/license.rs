@@ -217,7 +217,7 @@ fn friendly_activation_error(status: u16, raw: &str) -> String {
         return "This license key wasn't recognized. Double-check the key in your purchase email, or contact hello@dictivo.app.".to_string();
     }
     if lowered.contains("activation_limit") {
-        return "This license is already active on the maximum number of devices. Open Settings → License on one of your other Macs and click 'Remove from this device', then activate here.".to_string();
+        return "This license is already active on the maximum number of devices. Open Settings → License on one of your other devices and click 'Remove from this device', then activate here.".to_string();
     }
     if lowered.contains("license_key_disabled") || lowered.contains("disabled") {
         return "This license has been disabled (refunded or revoked). Contact hello@dictivo.app if you believe this is a mistake.".to_string();
@@ -449,6 +449,8 @@ mod tests {
     fn friendly_error_explains_seat_exhaustion() {
         let msg = friendly_activation_error(422, "activation_limit");
         assert!(msg.to_lowercase().contains("maximum number of devices"));
+        assert!(msg.contains("other devices"));
+        assert!(!msg.contains("Mac"));
         assert!(msg.contains("Remove from this device"));
     }
 

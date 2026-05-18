@@ -4,7 +4,7 @@
 
 > ⚠️ Esta traducción al español es una versión resumida del README en inglés. Consulta el [README en inglés](../README.md) para la explicación completa. PRs de traducción bienvenidos.
 
-Dictivo es una app de dictado local-first que empieza por macOS. En modo Local convierte voz en texto con `whisper.cpp` en el dispositivo. Cuando necesitas menor latencia y aceptas subir la grabación actual a proveedores de transcripción en la nube, puedes elegir Cloud Fast. El empaquetado para Windows existe en el repo, pero el lanzamiento público queda para después de estabilizar macOS.
+Dictivo es una app de dictado de escritorio local-first. En modo Local convierte voz en texto con `whisper.cpp` en el dispositivo. Cuando necesitas menor latencia y aceptas subir la grabación actual a proveedores de transcripción en la nube, puedes elegir Cloud Fast. macOS es el canal público de dogfood actual; los builds de validación para Windows se generan en CI y deben mantener paridad funcional con macOS. El lanzamiento público de Windows queda bloqueado por firma y QA manual, no por un alcance reducido.
 
 ## Por qué Dictivo
 
@@ -21,6 +21,7 @@ Dictivo es una app de dictado local-first que empieza por macOS. En modo Local c
 Cuando los builds estén publicados, descarga la última versión desde GitHub Releases:
 
 - macOS: `.dmg`
+- Windows: `.exe` / `.msi` desde los artifacts de validación de CI para pruebas de paridad. Antes del lanzamiento público faltan firma y QA manual.
 
 Abre Dictivo y ve a `Settings -> Engine` para descargar o importar un modelo local.
 
@@ -47,7 +48,7 @@ npm run dev
 6. Pulsa el mismo atajo para detener la grabación.
 7. En modo Local, Dictivo transcribe en el dispositivo, copia el texto final e intenta pegarlo en la app activa. Si cambias a Cloud Fast, al detener la grabación sube solo ese audio al proxy de Dictivo para una transcripción más rápida.
 
-Si el sistema bloquea el pegado automático, el texto sigue copiado. Usa `Command+V` en macOS.
+Si el sistema bloquea el pegado automático, el texto sigue copiado. Usa `Command+V` en macOS o `Ctrl+V` en Windows.
 
 ## Solución de problemas
 
@@ -55,7 +56,7 @@ Si el sistema bloquea el pegado automático, el texto sigue copiado. Usa `Comman
 | --- | --- |
 | No graba | Confirma el permiso de micrófono y reinicia Dictivo. |
 | No aparece ningún modelo local | Descarga o importa un modelo `.bin` en `Settings -> Engine`. |
-| Copia pero no pega | En macOS, confirma el permiso de accesibilidad, enfoca el campo de texto de destino y pulsa `Command+V`. |
+| Copia pero no pega | En macOS, confirma el permiso de accesibilidad; en Windows, enfoca el campo de texto de destino. Luego pulsa `Command+V` o `Ctrl+V`. |
 | El atajo global no responde | Cambia el atajo en `Settings -> Hotkeys` si otra app ya lo usa. |
 | La primera transcripción tarda mucho | Prueba primero con un modelo pequeño y cambia luego a uno de mayor calidad. |
 

@@ -63,8 +63,8 @@ Happy to answer anything about the architecture, model picks, the
 ```
 
 Customizations before posting:
-- Replace "Mac" with "Mac (Windows is on the v1.1 roadmap)" if asked in comments — don't say it in the OP unless you've decided to launch both at once
-- If launching Mac-only, expect Windows requests; that's fine, parking them as `+1 on the v1.1 list` is acceptable
+- If asked about Windows, answer that Windows validation builds are kept feature-aligned in CI, while public Windows release waits for signing and manual QA.
+- If launching macOS-public first, do not imply Windows is a smaller product. Treat Windows requests as a release-readiness/signing question, not a feature-scope question.
 - "non-engineer partner" — replace with your real anchor phrase, but keep something concrete and human; HN loves a story
 
 ---

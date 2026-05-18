@@ -6,7 +6,7 @@ Purpose: close the validation gap that cannot be proven by browser-preview E2E, 
 
 ## Entry Criteria
 
-- Install the latest packaged app.
+- Install the latest packaged app: the macOS release candidate or the Windows validation artifact from the latest `build-desktop.yml` run.
 - Confirm only one app bundle is visible in common install locations.
 - Confirm app version is the intended release version.
 - Run automated gates first:
@@ -54,11 +54,12 @@ git diff --check
 | NATIVE-016 | Windows install smoke | On Windows 11, install the NSIS `.exe` current-user installer, launch, run setup, select a model, and quit from tray. On a managed/enterprise test profile, also verify the MSI path if available. | The `.exe` installs without requiring admin when policy allows per-user apps. MSI installs cleanly for managed deployment. Model paths resolve under the expected app data directory. Tray and close behavior match macOS where applicable. |
 | NATIVE-017 | Windows hotkey/paste | On Windows, run toggle, hold, and Paste Last tests from Notepad. | Global shortcuts register once, SendKeys paste succeeds, and no console window flashes during whisper/model operations. |
 | NATIVE-018 | Privacy/network spot check | Run a dictation while monitoring network activity. Optionally block network after model install. | Audio, transcripts, snippets, dictionary, and history stay local. Metadata API, if enabled, never receives content fields. Offline dictation still works with installed model. |
+| NATIVE-019 | Windows feature parity pass | On Windows, compare the app against the macOS release candidate across Workbench, Local / Cloud Fast switching, Settings -> Engine, Hotkeys, Companion, Privacy, License & Updates, History, Dictionary, and Snippets. | The same product features are present. Differences are limited to OS-specific permissions, shortcuts, installer format, and signing state. Any missing feature is a bug unless it is explicitly documented as a platform limitation. |
 
 ## Exit Criteria
 
 - All macOS cases pass on the release candidate build, or each failure has a linked bug with severity and reproduction steps.
-- Windows cases pass before advertising Windows as release-ready.
+- Windows install, hotkey/paste, and feature-parity cases pass before advertising Windows as release-ready. Public release can wait for signing and QA, but the Windows validation build must not intentionally lag the macOS feature set.
 - Any failed privacy, data-loss, microphone, or cross-app hotkey case is release-blocking.
 - Non-blocking UX findings are added to `docs/dictivo-topdown-review-report.md` with priority and rationale.
 

@@ -9,7 +9,7 @@
   <a href="https://github.com/Rswcf/Dictivo/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Rswcf/Dictivo/build-desktop.yml?branch=main&label=build&style=flat-square"></a>
   <a href="https://github.com/Rswcf/Dictivo/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Rswcf/Dictivo?style=flat-square"></a>
   <a href="https://github.com/Rswcf/Dictivo/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Rswcf/Dictivo?style=flat-square"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/macOS_beta%20%7C%20Windows_planned-success?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/macOS_beta%20%7C%20Windows_validation-success?style=flat-square">
   <img alt="Local by default" src="https://img.shields.io/badge/🔒_local_by_default-blue?style=flat-square">
 </p>
 
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  🔒 <strong>Local mode keeps audio on your Mac</strong> &nbsp;·&nbsp;
+  🔒 <strong>Local mode keeps audio on your device</strong> &nbsp;·&nbsp;
   ⚡ <strong>30-second setup, one hotkey</strong> &nbsp;·&nbsp;
   ☁️ <strong>Optional Cloud Fast at $6.99/mo</strong>
 </p>
@@ -43,7 +43,7 @@ Most dictation apps make you choose between speed, accuracy, and privacy. Dictiv
 | ⚡ Global hotkey + paste-to-active-app | ✅ | ✅ | ✅ | ❌ | partial |
 | 🎯 Local polish + snippets | ✅ | ✅ | partial | ❌ | ❌ |
 | 📖 Local dictionary + snippets | ✅ | partial | ✅ | ❌ | ❌ |
-| 🌍 macOS first, Windows planned | ✅ | ✅ | macOS only | ✅ | macOS only |
+| 🌍 macOS + Windows parity target | ✅ | ✅ | macOS only | ✅ | macOS only |
 | 🔎 Source-auditable client | ✅ FSL-1.1-MIT | ❌ proprietary | ❌ proprietary | ❌ proprietary | ✅ bundled |
 
 ---
@@ -69,7 +69,7 @@ Out-of-budget tiers (⚠) are still clickable — you get a warning confirm with
 **Install a release build** (recommended)
 
 ```text
-1. Download the latest Dictivo `.dmg` from Releases
+1. Download the latest Dictivo `.dmg` from Releases. Windows validation builds are produced by CI as `.exe` / `.msi` artifacts for testing.
 2. Open Dictivo
 3. The setup wizard scans your hardware → downloads one recommended model → measures speed
 4. Press `CommandOrControl+Shift+Space`, speak, press the same shortcut again. Done.
@@ -83,7 +83,7 @@ npm install
 npm run tauri:dev -w @dictivo/desktop
 ```
 
-Requirements: Node 20+, Rust stable, and macOS for the current dogfood build. Windows packaging is in the repo but is planned for a later release after the Mac path is stable.
+Requirements: Node 20+, Rust stable, and macOS or Windows for desktop dogfood builds. Windows validation builds must stay feature-aligned with macOS; the public Windows release is gated by signing and manual QA, not by a reduced feature scope.
 
 ---
 
@@ -197,7 +197,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 | --- | --- |
 | Nothing records | Grant Microphone permission, restart Dictivo |
 | No tiers visible | Re-run setup from Settings → Engine → Re-run setup |
-| Transcript copies but doesn't paste | Grant Accessibility permission on macOS, focus a text field, `⌘+V` |
+| Transcript copies but doesn't paste | Grant Accessibility permission on macOS if needed, focus a text field, then use `⌘+V` on macOS or `Ctrl+V` on Windows |
 | Global hotkey ignored | Another app claimed it — change in Settings → Hotkeys |
 | First transcription is slow | Switch to Fast tier; it auto-uses a smaller model |
 
@@ -218,7 +218,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 ## Roadmap
 
-**Near-term:** signed macOS release artifacts · screenshots + demo GIFs in README · expanded native E2E around real microphone permissions and global hotkeys · Windows release path after the Mac launch is stable · more community translations.
+**Near-term:** signed macOS release artifacts · Windows feature-parity validation builds · screenshots + demo GIFs in README · expanded native E2E around real microphone permissions and global hotkeys · Windows signing / release readiness · more community translations.
 
 **Out of scope** (by design, for now): meeting transcription · speaker diarization · meeting summaries · system-audio capture · user-selectable cloud providers.
 

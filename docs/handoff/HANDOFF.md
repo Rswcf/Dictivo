@@ -166,7 +166,7 @@ In rough order of urgency:
 - **SQLite migration infrastructure** — Plan written in `docs/release/sqlite-migration-plan.md`, code not landed. Land before the first real schema change.
 - **A11y deeper audit** — VoiceOver pass, WCAG contrast check, reduced-motion respect. Checklist in `docs/release/launch-checklist.md` §4.
 - **`BETA` chip toggle** in `App.tsx` — currently hardcoded `<span className="beta-chip">BETA</span>`. Switch to env-flag-gated for v1.0 tag.
-- **Windows v1.1 support** — code-signing through Azure Trusted Signing (~$120/yr). Capabilities and workflow already drafted; just needs Apple to clear so the Mac path is stable first.
+- **Windows release readiness** — Windows x64 MSI/NSIS validation artifacts are required on every main-branch desktop build and must stay feature-aligned with macOS. Public Windows release is blocked by signing and manual QA, not by a reduced feature scope.
 - **Marketing site privacy / EULA pages** — Templates in `docs/release/_v1-reference/eula-and-privacy.md`. Need real legal review before $10k annual revenue (per `docs/release/plan.md` §10.2).
 - **`/where-your-data-lives` page** on the marketing site — content in `docs/release/launch/where-your-data-lives.md`, needs deployment.
 - **Show HN + Product Hunt launch kits** — content in `docs/release/launch/` ready, needs execution on launch day.
@@ -190,7 +190,7 @@ In rough order of urgency:
 | Payment processor | Lemon Squeezy (Merchant of Record, handles global tax) |
 | License model (code) | FSL-1.1-MIT, source-available, auto-converts to MIT after 2 years per release |
 | Telemetry | **None ever** — no crash reporter, no analytics SDK, no usage tracking. Even opt-in is out. Marketing position. |
-| First-launch platform | macOS only at v1.0. Windows in v1.1. |
+| First-launch platform | macOS public first. Windows validation builds stay in CI with feature parity; public Windows waits for signing and manual QA. |
 | Seller | Solo natural-person indie (user is in Germany; no legal entity at launch; LS handles cross-border tax) |
 
 Source of truth: `docs/release/plan.md`. Don't make decisions without reading that.

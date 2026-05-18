@@ -1,6 +1,12 @@
 # Dictivo Test Matrix
 
-Scope: local-first desktop UI, optional Cloud Fast transcription, companion window, shared privacy contracts, and API/proxy behavior. The matrix maps current product behavior to automated coverage and remaining manual/E2E checks.
+Scope: local-first desktop UI, optional Cloud Fast transcription, companion window, shared privacy contracts, API/proxy behavior, and macOS / Windows feature parity. The matrix maps current product behavior to automated coverage and remaining manual/E2E checks.
+
+## Platform Parity Policy
+
+- macOS and Windows desktop builds must expose the same product features: Private Local, Cloud Fast, global start/stop, Paste Last, history, dictionary/snippets, companion, license/update status, and privacy settings.
+- Public release timing can differ. Windows CI artifacts are validation builds until signing and manual QA are complete; they are not a reduced SKU.
+- Platform-specific permission text and native adapters are allowed, but user-facing product copy should stay device-neutral unless it is explaining an OS-specific action.
 
 ## Frontend Pages And States
 
@@ -43,7 +49,7 @@ These require a real browser/Tauri runtime, microphone permissions, and a local 
 | Microphone denial / setup race | Deny mic permission and start dictation; also start then immediately stop before the OS/microphone controller finishes setup | Error status is shown, stale recording placeholder is cleared, companion enters attention state, no session is saved on denial. Stop-before-ready is queued until the controller exists, then the recording is stopped/transcribed without a dangling controller. App-level denial and setup-race handling are automated; real OS denial still needs manual verification. |
 | Clipboard race | Change clipboard between recording and paste | Transcript stays in app and is not pasted over changed clipboard. App-level `clipboard-changed-copied` handling is automated; real cross-app clipboard mutation still needs manual verification. |
 | Native model operations | Download/select/delete/import every listed model | Operation state disables duplicate clicks, low-disk download/import fails before network transfer or file copy, and final status updates correctly |
-| Global hotkeys | Toggle and hold modes from another active app | Start/stop/paste-last intents fire exactly once per press/release sequence. Default shortcut registration passed the macOS native probe; cross-app behavior still needs manual verification. |
+| Global hotkeys | Toggle and hold modes from another active app | Start/stop/paste-last intents fire exactly once per press/release sequence. Default shortcut registration passed the macOS native probe; Windows validation artifacts are built in CI, and cross-app behavior still needs manual verification on both macOS and Windows. |
 | Rapid navigation | Click all nav/settings tabs repeatedly during loading/operation | No UI state loss, overlap, or disabled-control escape |
 | Browser sizes | 1440×960 chromium desktop is automated; tablet / mobile are manual spot checks since Dictivo is a Tauri desktop app | 1440px desktop covered by Playwright; smaller viewports are not a release-blocking surface |
 | Accessibility pass | Keyboard tab through main nav, forms, settings, companion close | Visible focus outline, named icon buttons, no keyboard trap. Browser-preview keyboard traversal is automated in `apps/desktop/e2e/app.spec.ts`; packaged native keyboard pass remains a release checklist item. |
@@ -66,4 +72,4 @@ For each row, install Dictivo on the target hardware, run the onboarding wizard,
 
 ## Coverage Limits
 
-The repository runs Playwright E2E coverage on a 1440×960 chromium-desktop project plus Vitest coverage for render contracts, pure logic, fallback behavior, CSS contracts, API privacy, and release workflow contracts. Playwright now fails tests on browser `pageerror`, `console.error`, and non-local network/WebSocket requests, so UI flows cannot pass with hidden runtime exceptions or accidental external calls. The previous chromium-mobile project was retired since Dictivo ships as a Tauri desktop app; tablet/mobile viewport behavior is a manual spot check. The suite still cannot prove native microphone capture, real OS permission dialogs, global shortcut registration in another app, packaged tray clicks, packaged companion chrome/always-on-top behavior, packaged native keyboard behavior, or Windows install/hotkey behavior without running the packaged desktop app with local permissions and target OS environments. Those are tracked above as manual/native scenarios.
+The repository runs Playwright E2E coverage on a 1440×960 chromium-desktop project plus Vitest coverage for render contracts, pure logic, fallback behavior, CSS contracts, API privacy, and release workflow contracts. Playwright now fails tests on browser `pageerror`, `console.error`, and non-local network/WebSocket requests, so UI flows cannot pass with hidden runtime exceptions or accidental external calls. The previous chromium-mobile project was retired since Dictivo ships as a Tauri desktop app; tablet/mobile viewport behavior is a manual spot check. The suite still cannot prove native microphone capture, real OS permission dialogs, global shortcut registration in another app, packaged tray clicks, packaged companion chrome/always-on-top behavior, packaged native keyboard behavior, or full Windows parity without running the packaged desktop app with local permissions and target OS environments. Those are tracked above as manual/native scenarios.

@@ -4,7 +4,7 @@
 > `Rswcf/Dictivo-site`) as `where-your-data-lives.html` or wherever the
 > existing structure prefers. Link to it from the home-page privacy
 > trust strip and from the Privacy Policy. Target audience: HN /
-> r/privacy / r/macapps skeptics doing a 10-second skim before they
+> r/privacy / desktop-app skeptics doing a 10-second skim before they
 > close the tab.
 
 ---
@@ -16,7 +16,11 @@ of data the app touches, where it is stored, and what — if anything —
 ever leaves the device. Local keeps audio on this device. Cloud Fast
 uploads audio to cloud transcription providers for faster results.
 
-## Files Dictivo creates on your Mac
+## Files Dictivo creates on your device
+
+The macOS paths are shown first because they are the current public
+dogfood path. Windows validation builds must keep the same data
+boundaries, using the normal per-user application data directory.
 
 | Path | Contents | When it appears |
 |---|---|---|
@@ -104,8 +108,8 @@ transcript and a generic backup-route success state.
 Dictivo ships without **any** crash reporter, analytics SDK, or
 telemetry library. There is no Sentry, no Crashlytics, no PostHog, no
 Datadog, no Segment, no in-house metrics endpoint. If the app crashes
-on your Mac, you are the only person who knows about it — and the only
-way we ever learn is if you email us with the symptom.
+on your device, you are the only person who knows about it — and the
+only way we ever learn is if you email us with the symptom.
 
 This is a deliberate trade-off. A real crash reporter would make our
 job of fixing bugs faster, but we'd be exchanging your privacy

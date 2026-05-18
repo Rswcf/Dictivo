@@ -37,14 +37,14 @@ Cloud Fast does **not** replace the local privacy product. It is a separate paid
 | Domain + DNS | Cloudflare Registrar | ~$15/yr |
 | Payment + license keys + emails | Lemon Squeezy (Merchant of Record) | 5% + $0.50/txn |
 | macOS code signing + notarization | Apple Developer Program (individual) | $99/yr |
-| ~~Windows code signing~~ | ~~Azure Trusted Signing~~ — **deferred to v1.1** | ~$120/yr |
+| Windows validation builds | GitHub Actions MSI/NSIS artifacts for parity testing; public signing via Azure Trusted Signing is deferred | $0 now; ~$120/yr when signing starts |
 | Update manifest hosting | GitHub Releases (asset on each release) | Free |
 | Updater signature | Tauri minisign (Ed25519) | Free |
 | Model weights hosting | Hugging Face (current) → R2 only if HF rate-limits | $0 |
 | Cloud Fast API | Cloudflare Worker + D1 at `api.dictivo.app` | $0 early usage, then Workers/D1 usage |
 | Site analytics (post-launch) | Plausible | Skip at launch |
 
-**v1.0 recurring (Mac-only): ~$115/yr. Breakeven: ~3 sales/year.**
+**v1.0 recurring (macOS public, Windows validation-only): ~$115/yr. Breakeven: ~3 sales/year.**
 
 **Local v1 has zero custom backend code.** Cloud Fast is the exception: it adds a narrow Cloudflare Worker + D1 proxy for provider keys, entitlement checks, quota, and fallback routing.
 
@@ -136,7 +136,7 @@ Three repos plus one narrow Cloud Fast Worker. Marketing site, desktop app, Lemo
    POST https://api.lemonsqueezy.com/v1/licenses/activate
    {
      "license_key": "4F3A-...-9C2B",
-     "instance_name": "Alice's MacBook"
+     "instance_name": "Alice's laptop"
    }
    ```
 5. LS responds with: `valid: true`, `license_key.created_at`, `customer.email`, `meta.order_id`, `instance.id`.
@@ -276,7 +276,7 @@ There is **no high-likelihood, high-impact risk** in this stack that isn't alrea
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | **Mac-only at v1.0**; Windows deferred to v1.1 once Mac launch is stable | ✅ Locked |
+| 1 | **macOS public at v1.0**; Windows validation builds remain feature-aligned in CI, while public Windows waits for signing and manual QA | ✅ Locked |
 | 2 | **Free tier exists** = `tiny` model, unlimited dictation; Paid $49 = all models + 12-mo update window | ✅ Locked |
 | 3 | `dictivo.app` registered, will be consolidated to Cloudflare DNS | ✅ Locked |
 | 4 | **Lemon Squeezy** as MoR, payouts via SEPA or Wise — global approach, seller's local tax handled offline | ✅ Locked |
@@ -319,7 +319,7 @@ Choose during LS onboarding; can be changed later.
 Dictivo ships zero crash-reporting and zero telemetry libraries. No
 Sentry, no Crashlytics, no PostHog. The trade-off is real — we'll
 debug user-reported crashes with less context — but it's part of the
-brand promise: "Dictivo never sends any data off your Mac, full stop,
+brand promise: "Dictivo never sends any data off your device in Local mode, full stop,
 no opt-ins to remember."
 
 Operational consequence: every reported crash is handled by the user
@@ -352,11 +352,11 @@ Everything in `pricing-copy.md` (the FAQ voice, the "we don't subscription-trap 
 | Item | Annual |
 |---|---|
 | Apple Developer Program (individual) | $99 |
-| ~~Azure Trusted Signing (Windows)~~ | ~~$120~~ → defer to v1.1 |
+| Windows signing | $0 now → Azure Trusted Signing (~$120/yr) when public Windows release starts |
 | Domain (`dictivo.app`) | $15 |
 | Cloudflare DNS + Pages | $0 |
 | Lemon Squeezy | per-transaction only (5% + $0.50) |
-| **Total recurring (Mac-only v1.0)** | **~$115/yr** |
+| **Total recurring (macOS-public v1.0, Windows validation-only)** | **~$115/yr** |
 
 Breakeven: ~3 sales/year.
 
@@ -377,8 +377,8 @@ Breakeven: ~3 sales/year.
 
 | Version | Adds |
 |---|---|
-| 1.0 | Mac-only public launch, the lean stack above |
-| 1.1 (~3 months later, if revenue justifies) | Windows **or** Mac App Store listing **or** student discount via discount codes |
+| 1.0 | macOS public launch plus Windows feature-parity validation builds |
+| 1.1 (~3 months later, if revenue justifies) | Windows public release **or** Mac App Store listing **or** student discount via discount codes |
 | 1.2 (~6 months later) | Team licenses; first new Whisper-family model integration to vindicate the renewal value |
 | 1.3 + | New languages, polish, accessibility, whatever the user feedback prioritizes |
 

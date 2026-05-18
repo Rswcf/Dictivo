@@ -4,7 +4,7 @@
 
 > ⚠️ 此中文翻译是英文 README 的简版。完整功能说明请以 [English README](../README.md) 为准。社区翻译 PR 欢迎。
 
-Dictivo 是一款 macOS 优先的本地优先语音转文字工具。默认 Local 模式使用设备上的 `whisper.cpp` 引擎完成转录；可选 Cloud Fast 模式用于需要更低延迟、并接受上传当前录音到云端转录服务的场景。Windows 打包路径已在仓库中，但公开发布排在 macOS 稳定之后。
+Dictivo 是一款本地优先的桌面语音转文字工具。默认 Local 模式使用设备上的 `whisper.cpp` 引擎完成转录；可选 Cloud Fast 模式用于需要更低延迟、并接受上传当前录音到云端转录服务的场景。macOS 是当前公开 dogfood 主路径；Windows 验证构建由 CI 持续产出，功能与 macOS 对齐，公开 Windows 发布只等待签名和人工 QA。
 
 ## 为什么选择 Dictivo
 
@@ -21,6 +21,7 @@ Dictivo 是一款 macOS 优先的本地优先语音转文字工具。默认 Loca
 发布包上线后，请从 GitHub Releases 下载最新版本：
 
 - macOS：`.dmg`
+- Windows：CI 验证构建中的 `.exe` / `.msi`，用于功能对齐测试，公开发布前仍需签名和人工 QA
 
 打开 Dictivo 后，进入 `Settings -> Engine`，下载或导入一个本地模型。
 
@@ -47,7 +48,7 @@ npm run dev
 6. 再按一次同样的快捷键停止。
 7. 默认 Local 模式会在本地转录、复制最终文本，并尝试粘贴到当前应用。若切换到 Cloud Fast，会在停止录音后上传本次音频到 Dictivo proxy，再返回转录文本。
 
-如果系统阻止自动粘贴，文本仍会复制到剪贴板。macOS 上按 `Command+V`。
+如果系统阻止自动粘贴，文本仍会复制到剪贴板。macOS 上按 `Command+V`，Windows 上按 `Ctrl+V`。
 
 ## 常见问题
 
@@ -55,7 +56,7 @@ npm run dev
 | --- | --- |
 | 没有录音 | 确认麦克风权限，然后重启 Dictivo。 |
 | 看不到本地模型 | 在 `Settings -> Engine` 下载或导入 `.bin` 模型。 |
-| 已复制但无法粘贴 | macOS 上确认辅助功能权限，聚焦目标输入框，然后按 `Command+V`。 |
+| 已复制但无法粘贴 | macOS 上确认辅助功能权限；Windows 上确认目标输入框已聚焦。随后按 `Command+V` 或 `Ctrl+V`。 |
 | 全局快捷键无反应 | 如果快捷键被其他应用占用，请到 `Settings -> Hotkeys` 修改。 |
 | 第一次转录很慢 | 先用小模型完成设置验证，再切换到质量更高的模型。 |
 
