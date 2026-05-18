@@ -1,6 +1,6 @@
 [package]
 name = "dictivo"
-version = "0.2.8"
+version = "0.3.4"
 description = "Local-first desktop dictation"
 authors = ["Dictivo"]
 edition = "2021"
