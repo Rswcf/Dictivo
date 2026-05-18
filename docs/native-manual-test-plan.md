@@ -4,6 +4,8 @@ Date: 2026-05-18
 
 Purpose: close the validation gap that cannot be proven by browser-preview E2E, Vitest, Rust unit tests, or command-line whisper.cpp smoke alone. Run this plan on packaged desktop builds before a public release.
 
+Windows parity has a dedicated checklist in [`docs/windows-parity-test-plan.md`](windows-parity-test-plan.md). Run it before treating a Windows validation artifact as feature-aligned with macOS.
+
 ## Entry Criteria
 
 - Install the latest packaged app: the macOS release candidate or the Windows validation artifact from the latest `build-desktop.yml` run.

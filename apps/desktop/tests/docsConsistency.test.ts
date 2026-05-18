@@ -79,4 +79,29 @@ describe("user-facing documentation", () => {
       }
     }
   });
+
+  it("keeps the Windows parity test plan tied to the current feature set", () => {
+    const plan = readFileSync("../../docs/windows-parity-test-plan.md", "utf8");
+    const nativePlan = readFileSync("../../docs/native-manual-test-plan.md", "utf8");
+    const requiredSnippets = [
+      "Dictivo-Windows-x64-installers",
+      "WIN-PARITY-003",
+      "WIN-PARITY-004",
+      "WIN-PARITY-006",
+      "WIN-PARITY-007",
+      "WIN-PARITY-008",
+      "WIN-PARITY-012",
+      "WIN-PARITY-014",
+      "WIN-PARITY-020",
+      "Cloud Fast",
+      "Private Local",
+      "Paste Last",
+      "Do not mark Windows parity complete from CI alone"
+    ];
+
+    for (const snippet of requiredSnippets) {
+      expect(plan, `windows parity plan should include ${snippet}`).toContain(snippet);
+    }
+    expect(nativePlan).toContain("windows-parity-test-plan.md");
+  });
 });
