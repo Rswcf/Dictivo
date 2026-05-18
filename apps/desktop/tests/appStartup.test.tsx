@@ -676,7 +676,28 @@ describe("App startup recovery", () => {
     await waitFor(() => expect(screen.getByLabelText("Live dictation text")).toHaveProperty("value", "Recovered transcript."));
     await waitFor(() => expect(bridge.saveLocalSession).toHaveBeenCalledWith(expect.objectContaining({ text: "Recovered transcript." })));
     expect(screen.getByText(/clipboard changed during transcription/i)).toBeTruthy();
+    expect(screen.getByText(/Press Command\+V to paste it/i)).toBeTruthy();
     expect(screen.getByText(/Copied; auto paste skipped/i)).toBeTruthy();
+  });
+
+  it("uses Windows paste fallback shortcut when clipboard changes before auto paste", async () => {
+    bridge.getPrivateFastStatus.mockResolvedValue(readyStatus);
+    bridge.getHardwareProfile.mockResolvedValue({ ...hardware, platform: "windows", arch: "x86_64", accelerators: ["DirectML"] });
+    bridge.getClipboardMarker.mockResolvedValueOnce({ kind: "text", signature: "before" });
+    bridge.pasteText.mockResolvedValueOnce({ pasted: false, copied: true, method: "clipboard-changed-copied" });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() => expect(media.startAudioRecording).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    await waitFor(() =>
+      expect(bridge.pasteText).toHaveBeenCalledWith("Recovered transcript.", { kind: "text", signature: "before" })
+    );
+    await waitFor(() => expect(screen.getByText(/Press Ctrl\+V to paste it/i)).toBeTruthy());
+    expect(screen.queryByText(/Press Command\+V to paste it/i)).toBeNull();
   });
 
   it("deletes a single history message through the app bridge and refreshes the list", async () => {

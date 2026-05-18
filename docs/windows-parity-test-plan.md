@@ -11,7 +11,7 @@ macOS feature set.
 
 - The latest `build-desktop.yml` run for `main` succeeds for both `macOS universal` and `Windows x64`.
 - GitHub artifacts contain exactly the latest `Dictivo-macOS-universal` and `Dictivo-Windows-x64-installers` artifacts.
-- The Windows artifact contains both `Dictivo_0.3.4_x64-setup.exe` and `Dictivo_0.3.4_x64_en-US.msi`.
+- The Windows artifact contains both `Dictivo_<version>_x64-setup.exe` and `Dictivo_<version>_x64_en-US.msi`, where `<version>` matches `apps/desktop/src-tauri/tauri.conf.json`.
 - Windows 11 passes the feature matrix below against the latest macOS release candidate.
 - Any missing Windows feature is recorded as a bug unless it is explicitly an OS permission, installer, signing, or platform-behavior difference.
 
@@ -37,7 +37,7 @@ Compare visible behavior with the latest macOS build from the same commit.
 
 | ID | Feature | Windows steps | Expected parity |
 | --- | --- | --- | --- |
-| WIN-PARITY-001 | Installers | Install `Dictivo_0.3.4_x64-setup.exe`. Then uninstall and test the MSI on a managed profile if available. | NSIS installs per-user without admin when policy allows. MSI installs cleanly. App version shows `0.3.4`. |
+| WIN-PARITY-001 | Installers | Install the current-version `Dictivo_<version>_x64-setup.exe`. Then uninstall and test the MSI on a managed profile if available. | NSIS installs per-user without admin when policy allows. MSI installs cleanly. App version matches the current release version. |
 | WIN-PARITY-002 | First launch | Launch Dictivo after install. Open every sidebar view. | No crash, stale layout, missing nav item, or old UI state. |
 | WIN-PARITY-003 | Private Local setup | Open Settings -> Engine, choose Local, refresh status, select Fast / Medium / Quality where available. | Local model setup and tier controls match macOS; Cloud Fast-specific details are hidden while Local config is shown. |
 | WIN-PARITY-004 | Cloud Fast mode | Switch the workbench and Settings -> Engine to Cloud Fast. Try locked and activated states. | Local controls are hidden in Cloud Fast. User sees one Cloud Fast option, no provider picker, and the privacy copy about uploading audio. |

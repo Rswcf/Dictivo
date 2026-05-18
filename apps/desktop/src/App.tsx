@@ -632,7 +632,7 @@ export function App({ windowLabel = "main" }: AppProps) {
               : pasteWarning && pasteResult?.copied
                 ? `${completionMessage} Auto paste failed (${pasteWarning}), so Dictivo copied the transcript to the clipboard.`
               : pasteResult?.method === "clipboard-changed-copied"
-          ? `${completionMessage} The clipboard changed during transcription, so Dictivo copied the transcript but skipped automatic paste. Press Command+V to paste it.`
+          ? `${completionMessage} The clipboard changed during transcription, so Dictivo copied the transcript but skipped automatic paste. Press ${manualPasteShortcut(hardwareProfile?.platform)} to paste it.`
           : pasteResult?.copied
             ? completionMessage
             : `${completionMessage} Transcript is available in Dictivo, but could not be copied to the clipboard.`;
@@ -1393,6 +1393,10 @@ function tierBudget(tier: Tier) {
   if (tier === "fast") return 1.0;
   if (tier === "medium") return 2.0;
   return 4.0;
+}
+
+function manualPasteShortcut(platform?: HardwareProfile["platform"]) {
+  return platform === "macos" ? "Command+V" : "Ctrl+V";
 }
 
 function placeholderRunnableTiers(): RunnableTiers {

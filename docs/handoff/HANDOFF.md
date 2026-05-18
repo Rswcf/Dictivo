@@ -1,6 +1,6 @@
 # Dictivo Handoff — 2026-05-18
 
-For the engineer (Codex or otherwise) picking this codebase up at v0.3.4. The previous engineer (this Claude session) hit a wall on a specific macOS bug; the rest of the work is well-shaped and ready to continue.
+For the engineer (Codex or otherwise) picking this codebase up at v0.3.5. The previous engineer (this Claude session) hit a wall on a specific macOS bug; the rest of the work is well-shaped and ready to continue.
 
 This document is self-contained. Read top to bottom and you have everything you need.
 
@@ -9,9 +9,9 @@ This document is self-contained. Read top to bottom and you have everything you 
 ## 1. Where we are right now
 
 - **Repo**: `Rswcf/Dictivo` (this repo), marketing site lives separately at `Rswcf/Dictivo-site` (local clone at `/Users/mayijie/Projects/Code/034_Dictivo_Site`).
-- **Current dogfood version**: **0.3.4**.
-- **Installed locally**: `/Applications/Dictivo.app` = 0.3.4.
-- **Latest local verification**: `npm run typecheck`, focused desktop Vitest 76, focused API Cloud Fast Vitest 17, `cargo check`, Rust unit tests 63, Tauri build, local install/sign/open. Docs refresh also passed `npm exec -w @dictivo/desktop -- vitest run tests/docsConsistency.test.ts`. All passed for 0.3.4.
+- **Current dogfood version**: **0.3.5**.
+- **Installed locally**: verify after installing the latest artifact; do not assume an older `/Applications/Dictivo.app` is current.
+- **Latest local verification**: `npm run typecheck`, focused desktop Vitest, focused API Cloud Fast Vitest, `cargo check`, Rust unit tests, Tauri build, local install/sign/open, and docs consistency checks have passed in the 0.3.x cycle. Re-run the gates against 0.3.5 before release or handoff.
 - **CI**: `.github/workflows/build-desktop.yml` runs on every push; latest green.
 - **Release workflow**: `.github/workflows/release-desktop.yml` tag-driven, dormant until Apple Developer secrets are added.
 
